@@ -13,9 +13,14 @@ pub const JUMP_SPEED: f32 = -105.0;
 pub const JUMP_H_BOOST: f32 = 40.0;
 pub const VAR_JUMP_TIME: f32 = 0.2;
 pub const JUMP_GRACE_TIME: f32 = 0.1;
+pub const WALL_SLIDE_START_MAX: f32 = 20.0;
+pub const WALL_SLIDE_TIME: f32 = 1.2;
 
 // Temporary until room collision: the floor of 1A's first room.
 pub const FLOOR_Y: i32 = 144;
+// Temporary until room collision: the farthest right position.x can go before
+// Madeline's hitbox (4 px right of her position) touches the wall at x = 80.
+pub const WALL_X: i32 = 76;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct IVec2 {
@@ -33,6 +38,10 @@ pub struct PlayerState {
     pub var_jump_timer: f32,
     pub var_jump_speed: f32,
     pub jump_held: bool,
+    // -1 = left, 1 = right
+    pub facing: i8,
+    pub wall_slide_timer: f32,
+    pub wall_slide_dir: i8,
 }
 
 impl PlayerState {
@@ -45,6 +54,9 @@ impl PlayerState {
             var_jump_timer: 0.0,
             var_jump_speed: 0.0,
             jump_held: false,
+            facing: 1,
+            wall_slide_timer: WALL_SLIDE_TIME,
+            wall_slide_dir: 0,
         }
     }
 }
@@ -58,14 +70,7 @@ pub struct Input {
 }
 
 pub fn on_ground(state: &PlayerState) -> bool {
-    let speed_y = state.speed.y;
-    let position_y = state.position.y;
-
-    if speed_y >= 0.0 && position_y  == FLOOR_Y {
-        return true;
-    }
-    
-    false
+    state.speed.y >= 0.0 && state.position.y == FLOOR_Y
 }
 
 pub fn approach(value: f32, target: f32, max_move: f32) -> f32 {
@@ -80,6 +85,14 @@ pub fn move_h(state: &mut PlayerState, amount: f32) {
     let new_remainder = state.remainder.x + amount;
     // C# Math.Round
     let movement_x = new_remainder.round_ties_even() as i32;
+    let target_x = state.position.x + movement_x;
+
+    if target_x > WALL_X {
+        state.position.x = WALL_X;
+        state.remainder.x = 0.0;
+        state.speed.x = 0.0;
+        return;
+    }
 
     state.position.x += movement_x;
     state.remainder.x = new_remainder - (movement_x as f32);
@@ -89,7 +102,6 @@ pub fn move_v(state: &mut PlayerState, amount: f32) {
     let new_remainder = state.remainder.y + amount;
     // C# Math.Round
     let movement_y = new_remainder.round_ties_even() as i32;
-
     let target_y = state.position.y + movement_y;
 
     if target_y > FLOOR_Y {
@@ -103,8 +115,38 @@ pub fn move_v(state: &mut PlayerState, amount: f32) {
     state.remainder.y = new_remainder - (movement_y as f32);
 }
 
+pub fn wall_at(state: &PlayerState, dir: i8) -> bool {
+    if state.position.x + dir as i32 > WALL_X {
+        true
+    } else {
+        false
+    }
+}
+
+pub fn lerp(value1: f32, value2: f32, amount: f32) -> f32 {
+    value1 * (1.0 - amount) + value2 * amount
+}
+
+
+pub fn wall_slide_max_fall(state: &mut PlayerState, input: Input) -> f32 {
+    let mut max = MAX_FALL;
+    
+    if input.move_x == state.facing {
+        if state.speed.y >= 0.0 && state.wall_slide_timer > 0.0 && wall_at(state, state.facing) {
+            state.wall_slide_dir = state.facing;
+        }
+
+        if state.wall_slide_dir != 0 {
+            max = lerp(MAX_FALL, WALL_SLIDE_START_MAX, state.wall_slide_timer / WALL_SLIDE_TIME)
+        }
+    }
+
+    max
+}
+
 pub fn jump(state: &mut PlayerState, input: Input) {
     state.jump_grace_timer = 0.0;
+    state.wall_slide_timer = WALL_SLIDE_TIME;
     state.var_jump_timer = VAR_JUMP_TIME;
     state.speed.x += JUMP_H_BOOST * input.move_x as f32;
     state.speed.y = JUMP_SPEED;
@@ -114,10 +156,20 @@ pub fn jump(state: &mut PlayerState, input: Input) {
 pub fn step(mut state: PlayerState, input: Input) -> PlayerState {
     let ground = on_ground(&state);
 
+    if state.wall_slide_dir != 0 {
+        state.wall_slide_timer = (state.wall_slide_timer - DELTA_TIME).max(0.0);
+        state.wall_slide_dir = 0;
+    }
+
     if ground {
         state.jump_grace_timer = JUMP_GRACE_TIME;
+        state.wall_slide_timer = WALL_SLIDE_TIME
     } else if state.jump_grace_timer > 0.0 {
         state.jump_grace_timer -= DELTA_TIME;
+    }
+
+    if input.move_x != 0 {
+        state.facing = input.move_x;
     }
 
     if state.var_jump_timer > 0.0 {
@@ -136,19 +188,20 @@ pub fn step(mut state: PlayerState, input: Input) -> PlayerState {
     let target = MAX_RUN * move_x;
 
     let max_move_x = if state.speed.x.abs() > MAX_RUN && (state.speed.x.signum() as i8) == input.move_x {
-        RUN_REDUCE * mult * DELTA_TIME 
+        RUN_REDUCE * DELTA_TIME * mult
     } else {
-        RUN_ACCEL * mult * DELTA_TIME 
+        RUN_ACCEL * DELTA_TIME * mult
     };
     state.speed.x = approach(state.speed.x, target, max_move_x);
 
     if !ground {
+        let max_fall = wall_slide_max_fall(&mut state, input);
         let grav_mult = if state.speed.y.abs() < HALF_GRAV_THRESHOLD && input.jump {
             0.5
         } else {
             1.0
         };
-        state.speed.y = approach(state.speed.y, MAX_FALL, GRAVITY * grav_mult * DELTA_TIME);
+        state.speed.y = approach(state.speed.y, max_fall, GRAVITY * grav_mult * DELTA_TIME);
     }
 
     if state.var_jump_timer > 0.0 {
@@ -280,6 +333,100 @@ mod tests {
         assert_eq!(s.var_jump_speed, JUMP_SPEED);
         assert_eq!(s.var_jump_timer, VAR_JUMP_TIME);
         assert_eq!(s.jump_grace_timer, 0.0);
+    }
+
+    #[test]
+    fn jump_resets_wall_slide_timer() {
+        let mut s = standing();
+        s.wall_slide_timer = 0.3;
+        jump(&mut s, Input { move_x: 0, jump: true });
+        assert_eq!(s.wall_slide_timer, WALL_SLIDE_TIME);
+    }
+
+    #[test]
+    fn move_h_stops_at_wall() {
+        let mut s = at_rest();
+        s.position.x = WALL_X - 1;
+        s.remainder.x = 0.3;
+        s.speed.x = 90.0;
+        move_h(&mut s, 1.5);
+        assert_eq!(s.position.x, WALL_X);
+        assert_eq!(s.remainder.x, 0.0);
+        assert_eq!(s.speed.x, 0.0);
+    }
+
+    #[test]
+    fn move_h_reaching_wall_exactly_is_not_a_collision() {
+        let mut s = at_rest();
+        s.position.x = WALL_X - 1;
+        s.speed.x = 90.0;
+        move_h(&mut s, 1.25);
+        assert_eq!(s.position.x, WALL_X);
+        assert_eq!(s.remainder.x, 0.25);
+        assert_eq!(s.speed.x, 90.0);
+    }
+
+    #[test]
+    fn wall_at_detects_wall_to_the_right_only() {
+        let mut s = at_rest();
+        s.position.x = WALL_X;
+        assert!(wall_at(&s, 1));
+        assert!(!wall_at(&s, -1));
+        s.position.x = WALL_X - 1;
+        assert!(!wall_at(&s, 1));
+    }
+
+    #[test]
+    fn lerp_endpoints_and_midpoint() {
+        assert_eq!(lerp(160.0, 20.0, 0.0), 160.0);
+        assert_eq!(lerp(160.0, 20.0, 1.0), 20.0);
+        assert_eq!(lerp(160.0, 20.0, 0.5), 90.0);
+    }
+
+    fn falling_against_wall() -> PlayerState {
+        let mut s = at_rest();
+        s.position.x = WALL_X;
+        s.speed.y = 100.0;
+        s
+    }
+
+    #[test]
+    fn wall_slide_starts_at_full_timer() {
+        let mut s = falling_against_wall();
+        let max = wall_slide_max_fall(&mut s, Input { move_x: 1, jump: false });
+        assert_eq!(max, WALL_SLIDE_START_MAX);
+        assert_eq!(s.wall_slide_dir, 1);
+    }
+
+    #[test]
+    fn wall_slide_max_rises_as_timer_runs_out() {
+        let mut s = falling_against_wall();
+        s.wall_slide_timer = WALL_SLIDE_TIME * 0.5;
+        let max = wall_slide_max_fall(&mut s, Input { move_x: 1, jump: false });
+        assert_eq!(max, lerp(MAX_FALL, WALL_SLIDE_START_MAX, 0.5));
+    }
+
+    #[test]
+    fn no_wall_slide_without_holding_toward_wall() {
+        let mut s = falling_against_wall();
+        assert_eq!(wall_slide_max_fall(&mut s, Input { move_x: 0, jump: false }), MAX_FALL);
+        assert_eq!(s.wall_slide_dir, 0);
+    }
+
+    #[test]
+    fn no_wall_slide_while_moving_up() {
+        let mut s = falling_against_wall();
+        s.speed.y = -50.0;
+        assert_eq!(wall_slide_max_fall(&mut s, Input { move_x: 1, jump: false }), MAX_FALL);
+        assert_eq!(s.wall_slide_dir, 0);
+    }
+
+    #[test]
+    fn no_wall_slide_away_from_wall() {
+        let mut s = falling_against_wall();
+        s.position.x = WALL_X - 5;
+        assert_eq!(wall_slide_max_fall(&mut s, Input { move_x: 1, jump: false }), MAX_FALL);
+        assert_eq!(s.wall_slide_dir, 0);
     }
 
     #[test]

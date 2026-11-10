@@ -5,6 +5,7 @@ use celeste_tas_solver::Vec2;
 const NONE: Input = Input { move_x: 0, jump: false };
 const RIGHT: Input = Input { move_x: 1, jump: false };
 const JUMP: Input = Input { move_x: 0, jump: true };
+const RIGHT_JUMP: Input = Input { move_x: 1, jump: true };
 
 fn expand(lines: &[(usize, Input)]) -> Vec<Input> {
     lines
@@ -85,4 +86,10 @@ fn full_jump() {
 fn short_jump() {
     let inputs = expand(&[(1, JUMP), (40, NONE)]);
     assert_matches_trace("03_jump_short", include_str!("traces/03_jump_short.txt"), &inputs);
+}
+
+#[test]
+fn run_jump() {
+    let inputs = expand(&[(10, RIGHT), (12, RIGHT_JUMP), (25, RIGHT)]);
+    assert_matches_trace("04_run_jump", include_str!("traces/04_run_jump.txt"), &inputs);
 }

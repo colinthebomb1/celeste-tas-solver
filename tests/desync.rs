@@ -1,4 +1,5 @@
 use celeste_tas_solver::physics::{step, IVec2, Input, Mode, PlayerState};
+use celeste_tas_solver::room::Room;
 use celeste_tas_solver::trace::parse_trace;
 use celeste_tas_solver::Vec2;
 
@@ -69,6 +70,13 @@ fn start_state(text: &str) -> PlayerState {
     PlayerState::new(position, remainder, first.speed)
 }
 
+// The start of 1A's first room, by hand: floor from x = 0 to 40 with its top at y = 144,
+// and a wall at x = 80.
+fn spawn_area() -> Room {
+    let text = "00000000001\n".repeat(18) + &"11111000001\n".repeat(5);
+    Room::from_tiles(IVec2 { x: 0, y: 0 }, &text)
+}
+
 fn is_dead(row: &str) -> bool {
     column(row, 7).split(' ').any(|status| status == "Dead")
 }
@@ -82,13 +90,14 @@ fn assert_matches_trace(name: &str, text: &str, inputs: &[Input]) {
         "{name}: the input list must cover every frame after the first"
     );
 
+    let room = spawn_area();
     let mut state = start_state(text);
     for (i, &input) in inputs.iter().enumerate() {
         let frame = i + 1;
         if frame >= rows.len() || is_dead(rows[frame]) {
             break;
         }
-        state = step(state, input);
+        state = step(state, input, &room);
         let expected = Observed {
             position: column(rows[frame], 4).to_string(),
             speed: column(rows[frame], 5).to_string(),

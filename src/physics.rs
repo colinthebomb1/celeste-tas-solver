@@ -1,3 +1,4 @@
+use crate::room::Room;
 use crate::Vec2;
 
 pub const MAX_RUN: f32 = 90.0;
@@ -24,14 +25,9 @@ pub const DASH_REFILL_COOLDOWN: f32 = 0.1;
 pub const DASH_FREEZE_TIME: f32 = 0.05;
 pub const MAX_DASHES: u8 = 1;
 
-// Hardcoded geometry of 1A's first room, used only by collide_at until rooms load.
-// Standing height: the floor's top is at y = 144.
-pub const FLOOR_Y: i32 = 144;
-// Farthest right position.x with floor under her: the floor ends at x = 40 and her
-// hitbox reaches 4 px left of her position.
-pub const LEDGE_X: i32 = 43;
-// Farthest right position.x before her hitbox (4 px right) touches the wall at x = 80.
-pub const WALL_X: i32 = 76;
+// normal hitbox size in pixels
+pub const HITBOX_WIDTH: i32 = 8;
+pub const HITBOX_HEIGHT: i32 = 11;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct IVec2 {
@@ -108,17 +104,12 @@ pub struct Input {
     pub dash: bool,
 }
 
-// Would Madeline's hitbox overlap a solid with her position at (x, y)? Her hitbox is
-// 8x11 with its bottom center at her position. The only function that knows the room:
-// replace its body with a tile lookup and everything else follows.
-pub fn collide_at(x: i32, y: i32) -> bool {
-    let in_floor = y > FLOOR_Y && x <= LEDGE_X;
-    let in_wall = x > WALL_X;
-    in_floor || in_wall
+pub fn collide_at(room: &Room, x: i32, y: i32) -> bool {
+    room.collide_rect(x - HITBOX_WIDTH / 2, y - HITBOX_HEIGHT, HITBOX_WIDTH, HITBOX_HEIGHT)
 }
 
-pub fn on_ground(state: &PlayerState) -> bool {
-    state.speed.y >= 0.0 && collide_at(state.position.x, state.position.y + 1)
+pub fn on_ground(state: &PlayerState, room: &Room) -> bool {
+    state.speed.y >= 0.0 && collide_at(room, state.position.x, state.position.y + 1)
 }
 
 pub fn approach(value: f32, target: f32, max_move: f32) -> f32 {
@@ -129,7 +120,7 @@ pub fn approach(value: f32, target: f32, max_move: f32) -> f32 {
     }
 }
 
-pub fn move_h(state: &mut PlayerState, amount: f32) {
+pub fn move_h(state: &mut PlayerState, room: &Room, amount: f32) {
     let new_remainder = state.remainder.x + amount;
     // C# Math.Round
     let movement_x = new_remainder.round_ties_even() as i32;
@@ -137,7 +128,7 @@ pub fn move_h(state: &mut PlayerState, amount: f32) {
 
     let step = movement_x.signum();
     for _ in 0..movement_x.abs() {
-        if collide_at(state.position.x + step, state.position.y) {
+        if collide_at(room, state.position.x + step, state.position.y) {
             state.remainder.x = 0.0;
             state.speed.x = 0.0;
             return;
@@ -146,7 +137,7 @@ pub fn move_h(state: &mut PlayerState, amount: f32) {
     }
 }
 
-pub fn move_v(state: &mut PlayerState, amount: f32) {
+pub fn move_v(state: &mut PlayerState, room: &Room, amount: f32) {
     let new_remainder = state.remainder.y + amount;
     // C# Math.Round
     let movement_y = new_remainder.round_ties_even() as i32;
@@ -154,7 +145,7 @@ pub fn move_v(state: &mut PlayerState, amount: f32) {
 
     let step = movement_y.signum();
     for _ in 0..movement_y.abs() {
-        if collide_at(state.position.x, state.position.y + step) {
+        if collide_at(room, state.position.x, state.position.y + step) {
             state.remainder.y = 0.0;
             state.speed.y = 0.0;
             return;
@@ -163,8 +154,8 @@ pub fn move_v(state: &mut PlayerState, amount: f32) {
     }
 }
 
-pub fn wall_at(state: &PlayerState, dir: i8) -> bool {
-    collide_at(state.position.x + dir as i32, state.position.y)
+pub fn wall_at(state: &PlayerState, room: &Room, dir: i8) -> bool {
+    collide_at(room, state.position.x + dir as i32, state.position.y)
 }
 
 pub fn lerp(value1: f32, value2: f32, amount: f32) -> f32 {
@@ -172,11 +163,11 @@ pub fn lerp(value1: f32, value2: f32, amount: f32) -> f32 {
 }
 
 
-pub fn wall_slide_max_fall(state: &mut PlayerState, input: Input) -> f32 {
+pub fn wall_slide_max_fall(state: &mut PlayerState, room: &Room, input: Input) -> f32 {
     let mut max = MAX_FALL;
     
     if input.move_x == state.facing {
-        if state.speed.y >= 0.0 && state.wall_slide_timer > 0.0 && wall_at(state, state.facing) {
+        if state.speed.y >= 0.0 && state.wall_slide_timer > 0.0 && wall_at(state, room, state.facing) {
             state.wall_slide_dir = state.facing;
         }
 
@@ -269,7 +260,7 @@ pub fn dash_end(state: &mut PlayerState) {
     state.mode = Mode::Normal;
 }
 
-pub fn step(mut state: PlayerState, input: Input) -> PlayerState {
+pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
     let jump_pressed = input.jump && !state.jump_held;
     state.jump_held = input.jump;
     let dash_pressed = input.dash && !state.dash_held;
@@ -280,7 +271,7 @@ pub fn step(mut state: PlayerState, input: Input) -> PlayerState {
         return state;
     }
 
-    let ground = on_ground(&state);
+    let ground = on_ground(&state, room);
 
     if state.wall_slide_dir != 0 {
         state.wall_slide_timer = (state.wall_slide_timer - DELTA_TIME).max(0.0);
@@ -320,7 +311,7 @@ pub fn step(mut state: PlayerState, input: Input) -> PlayerState {
             if can_dash(&state, dash_pressed) {
                 dash_begin(&mut state);
             } else {
-                normal_update(&mut state, input, ground, jump_pressed);
+                normal_update(&mut state, room, input, ground, jump_pressed);
             }
         }
 
@@ -338,13 +329,13 @@ pub fn step(mut state: PlayerState, input: Input) -> PlayerState {
     }
 
     let (speed_x, speed_y) = (state.speed.x, state.speed.y);
-    move_h(&mut state, speed_x * DELTA_TIME);
-    move_v(&mut state, speed_y * DELTA_TIME);
+    move_h(&mut state, room, speed_x * DELTA_TIME);
+    move_v(&mut state, room, speed_y * DELTA_TIME);
 
     state
 }
 
-fn normal_update(state: &mut PlayerState, input: Input, ground: bool, jump_pressed: bool) {
+fn normal_update(state: &mut PlayerState, room: &Room, input: Input, ground: bool, jump_pressed: bool) {
     let mult = if ground {
         GROUND_MULT
     } else {
@@ -361,7 +352,7 @@ fn normal_update(state: &mut PlayerState, input: Input, ground: bool, jump_press
     state.speed.x = approach(state.speed.x, target, max_move_x);
 
     if !ground {
-        let max_fall = wall_slide_max_fall(state, input);
+        let max_fall = wall_slide_max_fall(state, room, input);
         let grav_mult = if state.speed.y.abs() < HALF_GRAV_THRESHOLD && (input.jump || state.auto_jump) {
             0.5
         } else {
@@ -387,8 +378,17 @@ fn normal_update(state: &mut PlayerState, input: Input, ground: bool, jump_press
 mod tests {
     use super::*;
 
+    const FLOOR_Y: i32 = 144;
+    const LEDGE_X: i32 = 43;
+    const WALL_X: i32 = 76;
+
+    fn room() -> Room {
+        let text = "00000000001\n".repeat(18) + &"11111000001\n".repeat(5);
+        Room::from_tiles(IVec2 { x: 0, y: 0 }, &text)
+    }
+
     fn at_rest() -> PlayerState {
-        PlayerState::new(IVec2 { x: 0, y: 0 }, Vec2 { x: 0.0, y: 0.0 }, Vec2 { x: 0.0, y: 0.0 })
+        PlayerState::new(IVec2 { x: 0, y: 64 }, Vec2 { x: 0.0, y: 0.0 }, Vec2 { x: 0.0, y: 0.0 })
     }
 
     fn standing() -> PlayerState {
@@ -416,7 +416,7 @@ mod tests {
     #[test]
     fn move_h_small_amount_only_changes_remainder() {
         let mut s = at_rest();
-        move_h(&mut s, 0.25);
+        move_h(&mut s, &room(), 0.25);
         assert_eq!(s.position.x, 0);
         assert_eq!(s.remainder.x, 0.25);
     }
@@ -424,11 +424,11 @@ mod tests {
     #[test]
     fn move_h_rounds_to_whole_pixels() {
         let mut s = at_rest();
-        move_h(&mut s, 0.75);
+        move_h(&mut s, &room(), 0.75);
         assert_eq!(s.position.x, 1);
         assert_eq!(s.remainder.x, -0.25);
 
-        move_h(&mut s, -2.0);
+        move_h(&mut s, &room(), -2.0);
         assert_eq!(s.position.x, -1);
         assert_eq!(s.remainder.x, -0.25);
     }
@@ -436,38 +436,50 @@ mod tests {
     #[test]
     fn move_h_ties_round_to_even_like_csharp() {
         let mut s = at_rest();
-        move_h(&mut s, 0.5);
+        move_h(&mut s, &room(), 0.5);
         assert_eq!(s.position.x, 0);
         assert_eq!(s.remainder.x, 0.5);
 
-        move_h(&mut s, 1.0);
+        move_h(&mut s, &room(), 1.0);
         assert_eq!(s.position.x, 2);
         assert_eq!(s.remainder.x, -0.5);
     }
 
     #[test]
+    fn collide_at_uses_her_hitbox() {
+        let room = room();
+        assert!(!collide_at(&room, 0, FLOOR_Y));
+        assert!(collide_at(&room, 0, FLOOR_Y + 1));
+        assert!(collide_at(&room, LEDGE_X, FLOOR_Y + 1));
+        assert!(!collide_at(&room, LEDGE_X + 1, FLOOR_Y + 1));
+        assert!(!collide_at(&room, WALL_X, 64));
+        assert!(collide_at(&room, WALL_X + 1, 64));
+        assert!(!collide_at(&room, 60, FLOOR_Y + 12));
+    }
+
+    #[test]
     fn on_ground_when_standing_on_floor() {
-        assert!(on_ground(&standing()));
+        assert!(on_ground(&standing(), &room()));
     }
 
     #[test]
     fn not_on_ground_above_floor() {
         let mut s = standing();
         s.position.y -= 1;
-        assert!(!on_ground(&s));
+        assert!(!on_ground(&s, &room()));
     }
 
     #[test]
     fn not_on_ground_while_moving_up() {
         let mut s = standing();
         s.speed.y = -10.0;
-        assert!(!on_ground(&s));
+        assert!(!on_ground(&s, &room()));
     }
 
     #[test]
     fn move_v_moves_up_freely() {
         let mut s = standing();
-        move_v(&mut s, -1.75);
+        move_v(&mut s, &room(), -1.75);
         assert_eq!(s.position.y, FLOOR_Y - 2);
         assert_eq!(s.remainder.y, 0.25);
     }
@@ -478,7 +490,7 @@ mod tests {
         s.position.y = FLOOR_Y - 2;
         s.remainder.y = 0.3;
         s.speed.y = 160.0;
-        move_v(&mut s, 2.6);
+        move_v(&mut s, &room(), 2.6);
         assert_eq!(s.position.y, FLOOR_Y);
         assert_eq!(s.remainder.y, 0.0);
         assert_eq!(s.speed.y, 0.0);
@@ -509,7 +521,7 @@ mod tests {
         s.position.x = WALL_X - 1;
         s.remainder.x = 0.3;
         s.speed.x = 90.0;
-        move_h(&mut s, 1.5);
+        move_h(&mut s, &room(), 1.5);
         assert_eq!(s.position.x, WALL_X);
         assert_eq!(s.remainder.x, 0.0);
         assert_eq!(s.speed.x, 0.0);
@@ -520,7 +532,7 @@ mod tests {
         let mut s = at_rest();
         s.position.x = WALL_X - 1;
         s.speed.x = 90.0;
-        move_h(&mut s, 1.25);
+        move_h(&mut s, &room(), 1.25);
         assert_eq!(s.position.x, WALL_X);
         assert_eq!(s.remainder.x, 0.25);
         assert_eq!(s.speed.x, 90.0);
@@ -530,10 +542,10 @@ mod tests {
     fn wall_at_detects_wall_to_the_right_only() {
         let mut s = at_rest();
         s.position.x = WALL_X;
-        assert!(wall_at(&s, 1));
-        assert!(!wall_at(&s, -1));
+        assert!(wall_at(&s, &room(), 1));
+        assert!(!wall_at(&s, &room(), -1));
         s.position.x = WALL_X - 1;
-        assert!(!wall_at(&s, 1));
+        assert!(!wall_at(&s, &room(), 1));
     }
 
     #[test]
@@ -553,7 +565,7 @@ mod tests {
     #[test]
     fn wall_slide_starts_at_full_timer() {
         let mut s = falling_against_wall();
-        let max = wall_slide_max_fall(&mut s, Input { move_x: 1, jump: false, ..Default::default() });
+        let max = wall_slide_max_fall(&mut s, &room(), Input { move_x: 1, jump: false, ..Default::default() });
         assert_eq!(max, WALL_SLIDE_START_MAX);
         assert_eq!(s.wall_slide_dir, 1);
     }
@@ -562,14 +574,14 @@ mod tests {
     fn wall_slide_max_rises_as_timer_runs_out() {
         let mut s = falling_against_wall();
         s.wall_slide_timer = WALL_SLIDE_TIME * 0.5;
-        let max = wall_slide_max_fall(&mut s, Input { move_x: 1, jump: false, ..Default::default() });
+        let max = wall_slide_max_fall(&mut s, &room(), Input { move_x: 1, jump: false, ..Default::default() });
         assert_eq!(max, lerp(MAX_FALL, WALL_SLIDE_START_MAX, 0.5));
     }
 
     #[test]
     fn no_wall_slide_without_holding_toward_wall() {
         let mut s = falling_against_wall();
-        assert_eq!(wall_slide_max_fall(&mut s, Input { move_x: 0, jump: false, ..Default::default() }), MAX_FALL);
+        assert_eq!(wall_slide_max_fall(&mut s, &room(), Input { move_x: 0, jump: false, ..Default::default() }), MAX_FALL);
         assert_eq!(s.wall_slide_dir, 0);
     }
 
@@ -577,7 +589,7 @@ mod tests {
     fn no_wall_slide_while_moving_up() {
         let mut s = falling_against_wall();
         s.speed.y = -50.0;
-        assert_eq!(wall_slide_max_fall(&mut s, Input { move_x: 1, jump: false, ..Default::default() }), MAX_FALL);
+        assert_eq!(wall_slide_max_fall(&mut s, &room(), Input { move_x: 1, jump: false, ..Default::default() }), MAX_FALL);
         assert_eq!(s.wall_slide_dir, 0);
     }
 
@@ -585,7 +597,7 @@ mod tests {
     fn no_wall_slide_away_from_wall() {
         let mut s = falling_against_wall();
         s.position.x = WALL_X - 5;
-        assert_eq!(wall_slide_max_fall(&mut s, Input { move_x: 1, jump: false, ..Default::default() }), MAX_FALL);
+        assert_eq!(wall_slide_max_fall(&mut s, &room(), Input { move_x: 1, jump: false, ..Default::default() }), MAX_FALL);
         assert_eq!(s.wall_slide_dir, 0);
     }
 
@@ -601,9 +613,9 @@ mod tests {
     fn not_on_ground_past_ledge() {
         let mut s = standing();
         s.position.x = LEDGE_X;
-        assert!(on_ground(&s));
+        assert!(on_ground(&s, &room()));
         s.position.x = LEDGE_X + 1;
-        assert!(!on_ground(&s));
+        assert!(!on_ground(&s, &room()));
     }
 
     #[test]
@@ -611,7 +623,7 @@ mod tests {
         let mut s = standing();
         s.position.x = LEDGE_X + 1;
         s.speed.y = 60.0;
-        move_v(&mut s, 1.0);
+        move_v(&mut s, &room(), 1.0);
         assert_eq!(s.position.y, FLOOR_Y + 1);
         assert_eq!(s.speed.y, 60.0);
     }
@@ -621,7 +633,7 @@ mod tests {
         let mut s = at_rest();
         s.position = IVec2 { x: LEDGE_X + 1, y: FLOOR_Y + 5 };
         s.speed.x = -90.0;
-        move_h(&mut s, -3.0);
+        move_h(&mut s, &room(), -3.0);
         assert_eq!(s.position.x, LEDGE_X + 1);
         assert_eq!(s.speed.x, 0.0);
     }
@@ -761,7 +773,7 @@ mod tests {
     fn dash_refills_on_ground_after_refill_cooldown() {
         let mut s = standing();
         s.dashes = 0;
-        s = step(s, Input::default());
+        s = step(s, Input::default(), &room());
         assert_eq!(s.dashes, MAX_DASHES);
     }
 
@@ -770,7 +782,7 @@ mod tests {
         let mut s = standing();
         s.dashes = 0;
         s.dash_refill_cooldown_timer = DASH_REFILL_COOLDOWN;
-        s = step(s, Input::default());
+        s = step(s, Input::default(), &room());
         assert_eq!(s.dashes, 0);
     }
 
@@ -778,7 +790,7 @@ mod tests {
     fn dash_does_not_refill_in_air() {
         let mut s = at_rest();
         s.dashes = 0;
-        s = step(s, Input::default());
+        s = step(s, Input::default(), &room());
         assert_eq!(s.dashes, 0);
     }
 
@@ -788,7 +800,7 @@ mod tests {
         s.speed.x = 90.0;
         s.freeze_timer = DASH_FREEZE_TIME;
         let before = s;
-        s = step(s, Input { move_x: -1, ..Default::default() });
+        s = step(s, Input { move_x: -1, ..Default::default() }, &room());
         assert_eq!(s.position, before.position);
         assert_eq!(s.speed, before.speed);
         assert!(s.freeze_timer < DASH_FREEZE_TIME);
@@ -798,7 +810,7 @@ mod tests {
     fn auto_jump_cleared_on_ground() {
         let mut s = standing();
         s.auto_jump = true;
-        s = step(s, Input::default());
+        s = step(s, Input::default(), &room());
         assert!(!s.auto_jump);
     }
 }

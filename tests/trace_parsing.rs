@@ -14,7 +14,6 @@ const JUMP: &str = include_str!("traces/02_jump_full.txt");
 
 #[test]
 fn run_trace_has_one_frame_per_row() {
-    // 1 idle frame + 10 frames holding R + 25 released = 36
     assert_eq!(parse_trace(RUN).len(), 36);
 }
 

@@ -29,6 +29,8 @@ pub const CLIMB_MAX_STAMINA: f32 = 110.0;
 pub const CLIMB_JUMP_COST: f32 = 110.0 / 4.0;
 pub const WALL_JUMP_CHECK_DIST: i32 = 3;
 pub const WALL_SPEED_RETENTION_TIME: f32 = 0.06;
+pub const WALL_JUMP_H_SPEED: f32 = MAX_RUN + JUMP_H_BOOST;
+pub const CLIMB_JUMP_BOOST_TIME: f32 = 0.2;
 // normal hitbox size in pixels for collisions
 pub const HITBOX_WIDTH: i32 = 8;
 pub const HITBOX_HEIGHT: i32 = 11;
@@ -72,6 +74,11 @@ pub struct PlayerState {
     pub wall_slide_dir: i8,
     pub stamina: f32,
     pub ducking: bool,
+    // last frame's horizontal input
+    pub move_x: i8,
+    // after a neutral climb jump, pressing this way in time turns it into a wall jump
+    pub wall_boost_dir: i8,
+    pub wall_boost_timer: f32,
     // x speed she had when she hit a wall, given back if the wall is gone before the timer ends
     pub wall_speed_retained: f32,
     pub wall_speed_retention_timer: f32,
@@ -103,6 +110,9 @@ impl PlayerState {
             wall_slide_dir: 0,
             stamina: CLIMB_MAX_STAMINA,
             ducking: false,
+            move_x: 0,
+            wall_boost_dir: 0,
+            wall_boost_timer: 0.0,
             wall_speed_retained: 0.0,
             wall_speed_retention_timer: 0.0,
             mode: Mode::Normal,
@@ -282,6 +292,7 @@ pub fn jump(state: &mut PlayerState, input: Input) {
     state.speed.y = JUMP_SPEED;
     state.var_jump_speed = state.speed.y;
     state.auto_jump = false;
+    state.wall_boost_timer = 0.0;
 }
 
 pub fn aim_vector(input: Input, facing: i8) -> Vec2 {
@@ -304,6 +315,7 @@ pub fn super_jump(state: &mut PlayerState) {
     state.var_jump_timer = VAR_JUMP_TIME;
     state.auto_jump = false;
     state.wall_slide_timer = WALL_SLIDE_TIME;
+    state.wall_boost_timer = 0.0;
     state.speed.x = SUPER_JUMP_H * state.facing as f32;
     state.speed.y = JUMP_SPEED;
 
@@ -341,6 +353,12 @@ pub fn climb_jump(state: &mut PlayerState, input: Input, ground: bool) {
     }
 
     jump(state, input);
+
+    if input.move_x == 0 {
+        state.wall_boost_dir = -state.facing;
+        state.wall_boost_timer = CLIMB_JUMP_BOOST_TIME;
+    }
+
     state.mode = Mode::Normal;
 }
 
@@ -461,6 +479,17 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
         state.wall_slide_dir = 0;
     }
 
+    // wall boost
+    if state.wall_boost_timer > 0.0 {
+        state.wall_boost_timer -= DELTA_TIME;
+
+        if state.move_x == state.wall_boost_dir {
+            state.speed.x = WALL_JUMP_H_SPEED * state.move_x as f32;
+            state.stamina += CLIMB_JUMP_COST;
+            state.wall_boost_timer = 0.0;
+        }
+    }
+
     if ground {
         state.jump_grace_timer = JUMP_GRACE_TIME;
         state.wall_slide_timer = WALL_SLIDE_TIME;
@@ -479,6 +508,8 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
     } else if ground {
         state.dashes = MAX_DASHES;
     }
+
+    state.move_x = input.move_x;
 
     if input.move_x != 0 {
         state.facing = input.move_x;
@@ -1748,6 +1779,87 @@ mod tests {
         assert_eq!(s.mode, Mode::Normal);
         assert_eq!(s.speed, Vec2 { x: SUPER_JUMP_H * DUCK_SUPER_JUMP_X_MULT, y: JUMP_SPEED * DUCK_SUPER_JUMP_Y_MULT });
         assert!(!s.ducking);
+    }
+
+    #[test]
+    fn climb_jump_without_a_direction_arms_the_wall_boost() {
+        let mut s = player_at(WALL_X, 100, 0.0, 30.0);
+        climb_jump(&mut s, JUMP_GRAB, false);
+        assert_eq!(s.wall_boost_dir, -1);
+        assert_eq!(s.wall_boost_timer, CLIMB_JUMP_BOOST_TIME);
+
+        let mut s = player_at(LEFT_WALL_X, 100, 0.0, 30.0);
+        s.facing = -1;
+        climb_jump(&mut s, JUMP_GRAB, false);
+        assert_eq!(s.wall_boost_dir, 1);
+    }
+
+    #[test]
+    fn climb_jump_with_a_direction_does_not_arm_the_wall_boost() {
+        let mut s = player_at(WALL_X, 100, 0.0, 30.0);
+        climb_jump(&mut s, Input { move_x: 1, ..JUMP_GRAB }, false);
+        assert_eq!(s.wall_boost_timer, 0.0);
+    }
+
+    #[test]
+    fn jumps_cancel_the_wall_boost() {
+        let mut s = standing();
+        s.wall_boost_timer = 0.1;
+        jump(&mut s, Input::default());
+        assert_eq!(s.wall_boost_timer, 0.0);
+
+        let mut s = dashing_right();
+        s.wall_boost_timer = 0.1;
+        super_jump(&mut s);
+        assert_eq!(s.wall_boost_timer, 0.0);
+    }
+
+    fn wall_boosting() -> PlayerState {
+        let mut s = player_at(40, 100, 0.0, -100.0);
+        s.wall_boost_dir = -1;
+        s.wall_boost_timer = 0.1;
+        s.stamina = 50.0;
+        s
+    }
+
+    const LEFT: Input = Input { move_x: -1, move_y: 0, jump: false, jump2: false, dash: false, grab: false };
+
+    #[test]
+    fn step_remembers_the_direction_held() {
+        assert_eq!(step(at_rest(), LEFT, &room()).move_x, -1);
+        assert_eq!(step(at_rest(), Input::default(), &room()).move_x, 0);
+    }
+
+    #[test]
+    fn step_wall_boost_happens_the_frame_after_the_press() {
+        let room = room();
+        let mut s = step(wall_boosting(), LEFT, &room);
+        assert_eq!(s.stamina, 50.0);
+        assert_eq!(s.speed.x, approach(0.0, -MAX_RUN, RUN_ACCEL * DELTA_TIME * AIR_MULT));
+
+        s = step(s, Input::default(), &room);
+        assert_eq!(s.stamina, 50.0 + CLIMB_JUMP_COST);
+        assert_eq!(s.wall_boost_timer, 0.0);
+        assert_eq!(s.speed.x, approach(-WALL_JUMP_H_SPEED, 0.0, RUN_ACCEL * DELTA_TIME * AIR_MULT));
+    }
+
+    #[test]
+    fn step_wall_boost_ignores_the_other_direction() {
+        let room = room();
+        let mut s = step(wall_boosting(), Input { move_x: 1, ..LEFT }, &room);
+        s = step(s, Input::default(), &room);
+        assert_eq!(s.stamina, 50.0);
+        assert!(s.wall_boost_timer > 0.0);
+    }
+
+    #[test]
+    fn step_wall_boost_runs_out() {
+        let room = room();
+        let mut s = wall_boosting();
+        s.wall_boost_timer = 0.01;
+        s = step(s, LEFT, &room);
+        s = step(s, LEFT, &room);
+        assert_eq!(s.stamina, 50.0);
     }
 
     #[test]

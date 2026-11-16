@@ -12,6 +12,18 @@ pub struct Rect {
 }
 
 impl Rect {
+    pub fn right(&self) -> i32 {
+        self.left + self.width
+    }
+
+    pub fn bottom(&self) -> i32 {
+        self.top + self.height
+    }
+
+    pub fn contains(&self, x: f32, y: f32) -> bool {
+        x >= self.left as f32 && x < self.right() as f32 && y >= self.top as f32 && y < self.bottom() as f32
+    }
+
     // touching edges don't count
     pub fn overlaps(&self, other: &Rect) -> bool {
         self.left < other.left + other.width && other.left < self.left + self.width && self.top < other.top + other.height && other.top < self.top + self.height
@@ -67,6 +79,9 @@ impl Spikes {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Room {
+    pub name: String,
+    // the room's area in world pixels. a 184 px tall room counts as 180, as in the game
+    pub bounds: Rect,
     // world position of the room's top-left corner, in pixels
     pub origin: IVec2,
     // size in tiles
@@ -95,25 +110,29 @@ impl Room {
             }
         }
 
-        Room {
+        let mut room = Room {
+            name: String::new(),
+            bounds: Rect { left: origin.x, top: origin.y, width: 0, height: 0 },
             origin,
             width,
             height,
             solid,
             spikes: Vec::new(),
-        }
+        };
+        room.set_size(width as i32 * TILE_SIZE, height as i32 * TILE_SIZE);
+        room
+    }
+
+    // size in pixels 
+    pub fn set_size(&mut self, width: i32, height: i32) {
+        self.bounds.width = width;
+        // the game treats a 184 px tall room as 180
+        self.bounds.height = if height == 184 { SCREEN_HEIGHT } else { height };
     }
 
     // world y of the room's bottom edge
     pub fn bottom(&self) -> i32 {
-        let height = self.height as i32 * TILE_SIZE;
-
-        // the game treats a 184 px tall room as 180
-        if height == 184 {
-            return self.origin.y + SCREEN_HEIGHT;
-        }
-
-        self.origin.y + height
+        self.bounds.bottom()
     }
 
     pub fn is_solid(&self, tile_x: i32, tile_y: i32) -> bool {
@@ -146,9 +165,63 @@ impl Room {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Chapter {
+    pub rooms: Vec<Room>,
+}
+
+impl Chapter {
+    pub fn room_at(&self, x: f32, y: f32) -> Option<usize> {
+        self.rooms.iter().position(|room| room.bounds.contains(x, y))
+    }
+
+    pub fn room_named(&self, name: &str) -> Option<usize> {
+        self.rooms.iter().position(|room| room.name == name)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn from_tiles_bounds_cover_the_grid() {
+        let room = Room::from_tiles(IVec2 { x: 100, y: -200 }, "000\n000");
+        assert_eq!(room.bounds, rect(100, -200, 24, 16));
+    }
+
+    #[test]
+    fn set_size_applies_the_180_rule() {
+        let mut room = at_origin("0");
+        room.set_size(320, 184);
+        assert_eq!(room.bounds, rect(0, 0, 320, 180));
+        room.set_size(392, 192);
+        assert_eq!(room.bounds, rect(0, 0, 392, 192));
+    }
+
+    #[test]
+    fn rect_contains_excludes_the_right_and_bottom_edges() {
+        let r = rect(10, 20, 30, 40);
+        assert!(r.contains(10.0, 20.0));
+        assert!(r.contains(39.5, 59.5));
+        assert!(!r.contains(40.0, 30.0));
+        assert!(!r.contains(20.0, 60.0));
+        assert!(!r.contains(9.5, 30.0));
+    }
+
+    #[test]
+    fn chapter_finds_rooms_by_point_and_name() {
+        let mut a = Room::from_tiles(IVec2 { x: 0, y: 0 }, "00\n00");
+        a.name = "a".to_string();
+        let mut b = Room::from_tiles(IVec2 { x: 16, y: 0 }, "00\n00");
+        b.name = "b".to_string();
+        let chapter = Chapter { rooms: vec![a, b] };
+        assert_eq!(chapter.room_at(15.5, 8.0), Some(0));
+        assert_eq!(chapter.room_at(16.0, 8.0), Some(1));
+        assert_eq!(chapter.room_at(40.0, 8.0), None);
+        assert_eq!(chapter.room_named("b"), Some(1));
+        assert_eq!(chapter.room_named("c"), None);
+    }
 
     fn at_origin(text: &str) -> Room {
         Room::from_tiles(IVec2 { x: 0, y: 0 }, text)

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::physics::IVec2;
-use crate::room::{Direction, Room, Spikes};
+use crate::room::{Chapter, Direction, Room, Spikes};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MapError {
@@ -230,6 +230,17 @@ pub fn load_room(map: &Element, name: &str) -> Result<Room, MapError> {
         .find(|level| level.text("name") == Some(name))
         .ok_or(MapError::RoomNotFound(name.to_string()))?;
 
+    room_from_level(level)
+}
+
+pub fn load_chapter(map: &Element) -> Result<Chapter, MapError> {
+    let levels = map.child("levels").ok_or(MapError::MissingField("levels"))?;
+    let rooms = levels.children.iter().map(room_from_level).collect::<Result<_, _>>()?;
+
+    Ok(Chapter { rooms })
+}
+
+fn room_from_level(level: &Element) -> Result<Room, MapError> {
     let x = level.int("x").ok_or(MapError::MissingField("x"))?;
     let y = level.int("y").ok_or(MapError::MissingField("y"))?;
     let origin = IVec2 { x, y };
@@ -238,6 +249,10 @@ pub fn load_room(map: &Element, name: &str) -> Result<Room, MapError> {
     let tiles = solids.text("innerText").ok_or(MapError::MissingField("innerText"))?;
 
     let mut room = Room::from_tiles(origin, tiles);
+    room.name = level.text("name").unwrap_or_default().to_string();
+    if let (Some(width), Some(height)) = (level.int("width"), level.int("height")) {
+        room.set_size(width, height);
+    }
     room.spikes = load_spikes(level, origin)?;
     
     Ok(room)
@@ -557,6 +572,21 @@ mod tests {
         let b = load_room(&map, "room_b").unwrap();
         assert_eq!(b.origin, IVec2 { x: 320, y: -184 });
         assert!(b.is_solid(0, 0));
+    }
+
+    #[test]
+    fn load_room_names_the_room() {
+        let map = parse_map(&tiny_map()).unwrap();
+        assert_eq!(load_room(&map, "room_b").unwrap().name, "room_b");
+    }
+
+    #[test]
+    fn load_chapter_loads_every_room_in_order() {
+        let map = parse_map(&tiny_map()).unwrap();
+        let chapter = load_chapter(&map).unwrap();
+        let names: Vec<&str> = chapter.rooms.iter().map(|room| room.name.as_str()).collect();
+        assert_eq!(names, ["room_a", "room_b"]);
+        assert_eq!(chapter.rooms[1], load_room(&map, "room_b").unwrap());
     }
 
     #[test]

@@ -163,8 +163,12 @@ pub fn collide_at(room: &Room, x: i32, y: i32) -> bool {
     room.collide_rect(x - HITBOX_WIDTH / 2, y - HITBOX_HEIGHT, HITBOX_WIDTH, HITBOX_HEIGHT)
 }
 
+pub fn hitbox_height(state: &PlayerState) -> i32 {
+    if state.ducking { DUCK_HITBOX_HEIGHT } else { HITBOX_HEIGHT }
+}
+
 pub fn collides(state: &PlayerState, room: &Room, dx: i32, dy: i32) -> bool {
-    let height = if state.ducking { DUCK_HITBOX_HEIGHT } else { HITBOX_HEIGHT };
+    let height = hitbox_height(state);
 
     room.collide_rect(
         state.position.x + dx - HITBOX_WIDTH / 2,

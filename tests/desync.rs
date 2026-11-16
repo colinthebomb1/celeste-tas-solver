@@ -5,7 +5,7 @@ use celeste_tas_solver::Vec2;
 
 mod common;
 
-const NONE: Input = Input { move_x: 0, move_y: 0, jump: false, jump2: false, dash: false, grab: false };
+const NONE: Input = Input { move_x: 0, move_y: 0, jump: false, jump2: false, dash: false, grab: false, crouch_dash: false };
 const RIGHT: Input = Input { move_x: 1, ..NONE };
 const JUMP: Input = Input { jump: true, ..NONE };
 const RIGHT_JUMP: Input = Input { move_x: 1, jump: true, ..NONE };
@@ -190,6 +190,7 @@ fn input_from_row(row: &str) -> Input {
             "J" => input.jump = true,
             "K" => input.jump2 = true,
             "X" | "C" => input.dash = true,
+            "Z" => input.crouch_dash = true,
             "G" => input.grab = true,
             _ => {}
         }
@@ -210,7 +211,7 @@ fn community_lvl_1() {
 }
 
 // frames of the whole chapter that match the game so far. raise it as the simulator improves
-const CHAPTER_1A_MATCHED: usize = 338;
+const CHAPTER_1A_MATCHED: usize = 464;
 
 // one simulation of the community TAS through every room of 1A.
 // run with: cargo test --test desync chapter -- --nocapture

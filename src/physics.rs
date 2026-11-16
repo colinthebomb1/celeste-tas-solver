@@ -31,7 +31,7 @@ pub const WALL_JUMP_CHECK_DIST: i32 = 3;
 pub const WALL_SPEED_RETENTION_TIME: f32 = 0.06;
 pub const WALL_JUMP_H_SPEED: f32 = MAX_RUN + JUMP_H_BOOST;
 pub const CLIMB_JUMP_BOOST_TIME: f32 = 0.2;
-pub const UPWARD_CORNER_CORRECTION: i32 = 4;
+pub const UPWARD_CORNER_CORRECTION: i32 = 5;
 pub const DASH_CORNER_CORRECTION: i32 = 4;
 pub const DASH_ATTACK_TIME: f32 = 0.3;
 pub const SUPER_WALL_JUMP_H: f32 = MAX_RUN + JUMP_H_BOOST * 2.0;
@@ -2226,15 +2226,15 @@ mod tests {
     }
 
     #[test]
-    fn corner_correction_reaches_four_pixels() {
+    fn corner_correction_reaches_five_pixels() {
         let room = ceiling_room();
-        let mut s = rising_at(48, 0.0);
+        let mut s = rising_at(47, 0.0);
         move_v(&mut s, &room, -1.0);
         assert_eq!(s.position, IVec2 { x: 52, y: UNDER_CEILING_Y - 1 });
 
-        let mut s = rising_at(47, 0.0);
+        let mut s = rising_at(46, 0.0);
         move_v(&mut s, &room, -1.0);
-        assert_eq!(s.position, IVec2 { x: 47, y: UNDER_CEILING_Y });
+        assert_eq!(s.position, IVec2 { x: 46, y: UNDER_CEILING_Y });
         assert_eq!(s.speed.y, 0.0);
     }
 

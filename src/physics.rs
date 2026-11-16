@@ -33,6 +33,11 @@ pub const WALL_JUMP_H_SPEED: f32 = MAX_RUN + JUMP_H_BOOST;
 pub const CLIMB_JUMP_BOOST_TIME: f32 = 0.2;
 pub const UPWARD_CORNER_CORRECTION: i32 = 4;
 pub const DASH_CORNER_CORRECTION: i32 = 4;
+pub const DASH_ATTACK_TIME: f32 = 0.3;
+pub const SUPER_WALL_JUMP_H: f32 = MAX_RUN + JUMP_H_BOOST * 2.0;
+pub const SUPER_WALL_JUMP_SPEED: f32 = -160.0;
+pub const SUPER_WALL_JUMP_VAR_TIME: f32 = 0.25;
+pub const SUPER_WALL_JUMP_CHECK_DIST: i32 = 5;
 pub const CEILING_VAR_JUMP_GRACE: f32 = 0.05;
 // normal hitbox size in pixels for collisions
 pub const HITBOX_WIDTH: i32 = 8;
@@ -82,6 +87,7 @@ pub struct PlayerState {
     // after a neutral climb jump, pressing this way in time turns it into a wall jump
     pub wall_boost_dir: i8,
     pub wall_boost_timer: f32,
+    pub dash_attack_timer: f32,
     // x speed she had when she hit a wall, given back if the wall is gone before the timer ends
     pub wall_speed_retained: f32,
     pub wall_speed_retention_timer: f32,
@@ -117,6 +123,7 @@ impl PlayerState {
             move_x: 0,
             wall_boost_dir: 0,
             wall_boost_timer: 0.0,
+            dash_attack_timer: 0.0,
             wall_speed_retained: 0.0,
             wall_speed_retention_timer: 0.0,
             mode: Mode::Normal,
@@ -298,6 +305,7 @@ pub fn move_h(state: &mut PlayerState, room: &Room, amount: f32, ground: bool) {
 
             state.remainder.x = 0.0;
             state.speed.x = 0.0;
+            state.dash_attack_timer = 0.0;
             return;
         }
         state.position.x += step;
@@ -337,6 +345,7 @@ pub fn move_v(state: &mut PlayerState, room: &Room, amount: f32) {
             }
 
             state.speed.y = 0.0;
+            state.dash_attack_timer = 0.0;
             return;
         }
         state.position.y += step;
@@ -434,6 +443,7 @@ pub fn jump(state: &mut PlayerState, input: Input) {
     state.var_jump_speed = state.speed.y;
     state.auto_jump = false;
     state.wall_boost_timer = 0.0;
+    state.dash_attack_timer = 0.0;
 }
 
 pub fn aim_vector(input: Input, facing: i8) -> Vec2 {
@@ -457,6 +467,7 @@ pub fn super_jump(state: &mut PlayerState) {
     state.auto_jump = false;
     state.wall_slide_timer = WALL_SLIDE_TIME;
     state.wall_boost_timer = 0.0;
+    state.dash_attack_timer = 0.0;
     state.speed.x = SUPER_JUMP_H * state.facing as f32;
     state.speed.y = JUMP_SPEED;
 
@@ -471,9 +482,76 @@ pub fn super_jump(state: &mut PlayerState) {
     state.mode = Mode::Normal;
 }
 
-// up to 3 pixels from wall
+pub fn wall_bounce_ready(state: &PlayerState) -> bool {
+    state.dash_attack_timer > 0.0 && state.dash_dir.x == 0.0 && state.dash_dir.y == -1.0
+}
+
 pub fn wall_jump_check(state: &PlayerState, room: &Room, dir: i8) -> bool {
-    collides(state, room, dir as i32 * 3, 0)
+    let dir = dir as i32;
+    let mut dist = WALL_JUMP_CHECK_DIST;
+
+    if wall_bounce_ready(state) {
+        let facing_her = if dir > 0 { Direction::Left } else { Direction::Right };
+        let reach = Rect {
+            left: state.position.x + dir * SUPER_WALL_JUMP_CHECK_DIST - HITBOX_WIDTH / 2,
+            top: state.position.y - hitbox_height(state),
+            width: HITBOX_WIDTH,
+            height: hitbox_height(state),
+        };
+        let spiked = room.spikes.iter().any(|s| s.direction == facing_her && s.hitbox.overlaps(&reach));
+
+        if !spiked {
+            dist = SUPER_WALL_JUMP_CHECK_DIST;
+        }
+    }
+
+    collides(state, room, dir * dist, 0)
+}
+
+pub fn super_wall_jump(state: &mut PlayerState, dir: i8) {
+    state.ducking = false;
+    state.jump_grace_timer = 0.0;
+    state.var_jump_timer = SUPER_WALL_JUMP_VAR_TIME;
+    state.auto_jump = false;
+    state.dash_attack_timer = 0.0;
+    state.wall_slide_timer = WALL_SLIDE_TIME;
+    state.wall_boost_timer = 0.0;
+
+    state.speed.x = SUPER_WALL_JUMP_H * dir as f32;
+    state.speed.y = SUPER_WALL_JUMP_SPEED;
+    state.var_jump_speed = state.speed.y;
+    state.mode = Mode::Normal;
+}
+
+// a jump press with no coyote time, next to a wall (the right one is checked first).
+// true if she jumped. plain wall jumps aren't in yet
+pub fn jump_off_wall(state: &mut PlayerState, room: &Room, input: Input, ground: bool) -> bool {
+    if !can_unduck(state, room) {
+        return false;
+    }
+
+    let wall = if wall_jump_check(state, room, 1) {
+        1
+    } else if wall_jump_check(state, room, -1) {
+        -1
+    } else {
+        return false;
+    };
+
+    // during a dash straight up, a jump is always a wall bounce
+    let dashing_up = dashing(state) && state.dash_dir.x == 0.0 && state.dash_dir.y == -1.0;
+
+    if dashing_up {
+        super_wall_jump(state, -wall);
+    } else if can_climb_jump(state, room, input) {
+        climb_jump(state, input, ground);
+    } else if wall_bounce_ready(state) {
+        super_wall_jump(state, -wall);
+    } else {
+        return false;
+    }
+
+    true
 }
 
 pub fn can_climb_jump(state: &PlayerState, room: &Room, input: Input) -> bool {
@@ -531,6 +609,7 @@ pub fn dash_begin(state: &mut PlayerState, room: &Room, input: Input, ground: bo
     state.dash_refill_cooldown_timer = DASH_REFILL_COOLDOWN;
     state.wall_slide_timer = WALL_SLIDE_TIME;
     state.before_dash_speed = state.speed;
+    state.dash_attack_timer = DASH_ATTACK_TIME;
     state.dash_started_on_ground = ground;
     state.speed = Vec2 { x: 0.0, y: 0.0 };
     state.dash_dir = Vec2 { x: 0.0, y: 0.0 };
@@ -641,6 +720,10 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
         state.jump_grace_timer -= DELTA_TIME;
     }
 
+    if state.dash_attack_timer > 0.0 {
+        state.dash_attack_timer -= DELTA_TIME;
+    }
+
     if state.dash_cooldown_timer > 0.0 {
         state.dash_cooldown_timer -= DELTA_TIME;
     }
@@ -677,8 +760,8 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
         Mode::DashStart => {
             if can_super_jump(&state, room, jump_pressed) {
                 super_jump(&mut state);
-            } else if jump_pressed && can_climb_jump(&state, room, input) {
-                climb_jump(&mut state, input, ground);
+            } else if jump_pressed && jump_off_wall(&mut state, room, input, ground) {
+                // jumped out of the dash
             } else {
                 dash_launch(&mut state, aim, ground);
             }
@@ -687,8 +770,8 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
         Mode::Dashing { timer } => {
             if can_super_jump(&state, room, jump_pressed) {
                 super_jump(&mut state);
-            } else if jump_pressed && can_climb_jump(&state, room, input) {
-                climb_jump(&mut state, input, ground);
+            } else if jump_pressed && jump_off_wall(&mut state, room, input, ground) {
+                // jumped out of the dash
             } else if timer > 0.0 {
                 state.mode = Mode::Dashing { timer: timer - DELTA_TIME };
             } else {
@@ -759,10 +842,12 @@ fn normal_update(state: &mut PlayerState, room: &Room, input: Input, ground: boo
         }
     }
 
-    if jump_pressed && state.jump_grace_timer > 0.0 {
-        jump(state, input);
-    } else if can_climb_jump(state, room, input) {
-        climb_jump(state, input, ground);
+    if jump_pressed {
+        if state.jump_grace_timer > 0.0 {
+            jump(state, input);
+        } else {
+            jump_off_wall(state, room, input, ground);
+        }
     }
 }
 
@@ -2257,6 +2342,112 @@ mod tests {
         move_v(&mut s, &room(), 4.0);
         assert_eq!(s.speed, Vec2 { x: 100.0, y: 0.0 });
         assert!(!s.ducking);
+    }
+
+    const JUMP: Input = Input { move_x: 0, move_y: 0, jump: true, jump2: false, dash: false, grab: false };
+
+    // just after a dash straight up
+    fn bouncing_at(x: i32) -> PlayerState {
+        let mut s = player_at(x, 100, 0.0, -120.0);
+        s.dash_dir = Vec2 { x: 0.0, y: -1.0 };
+        s.dash_attack_timer = 0.1;
+        s
+    }
+
+    #[test]
+    fn super_wall_jump_is_faster_and_higher_than_a_jump() {
+        let mut s = bouncing_at(LEFT_WALL_X);
+        s.ducking = true;
+        s.auto_jump = true;
+        super_wall_jump(&mut s, 1);
+        assert_eq!(s.speed, Vec2 { x: SUPER_WALL_JUMP_H, y: SUPER_WALL_JUMP_SPEED });
+        assert_eq!(s.var_jump_speed, SUPER_WALL_JUMP_SPEED);
+        assert_eq!(s.var_jump_timer, SUPER_WALL_JUMP_VAR_TIME);
+        assert_eq!(s.dash_attack_timer, 0.0);
+        assert_eq!(s.mode, Mode::Normal);
+        assert!(!s.ducking);
+        assert!(!s.auto_jump);
+    }
+
+    #[test]
+    fn wall_jump_check_reaches_further_for_a_wall_bounce() {
+        let room = room();
+        assert!(wall_jump_check(&bouncing_at(WALL_X - 4), &room, 1));
+        assert!(!wall_jump_check(&bouncing_at(WALL_X - 5), &room, 1));
+        assert!(!wall_jump_check(&player_at(WALL_X - 4, 100, 0.0, 0.0), &room, 1));
+    }
+
+    #[test]
+    fn wall_jump_check_is_short_again_when_the_wall_has_spikes() {
+        let mut room = room();
+        room.spikes.push(Spikes::new(Direction::Left, WALL_X + 4, 88, 16));
+        assert!(!wall_jump_check(&bouncing_at(WALL_X - 4), &room, 1));
+        assert!(wall_jump_check(&bouncing_at(WALL_X - 2), &room, 1));
+    }
+
+    #[test]
+    fn dash_attack_runs_from_the_start_of_a_dash() {
+        let mut s = standing();
+        dash_begin(&mut s, &room(), Input::default(), true);
+        assert_eq!(s.dash_attack_timer, DASH_ATTACK_TIME);
+
+        let s = dash_for(standing(), 6, DASH_RIGHT);
+        assert!(s.dash_attack_timer > 0.0 && s.dash_attack_timer < DASH_ATTACK_TIME);
+    }
+
+    #[test]
+    fn jumps_and_collisions_end_the_dash_attack() {
+        let mut s = standing();
+        s.dash_attack_timer = 0.1;
+        jump(&mut s, Input::default());
+        assert_eq!(s.dash_attack_timer, 0.0);
+
+        let mut s = player_at(WALL_X, 100, 90.0, 0.0);
+        s.dash_attack_timer = 0.1;
+        move_h(&mut s, &room(), 3.0, false);
+        assert_eq!(s.dash_attack_timer, 0.0);
+
+        let mut s = player_at(0, FLOOR_Y, 0.0, 100.0);
+        s.dash_attack_timer = 0.1;
+        move_v(&mut s, &room(), 3.0);
+        assert_eq!(s.dash_attack_timer, 0.0);
+    }
+
+    #[test]
+    fn step_wall_bounce_after_an_upward_dash() {
+        let s = step(bouncing_at(WALL_X - 4), JUMP, &room());
+        assert_eq!(s.speed, Vec2 { x: -SUPER_WALL_JUMP_H, y: SUPER_WALL_JUMP_SPEED });
+
+        let s = step(bouncing_at(LEFT_WALL_X + 4), JUMP, &left_wall_room());
+        assert_eq!(s.speed, Vec2 { x: SUPER_WALL_JUMP_H, y: SUPER_WALL_JUMP_SPEED });
+    }
+
+    #[test]
+    fn step_wall_bounce_during_an_upward_dash_ignores_grab() {
+        let mut s = bouncing_at(WALL_X);
+        s.speed.y = -DASH_SPEED;
+        s.mode = Mode::Dashing { timer: 0.1 };
+        s = step(s, JUMP_GRAB, &room());
+        assert_eq!(s.mode, Mode::Normal);
+        assert_eq!(s.speed, Vec2 { x: -SUPER_WALL_JUMP_H, y: SUPER_WALL_JUMP_SPEED });
+        assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
+    }
+
+    #[test]
+    fn step_no_wall_bounce_once_the_dash_attack_is_over() {
+        let mut s = bouncing_at(WALL_X - 4);
+        s.dash_attack_timer = 0.0;
+        s = step(s, JUMP, &room());
+        assert_eq!(s.speed.x, 0.0);
+    }
+
+    #[test]
+    fn step_holding_grab_without_pressing_jump_does_not_climb_jump() {
+        let mut s = player_at(WALL_X, 100, 0.0, 30.0);
+        s.jump_held = true;
+        s = step(s, JUMP_GRAB, &room());
+        assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
+        assert!(s.speed.y > 0.0);
     }
 
     #[test]

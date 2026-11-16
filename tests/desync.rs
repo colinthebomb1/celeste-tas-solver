@@ -1,5 +1,6 @@
 use celeste_tas_solver::physics::{step, IVec2, Input, Mode, PlayerState};
 use celeste_tas_solver::trace::parse_trace;
+use celeste_tas_solver::transition::{before_transition, find_transition, finish_transition, TRANSITION_FRAMES};
 use celeste_tas_solver::Vec2;
 
 mod common;
@@ -64,6 +65,15 @@ fn start_state(text: &str) -> PlayerState {
     PlayerState::new(position, remainder, first.speed)
 }
 
+fn game_row(row: &str) -> Observed {
+    Observed {
+        position: column(row, 4).to_string(),
+        speed: column(row, 5).to_string(),
+        mode: column(row, 6).to_string(),
+        dead: is_dead(row),
+    }
+}
+
 fn is_dead(row: &str) -> bool {
     column(row, 7).split(' ').any(|status| status == "Dead")
 }
@@ -92,15 +102,9 @@ fn assert_matches_trace_in(room_name: &str, name: &str, text: &str, inputs: &[In
             break;
         }
         state = step(state, input, &room);
-        let expected = Observed {
-            position: column(rows[frame], 4).to_string(),
-            speed: column(rows[frame], 5).to_string(),
-            mode: column(rows[frame], 6).to_string(),
-            dead: is_dead(rows[frame]),
-        };
         assert_eq!(
             observe(&state),
-            expected,
+            game_row(rows[frame]),
             "\n{name}: desync on frame {frame} (input {input:?})\n  \
              (left = simulator, right = the game)\n  state: {state:?}\n"
         );
@@ -203,4 +207,77 @@ fn community_lvl_1() {
         .collect();
     let inputs: Vec<Input> = text.lines().skip(2).map(input_from_row).collect();
     assert_matches_trace_in("lvl_1", "community lvl_1", &text, &inputs);
+}
+
+// frames of the whole chapter that match the game so far. raise it as the simulator improves
+const CHAPTER_1A_MATCHED: usize = 132;
+
+// one simulation of the community TAS through every room of 1A.
+// run with: cargo test --test desync chapter -- --nocapture
+#[test]
+fn chapter_1a_progress() {
+    let text = include_str!("traces/community/1A_full.txt");
+    let Some(chapter) = common::chapter_1a() else {
+        eprintln!("chapter 1A: skipped. Celeste install could not be found, try setting CELESTE_DIR");
+        return;
+    };
+
+    // the last rows are the level exit and have no position
+    let rows: Vec<&str> = text.lines().skip(1).take_while(|row| row.split('\t').nth(6).is_some()).collect();
+    let total = rows.len() - 1;
+    let first_two_lines: String = text.lines().take(2).map(|line| format!("{line}\n")).collect();
+
+    let mut state = start_state(&first_two_lines);
+    let mut room = chapter.room_named("lvl_1").expect("no lvl_1");
+    let mut matched = 0;
+    let mut frame = 1;
+
+    let desync = |frame: usize, room: usize, state: &PlayerState| {
+        eprintln!(
+            "chapter 1A: desync on frame {frame} in {} (inputs {})\n  simulator: {:?}\n  game:      {:?}",
+            chapter.rooms[room].name,
+            column(rows[frame], 1).trim(),
+            observe(state),
+            game_row(rows[frame]),
+        );
+    };
+
+    while frame < rows.len() {
+        state = step(state, input_from_row(rows[frame]), &chapter.rooms[room]);
+
+        let transition = if state.dead { None } else { find_transition(&state, &chapter, room) };
+        if let Some(transition) = transition {
+            before_transition(&mut state, transition.direction);
+        }
+
+        if observe(&state) != game_row(rows[frame]) {
+            desync(frame, room, &state);
+            break;
+        }
+        matched = frame;
+        frame += 1;
+
+        // nothing is simulated during a transition. the next row compared is the one where it ends
+        if let Some(transition) = transition {
+            finish_transition(&mut state, &chapter, transition);
+            room = transition.to;
+            frame += TRANSITION_FRAMES - 1;
+
+            if frame >= rows.len() {
+                break;
+            }
+            if observe(&state) != game_row(rows[frame]) {
+                desync(frame, room, &state);
+                break;
+            }
+            matched = frame;
+            frame += 1;
+        }
+    }
+
+    eprintln!("chapter 1A: matched {matched} of {total} frames");
+    assert!(
+        matched >= CHAPTER_1A_MATCHED,
+        "chapter 1A: matched {matched} frames, used to match {CHAPTER_1A_MATCHED}"
+    );
 }

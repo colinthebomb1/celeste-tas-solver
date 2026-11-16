@@ -55,6 +55,7 @@ pub struct PlayerState {
     pub var_jump_timer: f32,
     pub var_jump_speed: f32,
     pub jump_held: bool,
+    pub jump2_held: bool,
     // -1 = left, 1 = right
     pub facing: i8,
     pub wall_slide_timer: f32,
@@ -81,6 +82,7 @@ impl PlayerState {
             var_jump_timer: 0.0,
             var_jump_speed: 0.0,
             jump_held: false,
+            jump2_held: false,
             facing: 1,
             wall_slide_timer: WALL_SLIDE_TIME,
             wall_slide_dir: 0,
@@ -106,7 +108,20 @@ pub struct Input {
     // -1 = up, 0 = neither, 1 = down
     pub move_y: i8,
     pub jump: bool,
+    // second jump button
+    pub jump2: bool,
     pub dash: bool,
+}
+
+impl Input {
+
+    pub fn jump_down(self) -> bool {
+        self.jump || self.jump2
+    }
+}
+
+pub fn jump_pressed(state: &PlayerState, input: Input) -> bool {
+    (!state.jump_held && input.jump) || (!state.jump2_held && input.jump2)
 }
 
 pub fn collide_at(room: &Room, x: i32, y: i32) -> bool {
@@ -314,8 +329,10 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
         return state;
     }
 
-    let jump_pressed = input.jump && !state.jump_held;
+    let jump_pressed = jump_pressed(&state, input);
     state.jump_held = input.jump;
+    state.jump2_held = input.jump2;
+
     let dash_pressed = input.dash && !state.dash_held;
     state.dash_held = input.dash;
 
@@ -361,17 +378,19 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
 
     match state.mode {
         Mode::Normal => {
-            if can_super_jump(&state, jump_pressed) {
-                super_jump(&mut state);
-            } else if can_dash(&state, dash_pressed) {
+            if can_dash(&state, dash_pressed) {
                 dash_begin(&mut state);
             } else {
                 normal_update(&mut state, room, input, ground, jump_pressed);
             }
         }
 
-        Mode::DashStart => { 
-            dash_launch(&mut state, aim);
+        Mode::DashStart => {
+            if can_super_jump(&state, jump_pressed) {
+                super_jump(&mut state);
+            } else {
+                dash_launch(&mut state, aim);
+            }
         }
         
         Mode::Dashing { timer } => {
@@ -415,7 +434,7 @@ fn normal_update(state: &mut PlayerState, room: &Room, input: Input, ground: boo
 
     if !ground {
         let max_fall = wall_slide_max_fall(state, room, input);
-        let grav_mult = if state.speed.y.abs() < HALF_GRAV_THRESHOLD && (input.jump || state.auto_jump) {
+        let grav_mult = if state.speed.y.abs() < HALF_GRAV_THRESHOLD && (input.jump_down() || state.auto_jump) {
             0.5
         } else {
             1.0
@@ -424,7 +443,7 @@ fn normal_update(state: &mut PlayerState, room: &Room, input: Input, ground: boo
     }
 
     if state.var_jump_timer > 0.0 {
-        if input.jump || state.auto_jump {
+        if input.jump_down() || state.auto_jump {
             state.speed.y = state.speed.y.min(state.var_jump_speed);
         } else {
             state.var_jump_timer = 0.0;
@@ -1070,8 +1089,8 @@ mod tests {
         s
     }
 
-    const DASH_RIGHT: Input = Input { move_x: 1, move_y: 0, jump: false, dash: true };
-    const JUMP_RIGHT: Input = Input { move_x: 1, move_y: 0, jump: true, dash: false };
+    const DASH_RIGHT: Input = Input { move_x: 1, move_y: 0, jump: false, jump2: false, dash: true };
+    const JUMP_RIGHT: Input = Input { move_x: 1, move_y: 0, jump: true, jump2: false, dash: false };
 
     #[test]
     fn step_super_jumps_out_of_a_dash() {
@@ -1103,10 +1122,78 @@ mod tests {
 
     #[test]
     fn step_no_super_jump_out_of_an_up_dash() {
-        let up_dash = Input { move_x: 0, move_y: -1, jump: false, dash: true };
+        let up_dash = Input { move_x: 0, move_y: -1, jump: false, jump2: false, dash: true };
         let s = step(dash_for(standing(), 5, up_dash), JUMP_RIGHT, &room());
         assert!(matches!(s.mode, Mode::Dashing { .. }));
         assert_eq!(s.speed, Vec2 { x: 0.0, y: -DASH_SPEED });
+    }
+
+    const JUMP_1: Input = Input { move_x: 0, move_y: 0, jump: true, jump2: false, dash: false };
+    const JUMP_2: Input = Input { move_x: 0, move_y: 0, jump: false, jump2: true, dash: false };
+    const JUMP_BOTH: Input = Input { move_x: 0, move_y: 0, jump: true, jump2: true, dash: false };
+
+    #[test]
+    fn jump_down_with_either_button() {
+        assert!(JUMP_1.jump_down());
+        assert!(JUMP_2.jump_down());
+        assert!(JUMP_BOTH.jump_down());
+        assert!(!Input::default().jump_down());
+    }
+
+    #[test]
+    fn jump_pressed_when_a_button_goes_down() {
+        assert!(jump_pressed(&standing(), JUMP_1));
+        assert!(jump_pressed(&standing(), JUMP_2));
+        assert!(!jump_pressed(&standing(), Input::default()));
+    }
+
+    #[test]
+    fn jump_pressed_not_while_the_same_button_stays_down() {
+        let mut s = standing();
+        s.jump_held = true;
+        assert!(!jump_pressed(&s, JUMP_1));
+        s.jump_held = false;
+        s.jump2_held = true;
+        assert!(!jump_pressed(&s, JUMP_2));
+    }
+
+    #[test]
+    fn jump_pressed_by_one_button_while_the_other_is_held() {
+        let mut s = standing();
+        s.jump_held = true;
+        assert!(jump_pressed(&s, JUMP_BOTH));
+        assert!(jump_pressed(&s, JUMP_2));
+    }
+
+    #[test]
+    fn step_tracks_each_button() {
+        let s = step(standing(), JUMP_2, &room());
+        assert!(s.jump2_held);
+        assert!(!s.jump_held);
+        let s = step(s, JUMP_1, &room());
+        assert!(s.jump_held);
+        assert!(!s.jump2_held);
+    }
+
+    #[test]
+    fn step_second_button_jumps_while_the_first_is_held() {
+        let room = room();
+        let mut s = standing();
+        s.jump_held = true;
+        s = step(s, JUMP_1, &room);
+        assert_eq!(s.speed.y, 0.0);
+        s = step(s, JUMP_2, &room);
+        assert_eq!(s.speed.y, JUMP_SPEED);
+    }
+
+    #[test]
+    fn step_second_button_holds_a_variable_jump() {
+        let room = room();
+        let mut s = step(standing(), JUMP_1, &room);
+        for _ in 0..5 {
+            s = step(s, JUMP_2, &room);
+        }
+        assert_eq!(s.speed.y, JUMP_SPEED);
     }
 
     #[test]

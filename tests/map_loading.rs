@@ -1,11 +1,12 @@
 use celeste_tas_solver::map::load_room;
 use celeste_tas_solver::physics::IVec2;
+use celeste_tas_solver::room::{Direction, Spikes};
 
 mod common;
 
 #[test]
 fn first_room_matches_the_game() {
-    let Some(room) = common::first_room() else {
+    let Some(room) = common::room("lvl_1") else {
         eprintln!("skipped. Celeste install could not be found, try setting CELESTE_DIR");
         return;
     };
@@ -15,6 +16,10 @@ fn first_room_matches_the_game() {
     assert!(!room.is_solid(5, 18));
     assert!(room.is_solid(10, 16));
     assert!(!room.is_solid(10, 15));
+    assert_eq!(room.bottom(), 180);
+    assert_eq!(room.spikes.len(), 5);
+    assert!(room.spikes.contains(&Spikes::new(Direction::Up, 40, 168, 40)));
+    assert!(room.spikes.contains(&Spikes::new(Direction::Left, 272, 80, 16)));
 }
 
 #[test]

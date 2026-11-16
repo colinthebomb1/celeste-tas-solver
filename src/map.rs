@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::physics::IVec2;
-use crate::room::Room;
+use crate::room::{Direction, Room, Spikes};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MapError {
@@ -236,8 +236,41 @@ pub fn load_room(map: &Element, name: &str) -> Result<Room, MapError> {
 
     let solids = level.child("solids").ok_or(MapError::MissingField("solids"))?;
     let tiles = solids.text("innerText").ok_or(MapError::MissingField("innerText"))?;
+
+    let mut room = Room::from_tiles(origin, tiles);
+    room.spikes = load_spikes(level, origin)?;
     
-    Ok(Room::from_tiles(origin, tiles))
+    Ok(room)
+}
+
+// The spikes among a level's "entities" children: elements named "spikesUp", "spikesDown",
+// "spikesLeft" and "spikesRight". "x" and "y" are relative to the room's origin. The length
+// is "width" for Up and Down and "height" for Left and Right. A level with no "entities"
+// child has no spikes.
+pub fn load_spikes(level: &Element, origin: IVec2) -> Result<Vec<Spikes>, MapError> {
+    let Some(entities) = level.child("entities") else {
+        return Ok(Vec::new());
+    };
+
+    let mut spikes = Vec::new();
+
+    for entity in entities.children.iter() {
+        let (direction, length_attribute) = match entity.name.as_str() {
+            "spikesUp" => (Direction::Up, "width"),
+            "spikesDown" => (Direction::Down, "width"),
+            "spikesLeft" => (Direction::Left, "height"),
+            "spikesRight" => (Direction::Right, "height"),
+            _ => continue,
+        };
+
+        let x = entity.int("x").ok_or(MapError::MissingField("x"))?;
+        let y = entity.int("y").ok_or(MapError::MissingField("y"))?;
+        let size = entity.int(length_attribute).ok_or(MapError::MissingField(length_attribute))?;
+
+        spikes.push(Spikes::new(direction, origin.x + x, origin.y + y, size));
+    }
+
+    Ok(spikes)
 }
 
 pub fn load_map(path: &Path) -> Result<Element, MapError> {
@@ -257,9 +290,10 @@ pub fn find_celeste_dir() -> Option<PathBuf> {
 mod tests {
     use super::*;
 
-    const LOOKUP: [&str; 14] = [
+    const LOOKUP: [&str; 22] = [
         "Map", "levels", "level", "name", "x", "y", "solids", "innerText", "room_a", "room_b",
-        "flag", "big", "ratio", "note",
+        "flag", "big", "ratio", "note", "entities", "spikesUp", "spikesDown", "spikesLeft",
+        "spikesRight", "width", "height", "strawberry",
     ];
 
     fn string(s: &str) -> Vec<u8> {
@@ -537,5 +571,60 @@ mod tests {
         let bytes = file(element("Map", &[], &[element("levels", &[], &[bare])]));
         let map = parse_map(&bytes).unwrap();
         assert_eq!(load_room(&map, "room_a"), Err(MapError::MissingField("solids")));
+    }
+    fn entity(name: &str, x: i16, y: i16, size: Option<(&str, u8)>) -> Vec<u8> {
+        let mut attributes = vec![("x", v_i16(x)), ("y", v_i16(y))];
+        if let Some((key, length)) = size {
+            attributes.push((key, v_u8(length)));
+        }
+        element(name, &attributes, &[])
+    }
+
+    fn map_with_entities(entities: &[Vec<u8>]) -> Element {
+        let room = element(
+            "level",
+            &[("name", v_lookup("room_b")), ("x", v_i16(320)), ("y", v_i16(-184))],
+            &[
+                element("solids", &[("innerText", v_rle(&[(1, '1')]))], &[]),
+                element("entities", &[], entities),
+            ],
+        );
+        parse_map(&file(element("Map", &[], &[element("levels", &[], &[room])]))).unwrap()
+    }
+
+    #[test]
+    fn load_room_reads_spikes_in_world_coordinates() {
+        let map = map_with_entities(&[
+            entity("spikesUp", 8, 16, Some(("width", 24))),
+            entity("strawberry", 1, 1, None),
+            entity("spikesLeft", 40, 0, Some(("height", 16))),
+            entity("spikesDown", 0, 8, Some(("width", 8))),
+            entity("spikesRight", 16, 32, Some(("height", 40))),
+        ]);
+        let room = load_room(&map, "room_b").unwrap();
+        assert_eq!(
+            room.spikes,
+            vec![
+                Spikes::new(Direction::Up, 328, -168, 24),
+                Spikes::new(Direction::Left, 360, -184, 16),
+                Spikes::new(Direction::Down, 320, -176, 8),
+                Spikes::new(Direction::Right, 336, -152, 40),
+            ]
+        );
+    }
+
+    #[test]
+    fn load_room_without_entities_has_no_spikes() {
+        let map = parse_map(&tiny_map()).unwrap();
+        assert!(load_room(&map, "room_a").unwrap().spikes.is_empty());
+    }
+
+    #[test]
+    fn load_room_spikes_missing_their_length() {
+        let map = map_with_entities(&[entity("spikesUp", 8, 16, None)]);
+        assert_eq!(load_room(&map, "room_b"), Err(MapError::MissingField("width")));
+
+        let map = map_with_entities(&[entity("spikesRight", 8, 16, Some(("width", 8)))]);
+        assert_eq!(load_room(&map, "room_b"), Err(MapError::MissingField("height")));
     }
 }

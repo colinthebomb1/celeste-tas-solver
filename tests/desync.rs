@@ -23,21 +23,9 @@ fn column(line: &str, index: usize) -> &str {
     line.split('\t').nth(index).expect("missing column")
 }
 
-// The game rounds to 17 significant digits first, then half-to-even to 12 decimals.
+// The game prints Math.Round(v, 12): scale by 1e12 as a double, round half to even.
 fn fmt(v: f64) -> String {
-    let sci = format!("{:.16e}", v.abs());
-    let (mantissa, exp) = sci.split_once('e').unwrap();
-    let digits: u128 = mantissa.replace('.', "").parse().unwrap();
-    let shift = exp.parse::<i32>().unwrap() - 4;
-    let scaled = if shift >= 0 {
-        digits * 10u128.pow(shift as u32)
-    } else if shift < -38 {
-        0
-    } else {
-        let div = 10u128.pow(-shift as u32);
-        let (q, r) = (digits / div, digits % div);
-        if r * 2 > div || (r * 2 == div && q % 2 == 1) { q + 1 } else { q }
-    };
+    let scaled = (v.abs() * 1e12).round_ties_even() as u64;
     let sign = if v < 0.0 { "-" } else { "" };
     format!("{sign}{}.{:012}", scaled / 1_000_000_000_000, scaled % 1_000_000_000_000)
 }
@@ -47,6 +35,7 @@ struct Observed {
     position: String,
     speed: String,
     mode: String,
+    dead: bool,
 }
 
 fn observe(s: &PlayerState) -> Observed {
@@ -60,14 +49,18 @@ fn observe(s: &PlayerState) -> Observed {
         position: format!("{}, {}", fmt(px), fmt(py)),
         speed: format!("{}, {}", fmt(s.speed.x as f64), fmt(s.speed.y as f64)),
         mode: mode.to_string(),
+        dead: s.dead,
     }
 }
 
+// position is read as f64 so the remainder keeps all its bits away from the origin
 fn start_state(text: &str) -> PlayerState {
     let first = parse_trace(text)[0];
-    let (x, y) = (first.position.x, first.position.y);
+    let row = text.lines().nth(1).expect("empty trace");
+    let (x, y) = column(row, 4).split_once(", ").expect("bad position");
+    let (x, y): (f64, f64) = (x.parse().unwrap(), y.parse().unwrap());
     let position = IVec2 { x: x.round() as i32, y: y.round() as i32 };
-    let remainder = Vec2 { x: x - x.round(), y: y - y.round() };
+    let remainder = Vec2 { x: (x - x.round()) as f32, y: (y - y.round()) as f32 };
     PlayerState::new(position, remainder, first.speed)
 }
 
@@ -75,8 +68,12 @@ fn is_dead(row: &str) -> bool {
     column(row, 7).split(' ').any(|status| status == "Dead")
 }
 
-// Death isn't simulated yet, so a trace that ends in death is compared up to the frame before.
+// A trace that ends in death stops at the frame she dies, so it can be shorter than its inputs.
 fn assert_matches_trace(name: &str, text: &str, inputs: &[Input]) {
+    assert_matches_trace_in("lvl_1", name, text, inputs);
+}
+
+fn assert_matches_trace_in(room_name: &str, name: &str, text: &str, inputs: &[Input]) {
     let rows: Vec<&str> = text.lines().skip(1).collect();
     let died = rows.last().is_some_and(|row| is_dead(row));
     assert!(
@@ -84,14 +81,14 @@ fn assert_matches_trace(name: &str, text: &str, inputs: &[Input]) {
         "{name}: the input list must cover every frame after the first"
     );
 
-    let Some(room) = common::first_room() else {
+    let Some(room) = common::room(room_name) else {
         eprintln!("{name}: skipped. Celeste install could not be found, try setting CELESTE_DIR");
         return;
     };
     let mut state = start_state(text);
     for (i, &input) in inputs.iter().enumerate() {
         let frame = i + 1;
-        if frame >= rows.len() || is_dead(rows[frame]) {
+        if frame >= rows.len() {
             break;
         }
         state = step(state, input, &room);
@@ -99,6 +96,7 @@ fn assert_matches_trace(name: &str, text: &str, inputs: &[Input]) {
             position: column(rows[frame], 4).to_string(),
             speed: column(rows[frame], 5).to_string(),
             mode: column(rows[frame], 6).to_string(),
+            dead: is_dead(rows[frame]),
         };
         assert_eq!(
             observe(&state),
@@ -167,4 +165,10 @@ fn dash_direction_read_late() {
 fn dash_up_held_one_frame_short() {
     let inputs = expand(&[(4, UP_DASH), (46, NONE)]);
     assert_matches_trace("10_dash_up_4_frames", include_str!("traces/10_dash_up_4_frames.txt"), &inputs);
+}
+
+#[test]
+fn fall_out_of_the_room() {
+    let inputs = expand(&[(37, RIGHT)]);
+    assert_matches_trace_in("lvl_3", "11_fall_out", include_str!("traces/11_fall_out.txt"), &inputs);
 }

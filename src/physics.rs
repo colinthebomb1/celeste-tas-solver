@@ -1,4 +1,4 @@
-use crate::room::Room;
+use crate::room::{Direction, Rect, Room, Spikes};
 use crate::Vec2;
 
 pub const MAX_RUN: f32 = 90.0;
@@ -25,9 +25,11 @@ pub const DASH_REFILL_COOLDOWN: f32 = 0.1;
 pub const DASH_FREEZE_TIME: f32 = 0.05;
 pub const MAX_DASHES: u8 = 1;
 
-// normal hitbox size in pixels
+// normal hitbox size in pixels for collisions
 pub const HITBOX_WIDTH: i32 = 8;
 pub const HITBOX_HEIGHT: i32 = 11;
+// hazards use the hurtbox
+pub const HURTBOX_HEIGHT: i32 = 9;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct IVec2 {
@@ -65,6 +67,7 @@ pub struct PlayerState {
     pub auto_jump: bool,
     pub dash_held: bool,
     pub freeze_timer: f32,
+    pub dead: bool,
 }
 
 impl PlayerState {
@@ -89,6 +92,7 @@ impl PlayerState {
             auto_jump: false,
             dash_held: false,
             freeze_timer: 0.0,
+            dead: false,
         }
     }
 }
@@ -106,6 +110,42 @@ pub struct Input {
 
 pub fn collide_at(room: &Room, x: i32, y: i32) -> bool {
     room.collide_rect(x - HITBOX_WIDTH / 2, y - HITBOX_HEIGHT, HITBOX_WIDTH, HITBOX_HEIGHT)
+}
+
+pub fn hurtbox(state: &PlayerState) -> Rect {
+    Rect {
+        left: state.position.x - HITBOX_WIDTH / 2,
+        top: state.position.y - HITBOX_HEIGHT,
+        width: HITBOX_WIDTH,
+        height: HURTBOX_HEIGHT
+    }
+}
+
+// Spikes.OnCollide: her hurtbox must overlap the spikes' hitbox, and she must not be
+// moving away from the points:
+//   Up:    speed.y >= 0, and her hurtbox's bottom edge is not below the spikes' bottom edge
+//   Down:  speed.y <= 0
+//   Left:  speed.x >= 0
+//   Right: speed.x <= 0
+pub fn spikes_kill(state: &PlayerState, spikes: &Spikes) -> bool {
+    let madeline_hurtbox = &hurtbox(state);
+
+    if !spikes.hitbox.overlaps(madeline_hurtbox) {
+        return false;
+    }
+
+    match spikes.direction {
+        Direction::Up => state.speed.y >= 0.0 && madeline_hurtbox.top + madeline_hurtbox.height <= spikes.hitbox.top + spikes.hitbox.height,
+        Direction::Down => state.speed.y <= 0.0,
+        Direction::Left => state.speed.x >= 0.0,
+        Direction::Right => state.speed.x <= 0.0
+    }
+}
+
+// Level.EnforceBounds: the top of her hitbox is more than 4 px below the room's bottom edge
+pub fn fell_out(state: &PlayerState, room: &Room) -> bool {
+    let _ = (state, room);
+    todo!()
 }
 
 pub fn on_ground(state: &PlayerState, room: &Room) -> bool {
@@ -261,6 +301,10 @@ pub fn dash_end(state: &mut PlayerState) {
 }
 
 pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
+    if state.dead {
+        return state;
+    }
+
     let jump_pressed = input.jump && !state.jump_held;
     state.jump_held = input.jump;
     let dash_pressed = input.dash && !state.dash_held;
@@ -332,6 +376,11 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
     move_h(&mut state, room, speed_x * DELTA_TIME);
     move_v(&mut state, room, speed_y * DELTA_TIME);
 
+    if room.spikes.iter().any(|s| spikes_kill(&state, s)) {
+        state.speed = Vec2 { x: 0.0, y: 0.0 };
+        state.dead = true;
+    }
+
     state
 }
 
@@ -377,6 +426,7 @@ fn normal_update(state: &mut PlayerState, room: &Room, input: Input, ground: boo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::room::Direction;
 
     const FLOOR_Y: i32 = 144;
     const LEDGE_X: i32 = 43;
@@ -812,5 +862,133 @@ mod tests {
         s.auto_jump = true;
         s = step(s, Input::default(), &room());
         assert!(!s.auto_jump);
+    }
+    #[test]
+    fn hurtbox_is_two_pixels_shorter_than_the_hitbox() {
+        let mut s = at_rest();
+        s.position = IVec2 { x: 100, y: 50 };
+        assert_eq!(hurtbox(&s), Rect { left: 96, top: 39, width: 8, height: 9 });
+    }
+
+    fn player_at(x: i32, y: i32, speed_x: f32, speed_y: f32) -> PlayerState {
+        let mut s = at_rest();
+        s.position = IVec2 { x, y };
+        s.speed = Vec2 { x: speed_x, y: speed_y };
+        s
+    }
+
+    #[test]
+    fn up_spikes_kill_when_standing_or_falling_on_them() {
+        let spikes = Spikes::new(Direction::Up, 0, 100, 16);
+        assert!(spikes_kill(&player_at(8, 100, 0.0, 0.0), &spikes));
+        assert!(spikes_kill(&player_at(8, 100, 0.0, 160.0), &spikes));
+        assert!(!spikes_kill(&player_at(8, 100, 0.0, -10.0), &spikes));
+    }
+
+    #[test]
+    fn up_spikes_need_the_hurtbox_to_overlap() {
+        let spikes = Spikes::new(Direction::Up, 0, 100, 16);
+        assert!(!spikes_kill(&player_at(8, 99, 0.0, 0.0), &spikes));
+        assert!(spikes_kill(&player_at(19, 100, 0.0, 0.0), &spikes));
+        assert!(!spikes_kill(&player_at(20, 100, 0.0, 0.0), &spikes));
+    }
+
+    #[test]
+    fn up_spikes_spare_her_when_her_hurtbox_reaches_below_them() {
+        let spikes = Spikes::new(Direction::Up, 0, 100, 16);
+        assert!(spikes_kill(&player_at(8, 102, 0.0, 0.0), &spikes));
+        assert!(!spikes_kill(&player_at(8, 103, 0.0, 0.0), &spikes));
+    }
+
+    #[test]
+    fn down_spikes_kill_unless_moving_down() {
+        let spikes = Spikes::new(Direction::Down, 0, 100, 16);
+        assert!(spikes_kill(&player_at(8, 111, 0.0, 0.0), &spikes));
+        assert!(spikes_kill(&player_at(8, 111, 0.0, -50.0), &spikes));
+        assert!(!spikes_kill(&player_at(8, 111, 0.0, 50.0), &spikes));
+        assert!(!spikes_kill(&player_at(8, 114, 0.0, -50.0), &spikes));
+    }
+
+    #[test]
+    fn left_spikes_kill_unless_moving_left() {
+        let spikes = Spikes::new(Direction::Left, 100, 0, 16);
+        assert!(spikes_kill(&player_at(94, 12, 0.0, 0.0), &spikes));
+        assert!(spikes_kill(&player_at(94, 12, 50.0, 0.0), &spikes));
+        assert!(!spikes_kill(&player_at(94, 12, -50.0, 0.0), &spikes));
+        assert!(!spikes_kill(&player_at(93, 12, 50.0, 0.0), &spikes));
+    }
+
+    #[test]
+    fn right_spikes_kill_unless_moving_right() {
+        let spikes = Spikes::new(Direction::Right, 100, 0, 16);
+        assert!(spikes_kill(&player_at(106, 12, 0.0, 0.0), &spikes));
+        assert!(spikes_kill(&player_at(106, 12, -50.0, 0.0), &spikes));
+        assert!(!spikes_kill(&player_at(106, 12, 50.0, 0.0), &spikes));
+        assert!(!spikes_kill(&player_at(107, 12, -50.0, 0.0), &spikes));
+    }
+
+    fn spiked_floor() -> Room {
+        let mut room = room();
+        room.spikes.push(Spikes::new(Direction::Up, 0, FLOOR_Y, 40));
+        room
+    }
+
+    #[test]
+    fn step_kills_on_spikes() {
+        let s = step(standing(), Input::default(), &spiked_floor());
+        assert!(s.dead);
+        assert_eq!(s.speed, Vec2 { x: 0.0, y: 0.0 });
+    }
+
+    #[test]
+    fn step_kills_on_the_frame_she_lands_on_spikes() {
+        let room = spiked_floor();
+        let mut s = player_at(0, FLOOR_Y - 5, 0.0, 160.0);
+        s = step(s, Input::default(), &room);
+        assert!(!s.dead);
+        s = step(s, Input::default(), &room);
+        assert!(s.dead);
+        assert_eq!(s.position.y, FLOOR_Y);
+    }
+
+    #[test]
+    fn no_spikes_no_death() {
+        let s = step(standing(), Input::default(), &room());
+        assert!(!s.dead);
+    }
+
+    #[test]
+    fn fell_out_once_her_head_is_5_px_below_the_room() {
+        let room = room();
+        assert_eq!(room.bottom(), 180);
+        assert!(!fell_out(&player_at(60, 180, 0.0, 0.0), &room));
+        assert!(!fell_out(&player_at(60, 195, 0.0, 0.0), &room));
+        assert!(fell_out(&player_at(60, 196, 0.0, 0.0), &room));
+    }
+
+    #[test]
+    fn step_kills_when_she_falls_out() {
+        let room = room();
+        let mut s = player_at(60, 190, 0.0, 160.0);
+        s = step(s, Input::default(), &room);
+        assert!(!s.dead);
+        s = step(s, Input::default(), &room);
+        s = step(s, Input::default(), &room);
+        assert!(s.dead);
+        assert_eq!(s.speed, Vec2 { x: 0.0, y: 0.0 });
+    }
+
+    #[test]
+    fn falling_inside_the_room_is_not_death() {
+        let s = step(player_at(60, 150, 0.0, 160.0), Input::default(), &room());
+        assert!(!s.dead);
+    }
+
+    #[test]
+    fn dead_player_does_not_change() {
+        let mut before = standing();
+        before.dead = true;
+        let after = step(before, Input { move_x: 1, jump: true, ..Default::default() }, &room());
+        assert_eq!(after, before);
     }
 }

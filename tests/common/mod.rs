@@ -6,6 +6,6 @@ pub fn map_1a() -> Option<Element> {
     Some(load_map(&path).expect("failed to read 1A map"))
 }
 
-pub fn first_room() -> Option<Room> {
-    Some(load_room(&map_1a()?, "lvl_1").expect("failed to load lvl_1"))
+pub fn room(name: &str) -> Option<Room> {
+    Some(load_room(&map_1a()?, name).expect("failed to load room"))
 }

@@ -2,6 +2,68 @@ use crate::physics::IVec2;
 
 pub const TILE_SIZE: i32 = 8;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rect {
+    pub left: i32,
+    pub top: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+impl Rect {
+    // touching edges don't count
+    pub fn overlaps(&self, other: &Rect) -> bool {
+        self.left < other.left + other.width && other.left < self.left + self.width && self.top < other.top + other.height && other.top < self.top + self.height
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Direction {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Spikes {
+    pub direction: Direction,
+    pub hitbox: Rect,
+}
+
+impl Spikes {
+    pub fn new(direction: Direction, x: i32, y: i32, size: i32) -> Spikes {
+        let hitbox = match direction {
+            Direction::Up => Rect { 
+                left: x,
+                top: y - 3,
+                width: size,
+                height: 3
+            },
+            Direction::Down => Rect { 
+                left: x,
+                top: y,
+                width: size,
+                height: 3
+            },
+            Direction::Right => Rect { 
+                left: x,
+                top: y,
+                width: 3,
+                height: size
+            },
+            Direction::Left => Rect { 
+                left: x - 3,
+                top: y,
+                width: 3,
+                height: size
+            },
+        };
+
+        Spikes { direction, hitbox }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Room {
     // world position of the room's top-left corner, in pixels
@@ -11,6 +73,7 @@ pub struct Room {
     pub height: usize,
     // tile (x, y) is at index y * width + x
     solid: Vec<bool>,
+    pub spikes: Vec<Spikes>,
 }
 
 impl Room {
@@ -35,8 +98,14 @@ impl Room {
             origin,
             width,
             height,
-            solid
+            solid,
+            spikes: Vec::new(),
         }
+    }
+
+    // world y of the room's bottom edge. the game treats a 184 px tall room as 180
+    pub fn bottom(&self) -> i32 {
+        todo!()
     }
 
     pub fn is_solid(&self, tile_x: i32, tile_y: i32) -> bool {
@@ -75,6 +144,66 @@ mod tests {
 
     fn at_origin(text: &str) -> Room {
         Room::from_tiles(IVec2 { x: 0, y: 0 }, text)
+    }
+
+    fn rect(left: i32, top: i32, width: i32, height: i32) -> Rect {
+        Rect { left, top, width, height }
+    }
+
+    #[test]
+    fn rects_overlap() {
+        let a = rect(10, 10, 8, 8);
+        assert!(a.overlaps(&rect(17, 17, 8, 8)));
+        assert!(a.overlaps(&rect(3, 3, 8, 8)));
+        assert!(a.overlaps(&rect(12, 12, 2, 2)));
+        assert!(a.overlaps(&rect(0, 0, 100, 100)));
+        assert!(a.overlaps(&a));
+    }
+
+    #[test]
+    fn rects_touching_edges_do_not_overlap() {
+        let a = rect(10, 10, 8, 8);
+        assert!(!a.overlaps(&rect(18, 10, 8, 8)));
+        assert!(!a.overlaps(&rect(2, 10, 8, 8)));
+        assert!(!a.overlaps(&rect(10, 18, 8, 8)));
+        assert!(!a.overlaps(&rect(10, 2, 8, 8)));
+    }
+
+    #[test]
+    fn rects_apart_do_not_overlap() {
+        let a = rect(10, 10, 8, 8);
+        assert!(!a.overlaps(&rect(100, 10, 8, 8)));
+        assert!(!a.overlaps(&rect(10, -50, 8, 8)));
+    }
+
+    #[test]
+    fn spikes_hitbox_sits_on_the_side_the_points_face() {
+        assert_eq!(Spikes::new(Direction::Up, 40, 168, 24).hitbox, rect(40, 165, 24, 3));
+        assert_eq!(Spikes::new(Direction::Down, 40, 168, 24).hitbox, rect(40, 168, 24, 3));
+        assert_eq!(Spikes::new(Direction::Left, 40, 168, 24).hitbox, rect(37, 168, 3, 24));
+        assert_eq!(Spikes::new(Direction::Right, 40, 168, 24).hitbox, rect(40, 168, 3, 24));
+    }
+
+    #[test]
+    fn spikes_remember_their_direction() {
+        assert_eq!(Spikes::new(Direction::Left, 0, 0, 8).direction, Direction::Left);
+    }
+
+    #[test]
+    fn from_tiles_has_no_spikes() {
+        assert!(at_origin("01").spikes.is_empty());
+    }
+
+    #[test]
+    fn bottom_is_in_world_pixels() {
+        let room = Room::from_tiles(IVec2 { x: 100, y: -200 }, "0\n0\n0");
+        assert_eq!(room.bottom(), -176);
+    }
+
+    #[test]
+    fn bottom_of_a_184_px_room_is_at_180() {
+        let room = Room::from_tiles(IVec2 { x: 0, y: -200 }, &"0\n".repeat(23));
+        assert_eq!(room.bottom(), -20);
     }
 
     #[test]

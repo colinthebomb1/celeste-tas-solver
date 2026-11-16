@@ -121,12 +121,6 @@ pub fn hurtbox(state: &PlayerState) -> Rect {
     }
 }
 
-// Spikes.OnCollide: her hurtbox must overlap the spikes' hitbox, and she must not be
-// moving away from the points:
-//   Up:    speed.y >= 0, and her hurtbox's bottom edge is not below the spikes' bottom edge
-//   Down:  speed.y <= 0
-//   Left:  speed.x >= 0
-//   Right: speed.x <= 0
 pub fn spikes_kill(state: &PlayerState, spikes: &Spikes) -> bool {
     let madeline_hurtbox = &hurtbox(state);
 
@@ -142,10 +136,9 @@ pub fn spikes_kill(state: &PlayerState, spikes: &Spikes) -> bool {
     }
 }
 
-// Level.EnforceBounds: the top of her hitbox is more than 4 px below the room's bottom edge
+// top of hitbox is more than 4 px below the room's bottom edge
 pub fn fell_out(state: &PlayerState, room: &Room) -> bool {
-    let _ = (state, room);
-    todo!()
+    state.position.y - HITBOX_HEIGHT > room.bottom() + 4
 }
 
 pub fn on_ground(state: &PlayerState, room: &Room) -> bool {
@@ -376,7 +369,7 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
     move_h(&mut state, room, speed_x * DELTA_TIME);
     move_v(&mut state, room, speed_y * DELTA_TIME);
 
-    if room.spikes.iter().any(|s| spikes_kill(&state, s)) {
+    if room.spikes.iter().any(|s| spikes_kill(&state, s)) || fell_out(&state, room) {
         state.speed = Vec2 { x: 0.0, y: 0.0 };
         state.dead = true;
     }

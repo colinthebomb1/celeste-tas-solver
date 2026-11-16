@@ -1,6 +1,7 @@
 use crate::physics::IVec2;
 
 pub const TILE_SIZE: i32 = 8;
+pub const SCREEN_HEIGHT: i32 = 180;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
@@ -103,9 +104,16 @@ impl Room {
         }
     }
 
-    // world y of the room's bottom edge. the game treats a 184 px tall room as 180
+    // world y of the room's bottom edge
     pub fn bottom(&self) -> i32 {
-        todo!()
+        let height = self.height as i32 * TILE_SIZE;
+
+        // the game treats a 184 px tall room as 180
+        if height == 184 {
+            return self.origin.y + SCREEN_HEIGHT;
+        }
+
+        self.origin.y + height
     }
 
     pub fn is_solid(&self, tile_x: i32, tile_y: i32) -> bool {

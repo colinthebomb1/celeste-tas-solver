@@ -28,6 +28,7 @@ pub const SUPER_JUMP_H: f32 = 260.0;
 pub const CLIMB_MAX_STAMINA: f32 = 110.0;
 pub const CLIMB_JUMP_COST: f32 = 110.0 / 4.0;
 pub const WALL_JUMP_CHECK_DIST: i32 = 3;
+pub const WALL_SPEED_RETENTION_TIME: f32 = 0.06;
 
 // normal hitbox size in pixels for collisions
 pub const HITBOX_WIDTH: i32 = 8;
@@ -64,6 +65,9 @@ pub struct PlayerState {
     pub wall_slide_timer: f32,
     pub wall_slide_dir: i8,
     pub stamina: f32,
+    // x speed she had when she hit a wall, given back if the wall is gone before the timer ends
+    pub wall_speed_retained: f32,
+    pub wall_speed_retention_timer: f32,
     pub mode: Mode,
     pub dashes: u8,
     pub dash_cooldown_timer: f32,
@@ -91,6 +95,8 @@ impl PlayerState {
             wall_slide_timer: WALL_SLIDE_TIME,
             wall_slide_dir: 0,
             stamina: CLIMB_MAX_STAMINA,
+            wall_speed_retained: 0.0,
+            wall_speed_retention_timer: 0.0,
             mode: Mode::Normal,
             dashes: MAX_DASHES,
             dash_cooldown_timer: 0.0,
@@ -184,6 +190,11 @@ pub fn move_h(state: &mut PlayerState, room: &Room, amount: f32) {
     let step = movement_x.signum();
     for _ in 0..movement_x.abs() {
         if collide_at(room, state.position.x + step, state.position.y) {
+            if state.wall_speed_retention_timer <= 0.0 {
+                state.wall_speed_retained = state.speed.x;
+                state.wall_speed_retention_timer = WALL_SPEED_RETENTION_TIME;
+            }
+
             state.remainder.x = 0.0;
             state.speed.x = 0.0;
             return;
@@ -296,6 +307,23 @@ pub fn climb_jump(state: &mut PlayerState, input: Input, ground: bool) {
     state.mode = Mode::Normal;
 }
 
+pub fn update_wall_speed_retention(state: &mut PlayerState, room: &Room) {
+    if state.wall_speed_retention_timer <= 0.0 {
+        return;
+    }
+
+    let dir = sign(state.wall_speed_retained);
+
+    if sign(state.speed.x) == -dir {
+        state.wall_speed_retention_timer = 0.0;
+    } else if !collide_at(room, state.position.x + dir as i32, state.position.y) {
+        state.speed.x = state.wall_speed_retained;
+        state.wall_speed_retention_timer = 0.0;
+    } else {
+        state.wall_speed_retention_timer -= DELTA_TIME;
+    }
+}
+
 pub fn can_dash(state: &PlayerState, dash_pressed: bool) -> bool {
     dash_pressed && state.dash_cooldown_timer <= 0.0 && state.dashes > 0
 }
@@ -404,6 +432,8 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
     }
     
     let aim = aim_vector(input, state.facing);
+
+    update_wall_speed_retention(&mut state, room);
 
     if state.var_jump_timer > 0.0 {
         state.var_jump_timer -= DELTA_TIME;
@@ -1368,6 +1398,100 @@ mod tests {
         assert_eq!(s.stamina, CLIMB_MAX_STAMINA - CLIMB_JUMP_COST);
         assert_eq!(s.position.x, WALL_X);
         assert_eq!(s.speed, Vec2 { x: 0.0, y: JUMP_SPEED });
+    }
+
+    #[test]
+    fn move_h_into_a_wall_remembers_her_speed() {
+        let mut s = player_at(WALL_X - 1, 100, 120.0, 0.0);
+        move_h(&mut s, &room(), 3.0);
+        assert_eq!(s.speed.x, 0.0);
+        assert_eq!(s.wall_speed_retained, 120.0);
+        assert_eq!(s.wall_speed_retention_timer, WALL_SPEED_RETENTION_TIME);
+    }
+
+    #[test]
+    fn move_h_keeps_the_first_speed_while_the_timer_runs() {
+        let mut s = player_at(WALL_X - 1, 100, 50.0, 0.0);
+        s.wall_speed_retained = 200.0;
+        s.wall_speed_retention_timer = 0.03;
+        move_h(&mut s, &room(), 3.0);
+        assert_eq!(s.speed.x, 0.0);
+        assert_eq!(s.wall_speed_retained, 200.0);
+        assert_eq!(s.wall_speed_retention_timer, 0.03);
+    }
+
+    #[test]
+    fn move_h_without_a_collision_retains_nothing() {
+        let mut s = player_at(0, 100, 120.0, 0.0);
+        move_h(&mut s, &room(), 3.0);
+        assert_eq!(s.wall_speed_retention_timer, 0.0);
+    }
+
+    fn retaining(x: i32, speed_x: f32, retained: f32) -> PlayerState {
+        let mut s = player_at(x, 100, speed_x, 0.0);
+        s.wall_speed_retained = retained;
+        s.wall_speed_retention_timer = 0.03;
+        s
+    }
+
+    #[test]
+    fn retention_gives_the_speed_back_once_the_wall_is_gone() {
+        let mut s = retaining(WALL_X - 1, 0.0, 120.0);
+        update_wall_speed_retention(&mut s, &room());
+        assert_eq!(s.speed.x, 120.0);
+        assert_eq!(s.wall_speed_retention_timer, 0.0);
+    }
+
+    #[test]
+    fn retention_waits_while_the_wall_is_still_there() {
+        let mut s = retaining(WALL_X, 0.0, 120.0);
+        update_wall_speed_retention(&mut s, &room());
+        assert_eq!(s.speed.x, 0.0);
+        assert_eq!(s.wall_speed_retention_timer, 0.03 - DELTA_TIME);
+    }
+
+    #[test]
+    fn retention_is_cancelled_by_moving_the_other_way() {
+        let mut s = retaining(WALL_X - 1, -10.0, 120.0);
+        update_wall_speed_retention(&mut s, &room());
+        assert_eq!(s.speed.x, -10.0);
+        assert_eq!(s.wall_speed_retention_timer, 0.0);
+    }
+
+    #[test]
+    fn retention_works_to_the_left() {
+        let room = left_wall_room();
+        let mut s = retaining(LEFT_WALL_X, 0.0, -120.0);
+        update_wall_speed_retention(&mut s, &room);
+        assert_eq!(s.speed.x, 0.0);
+
+        let mut s = retaining(LEFT_WALL_X + 1, 0.0, -120.0);
+        update_wall_speed_retention(&mut s, &room);
+        assert_eq!(s.speed.x, -120.0);
+    }
+
+    #[test]
+    fn retention_does_nothing_once_the_timer_is_out() {
+        let mut s = retaining(WALL_X - 1, 0.0, 120.0);
+        s.wall_speed_retention_timer = 0.0;
+        update_wall_speed_retention(&mut s, &room());
+        assert_eq!(s.speed.x, 0.0);
+    }
+
+    #[test]
+    fn step_gives_retained_speed_back_before_moving() {
+        let s = step(retaining(WALL_X - 20, 0.0, 120.0), Input { move_x: 1, ..Default::default() }, &room());
+        assert!(s.speed.x > 100.0);
+        assert!(s.position.x > WALL_X - 20);
+        assert_eq!(s.wall_speed_retention_timer, 0.0);
+    }
+
+    #[test]
+    fn step_running_into_a_wall_starts_retention() {
+        let s = step(player_at(WALL_X, 100, 90.0, 0.0), Input { move_x: 1, ..Default::default() }, &room());
+        assert_eq!(s.speed.x, 0.0);
+        assert_eq!(s.wall_speed_retained, 90.0);
+        assert_eq!(s.wall_speed_retention_timer, WALL_SPEED_RETENTION_TIME);
     }
 
     #[test]

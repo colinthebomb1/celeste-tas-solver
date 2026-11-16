@@ -1,4 +1,4 @@
-use celeste_tas_solver::physics::{step, IVec2, Input, Mode, PlayerState};
+use celeste_tas_solver::physics::{step, track_buttons, IVec2, Input, Mode, PlayerState};
 use celeste_tas_solver::trace::parse_trace;
 use celeste_tas_solver::transition::{before_transition, find_transition, finish_transition, TRANSITION_FRAMES};
 use celeste_tas_solver::Vec2;
@@ -261,6 +261,12 @@ fn chapter_1a_progress() {
         if let Some(transition) = transition {
             finish_transition(&mut state, &chapter, transition);
             room = transition.to;
+
+            // buttons let go of during the transition count as presses afterwards
+            let end = (frame + TRANSITION_FRAMES - 1).min(rows.len() - 1);
+            for &row in &rows[frame..=end] {
+                track_buttons(&mut state, input_from_row(row));
+            }
             frame += TRANSITION_FRAMES - 1;
 
             if frame >= rows.len() {

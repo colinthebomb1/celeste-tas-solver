@@ -194,7 +194,7 @@ fn input_from_row(row: &str) -> Input {
 }
 
 // frames of the community TAS's first room that match the game. raise it as the simulator improves
-const COMMUNITY_LVL_1_MATCHED: usize = 52;
+const COMMUNITY_LVL_1_MATCHED: usize = 75;
 
 // run with: cargo test --test desync community -- --nocapture
 #[test]

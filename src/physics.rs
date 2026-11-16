@@ -29,12 +29,18 @@ pub const CLIMB_MAX_STAMINA: f32 = 110.0;
 pub const CLIMB_JUMP_COST: f32 = 110.0 / 4.0;
 pub const WALL_JUMP_CHECK_DIST: i32 = 3;
 pub const WALL_SPEED_RETENTION_TIME: f32 = 0.06;
-
 // normal hitbox size in pixels for collisions
 pub const HITBOX_WIDTH: i32 = 8;
 pub const HITBOX_HEIGHT: i32 = 11;
 // hazards use the hurtbox
 pub const HURTBOX_HEIGHT: i32 = 9;
+// both boxes are shorter when ducking
+pub const DUCK_HITBOX_HEIGHT: i32 = 6;
+pub const DUCK_HURTBOX_HEIGHT: i32 = 4;
+pub const DUCK_FRICTION: f32 = 500.0;
+pub const DODGE_SLIDE_SPEED_MULT: f32 = 1.2;
+pub const DUCK_SUPER_JUMP_X_MULT: f32 = 1.25;
+pub const DUCK_SUPER_JUMP_Y_MULT: f32 = 0.5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct IVec2 {
@@ -65,6 +71,7 @@ pub struct PlayerState {
     pub wall_slide_timer: f32,
     pub wall_slide_dir: i8,
     pub stamina: f32,
+    pub ducking: bool,
     // x speed she had when she hit a wall, given back if the wall is gone before the timer ends
     pub wall_speed_retained: f32,
     pub wall_speed_retention_timer: f32,
@@ -95,6 +102,7 @@ impl PlayerState {
             wall_slide_timer: WALL_SLIDE_TIME,
             wall_slide_dir: 0,
             stamina: CLIMB_MAX_STAMINA,
+            ducking: false,
             wall_speed_retained: 0.0,
             wall_speed_retention_timer: 0.0,
             mode: Mode::Normal,
@@ -140,12 +148,33 @@ pub fn collide_at(room: &Room, x: i32, y: i32) -> bool {
     room.collide_rect(x - HITBOX_WIDTH / 2, y - HITBOX_HEIGHT, HITBOX_WIDTH, HITBOX_HEIGHT)
 }
 
+pub fn collides(state: &PlayerState, room: &Room, dx: i32, dy: i32) -> bool {
+    let height = if state.ducking { DUCK_HITBOX_HEIGHT } else { HITBOX_HEIGHT };
+
+    room.collide_rect(
+        state.position.x + dx - HITBOX_WIDTH / 2,
+        state.position.y + dy - height,
+        HITBOX_WIDTH,
+        height,
+    )
+}
+
+pub fn can_unduck(state: &PlayerState, room: &Room) -> bool {
+    !state.ducking || !collide_at(room, state.position.x, state.position.y)
+}
+
 pub fn hurtbox(state: &PlayerState) -> Rect {
+    let (top, height) = if state.ducking {
+        (state.position.y - DUCK_HITBOX_HEIGHT, DUCK_HURTBOX_HEIGHT)
+    } else {
+        (state.position.y - HITBOX_HEIGHT, HURTBOX_HEIGHT)
+    };
+
     Rect {
         left: state.position.x - HITBOX_WIDTH / 2,
-        top: state.position.y - HITBOX_HEIGHT,
+        top,
         width: HITBOX_WIDTH,
-        height: HURTBOX_HEIGHT
+        height,
     }
 }
 
@@ -170,7 +199,7 @@ pub fn fell_out(state: &PlayerState, room: &Room) -> bool {
 }
 
 pub fn on_ground(state: &PlayerState, room: &Room) -> bool {
-    state.speed.y >= 0.0 && collide_at(room, state.position.x, state.position.y + 1)
+    state.speed.y >= 0.0 && collides(state, room, 0, 1)
 }
 
 pub fn approach(value: f32, target: f32, max_move: f32) -> f32 {
@@ -189,7 +218,7 @@ pub fn move_h(state: &mut PlayerState, room: &Room, amount: f32) {
 
     let step = movement_x.signum();
     for _ in 0..movement_x.abs() {
-        if collide_at(room, state.position.x + step, state.position.y) {
+        if collides(state, room, step, 0) {
             if state.wall_speed_retention_timer <= 0.0 {
                 state.wall_speed_retained = state.speed.x;
                 state.wall_speed_retention_timer = WALL_SPEED_RETENTION_TIME;
@@ -211,7 +240,7 @@ pub fn move_v(state: &mut PlayerState, room: &Room, amount: f32) {
 
     let step = movement_y.signum();
     for _ in 0..movement_y.abs() {
-        if collide_at(room, state.position.x, state.position.y + step) {
+        if collides(state, room, 0, step) {
             state.remainder.y = 0.0;
             state.speed.y = 0.0;
             return;
@@ -221,7 +250,7 @@ pub fn move_v(state: &mut PlayerState, room: &Room, amount: f32) {
 }
 
 pub fn wall_at(state: &PlayerState, room: &Room, dir: i8) -> bool {
-    collide_at(room, state.position.x + dir as i32, state.position.y)
+    collides(state, room, dir as i32, 0)
 }
 
 pub fn lerp(value1: f32, value2: f32, amount: f32) -> f32 {
@@ -266,8 +295,8 @@ pub fn aim_vector(input: Input, facing: i8) -> Vec2 {
     }
 }
 
-pub fn can_super_jump(state: &PlayerState, jump_pressed: bool) -> bool {
-    jump_pressed && state.jump_grace_timer > 0.0 && state.dash_dir.y == 0.0
+pub fn can_super_jump(state: &PlayerState, room: &Room, jump_pressed: bool) -> bool {
+    jump_pressed && state.jump_grace_timer > 0.0 && state.dash_dir.y == 0.0 && can_unduck(state, room)
 }
 
 pub fn super_jump(state: &mut PlayerState) {
@@ -277,13 +306,21 @@ pub fn super_jump(state: &mut PlayerState) {
     state.wall_slide_timer = WALL_SLIDE_TIME;
     state.speed.x = SUPER_JUMP_H * state.facing as f32;
     state.speed.y = JUMP_SPEED;
+
+    // hyper
+    if state.ducking {
+        state.ducking = false;
+        state.speed.x *= DUCK_SUPER_JUMP_X_MULT;
+        state.speed.y *= DUCK_SUPER_JUMP_Y_MULT;
+    }
+
     state.var_jump_speed = state.speed.y;
     state.mode = Mode::Normal;
 }
 
 // up to 3 pixels from wall
 pub fn wall_jump_check(state: &PlayerState, room: &Room, dir: i8) -> bool {
-    collide_at(room, state.position.x + dir as i32 * 3, state.position.y)
+    collides(state, room, dir as i32 * 3, 0)
 }
 
 pub fn can_climb_jump(state: &PlayerState, room: &Room, input: Input) -> bool {
@@ -316,7 +353,7 @@ pub fn update_wall_speed_retention(state: &mut PlayerState, room: &Room) {
 
     if sign(state.speed.x) == -dir {
         state.wall_speed_retention_timer = 0.0;
-    } else if !collide_at(room, state.position.x + dir as i32, state.position.y) {
+    } else if !collides(state, room, dir as i32, 0) {
         state.speed.x = state.wall_speed_retained;
         state.wall_speed_retention_timer = 0.0;
     } else {
@@ -328,7 +365,7 @@ pub fn can_dash(state: &PlayerState, dash_pressed: bool) -> bool {
     dash_pressed && state.dash_cooldown_timer <= 0.0 && state.dashes > 0
 }
 
-pub fn dash_begin(state: &mut PlayerState) {
+pub fn dash_begin(state: &mut PlayerState, room: &Room, input: Input, ground: bool) {
     state.dashes -= 1;
     state.freeze_timer = DASH_FREEZE_TIME;
     state.dash_cooldown_timer = DASH_COOLDOWN;
@@ -337,6 +374,14 @@ pub fn dash_begin(state: &mut PlayerState) {
     state.before_dash_speed = state.speed;
     state.speed = Vec2 { x: 0.0, y: 0.0 };
     state.dash_dir = Vec2 { x: 0.0, y: 0.0 };
+
+    // holding down at the start of a dash ducks
+    if !ground && state.ducking && can_unduck(state, room) {
+        state.ducking = false;
+    } else if !state.ducking && input.move_y == 1 {
+        state.ducking = true;
+    }
+
     state.mode = Mode::DashStart
 }
 
@@ -351,7 +396,7 @@ fn sign(v: f32) -> f32 {
     }
 }
 
-pub fn dash_launch(state: &mut PlayerState, aim: Vec2) {
+pub fn dash_launch(state: &mut PlayerState, aim: Vec2, ground: bool) {
     let mut new_speed_x = aim.x * DASH_SPEED;
     let new_speed_y = aim.y * DASH_SPEED;
 
@@ -364,6 +409,14 @@ pub fn dash_launch(state: &mut PlayerState, aim: Vec2) {
 
     if aim.x != 0.0 {
         state.facing = sign(aim.x) as i8;
+    }
+
+    // dash slide - a down diagonal dash on the ground becomes a ducked horizontal one
+    if ground && state.dash_dir.x != 0.0 && state.dash_dir.y > 0.0 && state.speed.y > 0.0 {
+        state.dash_dir = Vec2 { x: sign(state.dash_dir.x), y: 0.0 };
+        state.speed.y = 0.0;
+        state.speed.x *= DODGE_SLIDE_SPEED_MULT;
+        state.ducking = true;
     }
 
     state.mode = Mode::Dashing { timer: DASH_TIME };
@@ -442,24 +495,24 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
     match state.mode {
         Mode::Normal => {
             if can_dash(&state, dash_pressed) {
-                dash_begin(&mut state);
+                dash_begin(&mut state, room, input, ground);
             } else {
                 normal_update(&mut state, room, input, ground, jump_pressed);
             }
         }
 
         Mode::DashStart => {
-            if can_super_jump(&state, jump_pressed) {
+            if can_super_jump(&state, room, jump_pressed) {
                 super_jump(&mut state);
             } else if jump_pressed && can_climb_jump(&state, room, input) {
                 climb_jump(&mut state, input, ground);
             } else {
-                dash_launch(&mut state, aim);
+                dash_launch(&mut state, aim, ground);
             }
         }
         
         Mode::Dashing { timer } => {
-            if can_super_jump(&state, jump_pressed) {
+            if can_super_jump(&state, room, jump_pressed) {
                 super_jump(&mut state);
             } else if jump_pressed && can_climb_jump(&state, room, input) {
                 climb_jump(&mut state, input, ground);
@@ -469,6 +522,10 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
                 dash_end(&mut state);
             }
         }
+    }
+
+    if state.speed.y > 0.0 && !ground && can_unduck(&state, room) {
+        state.ducking = false;
     }
 
     let (speed_x, speed_y) = (state.speed.x, state.speed.y);
@@ -484,6 +541,14 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
 }
 
 fn normal_update(state: &mut PlayerState, room: &Room, input: Input, ground: bool, jump_pressed: bool) {
+    if state.ducking {
+        if ground && input.move_y != 1 && can_unduck(state, room) {
+            state.ducking = false;
+        }
+    } else if ground && input.move_y == 1 && state.speed.y >= 0.0 {
+        state.ducking = true;
+    }
+
     let mult = if ground {
         GROUND_MULT
     } else {
@@ -497,7 +562,11 @@ fn normal_update(state: &mut PlayerState, room: &Room, input: Input, ground: boo
     } else {
         RUN_ACCEL * DELTA_TIME * mult
     };
-    state.speed.x = approach(state.speed.x, target, max_move_x);
+    if state.ducking && ground {
+        state.speed.x = approach(state.speed.x, 0.0, DUCK_FRICTION * DELTA_TIME);
+    } else {
+        state.speed.x = approach(state.speed.x, target, max_move_x);
+    }
 
     if !ground {
         let max_fall = wall_slide_max_fall(state, room, input);
@@ -830,7 +899,7 @@ mod tests {
         let mut s = standing();
         s.speed = Vec2 { x: 90.0, y: 0.0 };
         s.wall_slide_timer = 0.3;
-        dash_begin(&mut s);
+        dash_begin(&mut s, &room(), Input::default(), true);
         assert_eq!(s.mode, Mode::DashStart);
         assert_eq!(s.dashes, MAX_DASHES - 1);
         assert_eq!(s.freeze_timer, DASH_FREEZE_TIME);
@@ -845,8 +914,8 @@ mod tests {
     #[test]
     fn dash_launch_sets_speed_and_starts_timer() {
         let mut s = standing();
-        dash_begin(&mut s);
-        dash_launch(&mut s, Vec2 { x: 0.0, y: -1.0 });
+        dash_begin(&mut s, &room(), Input::default(), true);
+        dash_launch(&mut s, Vec2 { x: 0.0, y: -1.0 }, true);
         assert_eq!(s.speed, Vec2 { x: 0.0, y: -DASH_SPEED });
         assert_eq!(s.dash_dir, Vec2 { x: 0.0, y: -1.0 });
         assert_eq!(s.mode, Mode::Dashing { timer: DASH_TIME });
@@ -856,14 +925,14 @@ mod tests {
     fn dash_launch_keeps_faster_speed_in_same_direction() {
         let mut s = standing();
         s.speed.x = 300.0;
-        dash_begin(&mut s);
-        dash_launch(&mut s, Vec2 { x: 1.0, y: 0.0 });
+        dash_begin(&mut s, &room(), Input::default(), true);
+        dash_launch(&mut s, Vec2 { x: 1.0, y: 0.0 }, true);
         assert_eq!(s.speed.x, 300.0);
 
         let mut s = standing();
         s.speed.x = -300.0;
-        dash_begin(&mut s);
-        dash_launch(&mut s, Vec2 { x: 1.0, y: 0.0 });
+        dash_begin(&mut s, &room(), Input::default(), true);
+        dash_launch(&mut s, Vec2 { x: 1.0, y: 0.0 }, true);
         assert_eq!(s.speed.x, DASH_SPEED);
     }
 
@@ -871,29 +940,29 @@ mod tests {
     fn dash_launch_up_drops_horizontal_speed() {
         let mut s = standing();
         s.speed.x = 300.0;
-        dash_begin(&mut s);
-        dash_launch(&mut s, Vec2 { x: 0.0, y: -1.0 });
+        dash_begin(&mut s, &room(), Input::default(), true);
+        dash_launch(&mut s, Vec2 { x: 0.0, y: -1.0 }, true);
         assert_eq!(s.speed.x, 0.0);
     }
 
     #[test]
     fn dash_launch_turns_to_face_horizontal_dashes() {
         let mut s = standing();
-        dash_begin(&mut s);
-        dash_launch(&mut s, Vec2 { x: -1.0, y: 0.0 });
+        dash_begin(&mut s, &room(), Input::default(), true);
+        dash_launch(&mut s, Vec2 { x: -1.0, y: 0.0 }, true);
         assert_eq!(s.facing, -1);
 
         let mut s = standing();
         s.facing = -1;
-        dash_begin(&mut s);
-        dash_launch(&mut s, Vec2 { x: 0.0, y: -1.0 });
+        dash_begin(&mut s, &room(), Input::default(), true);
+        dash_launch(&mut s, Vec2 { x: 0.0, y: -1.0 }, true);
         assert_eq!(s.facing, -1);
     }
 
     fn dashing(dir: Vec2) -> PlayerState {
         let mut s = standing();
-        dash_begin(&mut s);
-        dash_launch(&mut s, dir);
+        dash_begin(&mut s, &room(), Input::default(), true);
+        dash_launch(&mut s, dir, true);
         s
     }
 
@@ -1096,19 +1165,19 @@ mod tests {
 
     #[test]
     fn can_super_jump_during_a_horizontal_dash() {
-        assert!(can_super_jump(&dashing_right(), true));
+        assert!(can_super_jump(&dashing_right(), &room(), true));
     }
 
     #[test]
     fn can_super_jump_needs_a_jump_press() {
-        assert!(!can_super_jump(&dashing_right(), false));
+        assert!(!can_super_jump(&dashing_right(), &room(), false));
     }
 
     #[test]
     fn can_super_jump_needs_coyote_time() {
         let mut s = dashing_right();
         s.jump_grace_timer = 0.0;
-        assert!(!can_super_jump(&s, true));
+        assert!(!can_super_jump(&s, &room(), true));
     }
 
     #[test]
@@ -1116,11 +1185,11 @@ mod tests {
         let d = 1.0 / 2f32.sqrt();
         let mut s = dashing_right();
         s.dash_dir = Vec2 { x: 0.0, y: -1.0 };
-        assert!(!can_super_jump(&s, true));
+        assert!(!can_super_jump(&s, &room(), true));
         s.dash_dir = Vec2 { x: d, y: -d };
-        assert!(!can_super_jump(&s, true));
+        assert!(!can_super_jump(&s, &room(), true));
         s.dash_dir = Vec2 { x: 0.0, y: 1.0 };
-        assert!(!can_super_jump(&s, true));
+        assert!(!can_super_jump(&s, &room(), true));
     }
 
     #[test]
@@ -1492,6 +1561,193 @@ mod tests {
         assert_eq!(s.speed.x, 0.0);
         assert_eq!(s.wall_speed_retained, 90.0);
         assert_eq!(s.wall_speed_retention_timer, WALL_SPEED_RETENTION_TIME);
+    }
+
+    // an 8 px high tunnel from x = 24 rightwards: she fits ducking, not standing
+    fn tunnel_room() -> Room {
+        let text = "00000000000\n".repeat(16) + "00011111111\n" + "00000000000\n" + &"11111111111\n".repeat(5);
+        Room::from_tiles(IVec2 { x: 0, y: 0 }, &text)
+    }
+
+    fn ducking_at(x: i32, y: i32) -> PlayerState {
+        let mut s = player_at(x, y, 0.0, 0.0);
+        s.ducking = true;
+        s
+    }
+
+    const DOWN: Input = Input { move_x: 0, move_y: 1, jump: false, jump2: false, dash: false, grab: false };
+
+    #[test]
+    fn collides_uses_the_shorter_hitbox_when_ducking() {
+        let room = tunnel_room();
+        assert!(!collides(&ducking_at(40, FLOOR_Y), &room, 0, 0));
+        assert!(collides(&player_at(40, FLOOR_Y, 0.0, 0.0), &room, 0, 0));
+        assert!(collides(&ducking_at(40, FLOOR_Y), &room, 0, 1));
+        assert!(collides(&ducking_at(40, FLOOR_Y), &room, 0, -3));
+    }
+
+    #[test]
+    fn can_unduck_when_not_ducking() {
+        assert!(can_unduck(&player_at(40, FLOOR_Y, 0.0, 0.0), &tunnel_room()));
+    }
+
+    #[test]
+    fn can_unduck_with_room_overhead() {
+        assert!(can_unduck(&ducking_at(8, FLOOR_Y), &tunnel_room()));
+    }
+
+    #[test]
+    fn can_unduck_not_under_a_low_ceiling() {
+        assert!(!can_unduck(&ducking_at(40, FLOOR_Y), &tunnel_room()));
+    }
+
+    #[test]
+    fn hurtbox_is_shorter_when_ducking() {
+        assert_eq!(hurtbox(&ducking_at(100, 50)), Rect { left: 96, top: 44, width: 8, height: 4 });
+    }
+
+    #[test]
+    fn dash_begin_ducks_when_down_is_held() {
+        let mut s = standing();
+        dash_begin(&mut s, &room(), DOWN, true);
+        assert!(s.ducking);
+    }
+
+    #[test]
+    fn dash_begin_stays_standing_without_down() {
+        let mut s = standing();
+        dash_begin(&mut s, &room(), Input::default(), true);
+        assert!(!s.ducking);
+    }
+
+    #[test]
+    fn dash_begin_stays_ducked_on_the_ground() {
+        let mut s = ducking_at(0, FLOOR_Y);
+        dash_begin(&mut s, &room(), Input::default(), true);
+        assert!(s.ducking);
+    }
+
+    #[test]
+    fn dash_begin_stands_up_in_the_air() {
+        let mut s = ducking_at(0, 64);
+        dash_begin(&mut s, &room(), Input::default(), false);
+        assert!(!s.ducking);
+    }
+
+    #[test]
+    fn super_jump_while_ducking_is_a_hyper() {
+        let mut s = dashing_right();
+        s.ducking = true;
+        super_jump(&mut s);
+        assert_eq!(s.speed, Vec2 { x: SUPER_JUMP_H * DUCK_SUPER_JUMP_X_MULT, y: JUMP_SPEED * DUCK_SUPER_JUMP_Y_MULT });
+        assert_eq!(s.var_jump_speed, JUMP_SPEED * DUCK_SUPER_JUMP_Y_MULT);
+        assert!(!s.ducking);
+    }
+
+    #[test]
+    fn can_super_jump_needs_room_to_stand_up() {
+        let mut s = ducking_at(40, FLOOR_Y);
+        s.mode = Mode::Dashing { timer: DASH_TIME };
+        s.dash_dir = Vec2 { x: 1.0, y: 0.0 };
+        s.jump_grace_timer = JUMP_GRACE_TIME;
+        assert!(!can_super_jump(&s, &tunnel_room(), true));
+        s.position.x = 8;
+        assert!(can_super_jump(&s, &tunnel_room(), true));
+    }
+
+    fn launching() -> PlayerState {
+        let mut s = standing();
+        s.mode = Mode::DashStart;
+        s
+    }
+
+    #[test]
+    fn dash_launch_down_diagonal_on_the_ground_slides() {
+        let d = 1.0 / 2f32.sqrt();
+        let mut s = launching();
+        dash_launch(&mut s, Vec2 { x: -d, y: d }, true);
+        assert_eq!(s.speed, Vec2 { x: -d * DASH_SPEED * DODGE_SLIDE_SPEED_MULT, y: 0.0 });
+        assert_eq!(s.dash_dir, Vec2 { x: -1.0, y: 0.0 });
+        assert!(s.ducking);
+    }
+
+    #[test]
+    fn dash_launch_down_diagonal_in_the_air_does_not_slide() {
+        let d = 1.0 / 2f32.sqrt();
+        let mut s = launching();
+        dash_launch(&mut s, Vec2 { x: d, y: d }, false);
+        assert_eq!(s.speed, Vec2 { x: d * DASH_SPEED, y: d * DASH_SPEED });
+        assert_eq!(s.dash_dir, Vec2 { x: d, y: d });
+        assert!(!s.ducking);
+    }
+
+    #[test]
+    fn dash_launch_straight_down_or_sideways_does_not_slide() {
+        let mut s = launching();
+        dash_launch(&mut s, Vec2 { x: 0.0, y: 1.0 }, true);
+        assert_eq!(s.speed, Vec2 { x: 0.0, y: DASH_SPEED });
+        assert!(!s.ducking);
+
+        let mut s = launching();
+        dash_launch(&mut s, Vec2 { x: 1.0, y: 0.0 }, true);
+        assert_eq!(s.speed, Vec2 { x: DASH_SPEED, y: 0.0 });
+        assert!(!s.ducking);
+    }
+
+    #[test]
+    fn step_ducks_when_down_is_held_on_the_ground() {
+        assert!(step(standing(), DOWN, &room()).ducking);
+    }
+
+    #[test]
+    fn step_does_not_duck_in_the_air() {
+        assert!(!step(at_rest(), DOWN, &room()).ducking);
+    }
+
+    #[test]
+    fn step_stands_up_when_down_is_released() {
+        assert!(!step(ducking_at(0, FLOOR_Y), Input::default(), &room()).ducking);
+    }
+
+    #[test]
+    fn step_stays_ducked_while_down_is_held() {
+        assert!(step(ducking_at(0, FLOOR_Y), DOWN, &room()).ducking);
+    }
+
+    #[test]
+    fn step_stays_ducked_under_a_low_ceiling() {
+        assert!(step(ducking_at(40, FLOOR_Y), Input::default(), &tunnel_room()).ducking);
+    }
+
+    #[test]
+    fn step_ducking_on_the_ground_uses_duck_friction() {
+        let mut s = ducking_at(0, FLOOR_Y);
+        s.speed.x = 90.0;
+        s = step(s, Input { move_x: 1, ..DOWN }, &room());
+        assert_eq!(s.speed.x, approach(90.0, 0.0, DUCK_FRICTION * DELTA_TIME));
+    }
+
+    #[test]
+    fn step_stands_up_when_falling() {
+        let mut s = ducking_at(0, 64);
+        s.speed.y = 50.0;
+        assert!(!step(s, DOWN, &room()).ducking);
+    }
+
+    #[test]
+    fn step_stays_ducked_while_rising() {
+        let mut s = ducking_at(0, 64);
+        s.speed.y = -100.0;
+        assert!(step(s, Input::default(), &room()).ducking);
+    }
+
+    #[test]
+    fn step_hyper_from_a_down_dash() {
+        let down_dash = Input { dash: true, ..DOWN };
+        let s = step(dash_for(standing(), 4, down_dash), JUMP_RIGHT, &room());
+        assert_eq!(s.mode, Mode::Normal);
+        assert_eq!(s.speed, Vec2 { x: SUPER_JUMP_H * DUCK_SUPER_JUMP_X_MULT, y: JUMP_SPEED * DUCK_SUPER_JUMP_Y_MULT });
+        assert!(!s.ducking);
     }
 
     #[test]

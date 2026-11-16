@@ -31,6 +31,9 @@ pub const WALL_JUMP_CHECK_DIST: i32 = 3;
 pub const WALL_SPEED_RETENTION_TIME: f32 = 0.06;
 pub const WALL_JUMP_H_SPEED: f32 = MAX_RUN + JUMP_H_BOOST;
 pub const CLIMB_JUMP_BOOST_TIME: f32 = 0.2;
+pub const UPWARD_CORNER_CORRECTION: i32 = 4;
+pub const DASH_CORNER_CORRECTION: i32 = 4;
+pub const CEILING_VAR_JUMP_GRACE: f32 = 0.05;
 // normal hitbox size in pixels for collisions
 pub const HITBOX_WIDTH: i32 = 8;
 pub const HITBOX_HEIGHT: i32 = 11;
@@ -88,6 +91,7 @@ pub struct PlayerState {
     pub dash_refill_cooldown_timer: f32,
     pub dash_dir: Vec2,
     pub before_dash_speed: Vec2,
+    pub dash_started_on_ground: bool,
     pub auto_jump: bool,
     pub dash_held: bool,
     pub freeze_timer: f32,
@@ -120,6 +124,7 @@ impl PlayerState {
             dash_cooldown_timer: 0.0,
             dash_refill_cooldown_timer: 0.0,
             dash_dir: Vec2 { x: 0.0, y: 0.0 },
+            dash_started_on_ground: false,
             before_dash_speed: Vec2 { x: 0.0, y: 0.0 },
             auto_jump: false,
             dash_held: false,
@@ -220,7 +225,55 @@ pub fn approach(value: f32, target: f32, max_move: f32) -> f32 {
     }
 }
 
-pub fn move_h(state: &mut PlayerState, room: &Room, amount: f32) {
+pub fn duck_free_at(state: &PlayerState, room: &Room, dx: i32) -> bool {
+    !room.collide_rect(
+        state.position.x + dx - HITBOX_WIDTH / 2,
+        state.position.y - DUCK_HITBOX_HEIGHT,
+        HITBOX_WIDTH,
+        DUCK_HITBOX_HEIGHT,
+    )
+}
+
+fn dashing(state: &PlayerState) -> bool {
+    matches!(state.mode, Mode::DashStart | Mode::Dashing { .. })
+}
+
+pub fn dash_corner_correction_h(state: &mut PlayerState, room: &Room, ground: bool) -> bool {
+    if !dashing(state) {
+        return false;
+    }
+
+    let dir = sign(state.speed.x) as i32;
+
+    if ground && duck_free_at(state, room, dir) {
+        state.ducking = true;
+        return true;
+    }
+
+    if state.speed.y == 0.0 && state.speed.x != 0.0 {
+        for i in 1..=DASH_CORNER_CORRECTION {
+            for dy in [i, -i] {
+                if !collides(state, room, dir, dy) {
+                    for _ in 0..i {
+                        if collides(state, room, 0, dy.signum()) {
+                            break;
+                        }
+                        state.position.y += dy.signum();
+                    }
+                    if !collides(state, room, dir, 0) {
+                        state.position.x += dir;
+                    }
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
+// ground is whether she was on the ground at the start of the frame
+pub fn move_h(state: &mut PlayerState, room: &Room, amount: f32, ground: bool) {
     let new_remainder = state.remainder.x + amount;
     // C# Math.Round
     let movement_x = new_remainder.round_ties_even() as i32;
@@ -229,6 +282,11 @@ pub fn move_h(state: &mut PlayerState, room: &Room, amount: f32) {
     let step = movement_x.signum();
     for _ in 0..movement_x.abs() {
         if collides(state, room, step, 0) {
+            if dash_corner_correction_h(state, room, ground) {
+                state.remainder.x = 0.0;
+                return;
+            }
+
             if state.wall_speed_retention_timer <= 0.0 {
                 state.wall_speed_retained = state.speed.x;
                 state.wall_speed_retention_timer = WALL_SPEED_RETENTION_TIME;
@@ -252,11 +310,90 @@ pub fn move_v(state: &mut PlayerState, room: &Room, amount: f32) {
     for _ in 0..movement_y.abs() {
         if collides(state, room, 0, step) {
             state.remainder.y = 0.0;
+
+            if state.speed.y < 0.0 {
+                if upward_corner_correction(state, room) {
+                    return;
+                }
+
+                if state.var_jump_timer < VAR_JUMP_TIME - CEILING_VAR_JUMP_GRACE {
+                    state.var_jump_timer = 0.0;
+                }
+            } else if state.speed.y > 0.0 {
+                if dash_corner_correction_down(state, room) {
+                    return;
+                }
+
+                // dash slide
+                if state.dash_dir.x != 0.0 && state.dash_dir.y > 0.0 {
+                    state.dash_dir = Vec2 { x: sign(state.dash_dir.x), y: 0.0 };
+                    state.speed.x *= DODGE_SLIDE_SPEED_MULT;
+                    state.ducking = true;
+                }
+            }
+
             state.speed.y = 0.0;
             return;
         }
         state.position.y += step;
     }
+}
+
+pub fn dash_corner_correction_down(state: &mut PlayerState, room: &Room) -> bool {
+    if !dashing(state) || state.dash_started_on_ground {
+        return false;
+    }
+
+    let mut dirs = Vec::new();
+    if state.speed.x <= 0.0 {
+        dirs.push(-1);
+    }
+    if state.speed.x >= 0.0 {
+        dirs.push(1);
+    }
+
+    for dir in dirs {
+        for i in 1..=DASH_CORNER_CORRECTION {
+            if !collides(state, room, dir * i, 1) {
+                for _ in 0..i {
+                    if collides(state, room, dir, 0) {
+                        break;
+                    }
+                    state.position.x += dir;
+                }
+                if !collides(state, room, 0, 1) {
+                    state.position.y += 1;
+                }
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+pub fn upward_corner_correction(state: &mut PlayerState, room: &Room) -> bool {
+    if state.speed.x <= 0.0 {
+        for i in 1..=UPWARD_CORNER_CORRECTION {
+            if !collides(state, room, -i, -1) {
+                state.position.x -= i;
+                state.position.y -= 1;
+                return true;
+            }
+        }
+    }
+
+    if state.speed.x >= 0.0 {
+        for i in 1..=UPWARD_CORNER_CORRECTION {
+            if !collides(state, room, i, -1) {
+                state.position.x += i;
+                state.position.y -= 1;
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 pub fn wall_at(state: &PlayerState, room: &Room, dir: i8) -> bool {
@@ -390,6 +527,7 @@ pub fn dash_begin(state: &mut PlayerState, room: &Room, input: Input, ground: bo
     state.dash_refill_cooldown_timer = DASH_REFILL_COOLDOWN;
     state.wall_slide_timer = WALL_SLIDE_TIME;
     state.before_dash_speed = state.speed;
+    state.dash_started_on_ground = ground;
     state.speed = Vec2 { x: 0.0, y: 0.0 };
     state.dash_dir = Vec2 { x: 0.0, y: 0.0 };
 
@@ -560,7 +698,7 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
     }
 
     let (speed_x, speed_y) = (state.speed.x, state.speed.y);
-    move_h(&mut state, room, speed_x * DELTA_TIME);
+    move_h(&mut state, room, speed_x * DELTA_TIME, ground);
     move_v(&mut state, room, speed_y * DELTA_TIME);
 
     if room.spikes.iter().any(|s| spikes_kill(&state, s)) || fell_out(&state, room) {
@@ -667,7 +805,7 @@ mod tests {
     #[test]
     fn move_h_small_amount_only_changes_remainder() {
         let mut s = at_rest();
-        move_h(&mut s, &room(), 0.25);
+        move_h(&mut s, &room(), 0.25, false);
         assert_eq!(s.position.x, 0);
         assert_eq!(s.remainder.x, 0.25);
     }
@@ -675,11 +813,11 @@ mod tests {
     #[test]
     fn move_h_rounds_to_whole_pixels() {
         let mut s = at_rest();
-        move_h(&mut s, &room(), 0.75);
+        move_h(&mut s, &room(), 0.75, false);
         assert_eq!(s.position.x, 1);
         assert_eq!(s.remainder.x, -0.25);
 
-        move_h(&mut s, &room(), -2.0);
+        move_h(&mut s, &room(), -2.0, false);
         assert_eq!(s.position.x, -1);
         assert_eq!(s.remainder.x, -0.25);
     }
@@ -687,11 +825,11 @@ mod tests {
     #[test]
     fn move_h_ties_round_to_even_like_csharp() {
         let mut s = at_rest();
-        move_h(&mut s, &room(), 0.5);
+        move_h(&mut s, &room(), 0.5, false);
         assert_eq!(s.position.x, 0);
         assert_eq!(s.remainder.x, 0.5);
 
-        move_h(&mut s, &room(), 1.0);
+        move_h(&mut s, &room(), 1.0, false);
         assert_eq!(s.position.x, 2);
         assert_eq!(s.remainder.x, -0.5);
     }
@@ -772,7 +910,7 @@ mod tests {
         s.position.x = WALL_X - 1;
         s.remainder.x = 0.3;
         s.speed.x = 90.0;
-        move_h(&mut s, &room(), 1.5);
+        move_h(&mut s, &room(), 1.5, false);
         assert_eq!(s.position.x, WALL_X);
         assert_eq!(s.remainder.x, 0.0);
         assert_eq!(s.speed.x, 0.0);
@@ -783,7 +921,7 @@ mod tests {
         let mut s = at_rest();
         s.position.x = WALL_X - 1;
         s.speed.x = 90.0;
-        move_h(&mut s, &room(), 1.25);
+        move_h(&mut s, &room(), 1.25, false);
         assert_eq!(s.position.x, WALL_X);
         assert_eq!(s.remainder.x, 0.25);
         assert_eq!(s.speed.x, 90.0);
@@ -884,7 +1022,7 @@ mod tests {
         let mut s = at_rest();
         s.position = IVec2 { x: LEDGE_X + 1, y: FLOOR_Y + 5 };
         s.speed.x = -90.0;
-        move_h(&mut s, &room(), -3.0);
+        move_h(&mut s, &room(), -3.0, false);
         assert_eq!(s.position.x, LEDGE_X + 1);
         assert_eq!(s.speed.x, 0.0);
     }
@@ -1503,7 +1641,7 @@ mod tests {
     #[test]
     fn move_h_into_a_wall_remembers_her_speed() {
         let mut s = player_at(WALL_X - 1, 100, 120.0, 0.0);
-        move_h(&mut s, &room(), 3.0);
+        move_h(&mut s, &room(), 3.0, false);
         assert_eq!(s.speed.x, 0.0);
         assert_eq!(s.wall_speed_retained, 120.0);
         assert_eq!(s.wall_speed_retention_timer, WALL_SPEED_RETENTION_TIME);
@@ -1514,7 +1652,7 @@ mod tests {
         let mut s = player_at(WALL_X - 1, 100, 50.0, 0.0);
         s.wall_speed_retained = 200.0;
         s.wall_speed_retention_timer = 0.03;
-        move_h(&mut s, &room(), 3.0);
+        move_h(&mut s, &room(), 3.0, false);
         assert_eq!(s.speed.x, 0.0);
         assert_eq!(s.wall_speed_retained, 200.0);
         assert_eq!(s.wall_speed_retention_timer, 0.03);
@@ -1523,7 +1661,7 @@ mod tests {
     #[test]
     fn move_h_without_a_collision_retains_nothing() {
         let mut s = player_at(0, 100, 120.0, 0.0);
-        move_h(&mut s, &room(), 3.0);
+        move_h(&mut s, &room(), 3.0, false);
         assert_eq!(s.wall_speed_retention_timer, 0.0);
     }
 
@@ -1860,6 +1998,261 @@ mod tests {
         s = step(s, LEFT, &room);
         s = step(s, LEFT, &room);
         assert_eq!(s.stamina, 50.0);
+    }
+
+    // a ceiling block spanning x 16..48, y 40..48
+    fn ceiling_room() -> Room {
+        let text = "00000000000\n".repeat(5) + "00111100000\n" + &"00000000000\n".repeat(17);
+        Room::from_tiles(IVec2 { x: 0, y: 0 }, &text)
+    }
+
+    // her head touches the ceiling block's underside at this y
+    const UNDER_CEILING_Y: i32 = 59;
+
+    fn rising_at(x: i32, speed_x: f32) -> PlayerState {
+        player_at(x, UNDER_CEILING_Y, speed_x, -240.0)
+    }
+
+    #[test]
+    fn move_v_up_into_a_corner_slides_around_it() {
+        let mut s = rising_at(50, 0.0);
+        s.remainder.y = 0.25;
+        move_v(&mut s, &ceiling_room(), -4.0);
+        assert_eq!(s.position, IVec2 { x: 52, y: UNDER_CEILING_Y - 1 });
+        assert_eq!(s.speed.y, -240.0);
+        assert_eq!(s.remainder.y, 0.0);
+    }
+
+    #[test]
+    fn corner_correction_reaches_four_pixels() {
+        let room = ceiling_room();
+        let mut s = rising_at(48, 0.0);
+        move_v(&mut s, &room, -1.0);
+        assert_eq!(s.position, IVec2 { x: 52, y: UNDER_CEILING_Y - 1 });
+
+        let mut s = rising_at(47, 0.0);
+        move_v(&mut s, &room, -1.0);
+        assert_eq!(s.position, IVec2 { x: 47, y: UNDER_CEILING_Y });
+        assert_eq!(s.speed.y, 0.0);
+    }
+
+    #[test]
+    fn corner_correction_slides_left_too() {
+        let mut s = rising_at(14, 0.0);
+        move_v(&mut s, &ceiling_room(), -1.0);
+        assert_eq!(s.position, IVec2 { x: 12, y: UNDER_CEILING_Y - 1 });
+    }
+
+    #[test]
+    fn corner_correction_only_slides_the_way_she_is_moving() {
+        let room = ceiling_room();
+        let mut s = rising_at(50, -10.0);
+        move_v(&mut s, &room, -1.0);
+        assert_eq!(s.position, IVec2 { x: 50, y: UNDER_CEILING_Y });
+        assert_eq!(s.speed.y, 0.0);
+
+        let mut s = rising_at(14, 10.0);
+        move_v(&mut s, &room, -1.0);
+        assert_eq!(s.position, IVec2 { x: 14, y: UNDER_CEILING_Y });
+
+        let mut s = rising_at(50, 10.0);
+        move_v(&mut s, &room, -1.0);
+        assert_eq!(s.position, IVec2 { x: 52, y: UNDER_CEILING_Y - 1 });
+    }
+
+    #[test]
+    fn ceiling_bonk_ends_the_variable_jump() {
+        let mut s = rising_at(32, 0.0);
+        s.var_jump_timer = 0.1;
+        move_v(&mut s, &ceiling_room(), -1.0);
+        assert_eq!(s.speed.y, 0.0);
+        assert_eq!(s.var_jump_timer, 0.0);
+    }
+
+    #[test]
+    fn ceiling_bonk_at_the_start_of_a_jump_keeps_the_variable_jump() {
+        let mut s = rising_at(32, 0.0);
+        s.var_jump_timer = 0.18;
+        move_v(&mut s, &ceiling_room(), -1.0);
+        assert_eq!(s.speed.y, 0.0);
+        assert_eq!(s.var_jump_timer, 0.18);
+    }
+
+    #[test]
+    fn corner_correction_keeps_the_variable_jump() {
+        let mut s = rising_at(50, 0.0);
+        s.var_jump_timer = 0.1;
+        move_v(&mut s, &ceiling_room(), -1.0);
+        assert_eq!(s.var_jump_timer, 0.1);
+    }
+
+    #[test]
+    fn landing_does_not_corner_correct() {
+        let mut s = player_at(LEDGE_X, FLOOR_Y, 0.0, 100.0);
+        move_v(&mut s, &room(), 2.0);
+        assert_eq!(s.position, IVec2 { x: LEDGE_X, y: FLOOR_Y });
+        assert_eq!(s.speed.y, 0.0);
+    }
+
+    fn dashing_at(x: i32, y: i32, speed_x: f32, speed_y: f32) -> PlayerState {
+        let mut s = player_at(x, y, speed_x, speed_y);
+        s.mode = Mode::Dashing { timer: 0.1 };
+        s
+    }
+
+    // flush against the right face of the floor block, in the pit
+    const PIT_X: i32 = 44;
+
+    #[test]
+    fn dash_begin_remembers_whether_it_started_on_the_ground() {
+        let mut s = standing();
+        dash_begin(&mut s, &room(), Input::default(), true);
+        assert!(s.dash_started_on_ground);
+
+        let mut s = at_rest();
+        s.dash_started_on_ground = true;
+        dash_begin(&mut s, &room(), Input::default(), false);
+        assert!(!s.dash_started_on_ground);
+    }
+
+    #[test]
+    fn dash_into_a_ledge_just_below_its_top_pops_up_onto_it() {
+        let mut s = dashing_at(PIT_X, FLOOR_Y + 2, -240.0, 0.0);
+        s.remainder.x = 0.25;
+        move_h(&mut s, &room(), -3.0, false);
+        assert_eq!(s.position, IVec2 { x: PIT_X - 1, y: FLOOR_Y });
+        assert_eq!(s.speed.x, -240.0);
+        assert_eq!(s.remainder.x, 0.0);
+        assert_eq!(s.wall_speed_retention_timer, 0.0);
+    }
+
+    #[test]
+    fn dash_corner_correction_reaches_four_pixels() {
+        let mut s = dashing_at(PIT_X, FLOOR_Y + 4, -240.0, 0.0);
+        move_h(&mut s, &room(), -3.0, false);
+        assert_eq!(s.position, IVec2 { x: PIT_X - 1, y: FLOOR_Y });
+
+        let mut s = dashing_at(PIT_X, FLOOR_Y + 5, -240.0, 0.0);
+        move_h(&mut s, &room(), -3.0, false);
+        assert_eq!(s.position, IVec2 { x: PIT_X, y: FLOOR_Y + 5 });
+        assert_eq!(s.speed.x, 0.0);
+    }
+
+    #[test]
+    fn dash_corner_correction_needs_a_dash() {
+        let mut s = player_at(PIT_X, FLOOR_Y + 2, -240.0, 0.0);
+        move_h(&mut s, &room(), -3.0, false);
+        assert_eq!(s.position, IVec2 { x: PIT_X, y: FLOOR_Y + 2 });
+        assert_eq!(s.speed.x, 0.0);
+    }
+
+    #[test]
+    fn dash_corner_correction_needs_a_level_dash() {
+        let mut s = dashing_at(PIT_X, FLOOR_Y + 2, -170.0, -170.0);
+        move_h(&mut s, &room(), -3.0, false);
+        assert_eq!(s.position, IVec2 { x: PIT_X, y: FLOOR_Y + 2 });
+        assert_eq!(s.speed.x, 0.0);
+    }
+
+    #[test]
+    fn duck_free_at_checks_the_ducking_hitbox() {
+        let room = tunnel_room();
+        let s = player_at(20, FLOOR_Y, 0.0, 0.0);
+        assert!(duck_free_at(&s, &room, 1));
+        assert!(collides(&s, &room, 1, 0));
+        assert!(!duck_free_at(&player_at(20, FLOOR_Y - 4, 0.0, 0.0), &room, 1));
+    }
+
+    #[test]
+    fn ground_dash_into_a_low_gap_ducks() {
+        let room = tunnel_room();
+        let mut s = dashing_at(20, FLOOR_Y, 240.0, 0.0);
+        move_h(&mut s, &room, 4.0, true);
+        assert!(s.ducking);
+        assert_eq!(s.position.x, 20);
+        assert_eq!(s.speed.x, 240.0);
+
+        move_h(&mut s, &room, 4.0, true);
+        assert_eq!(s.position.x, 24);
+    }
+
+    #[test]
+    fn air_dash_into_a_low_gap_does_not_duck() {
+        let mut s = dashing_at(20, FLOOR_Y, 240.0, 0.0);
+        move_h(&mut s, &tunnel_room(), 4.0, false);
+        assert!(!s.ducking);
+        assert_eq!(s.speed.x, 0.0);
+    }
+
+    fn air_dashing_down_at(x: i32, speed_x: f32) -> PlayerState {
+        dashing_at(x, FLOOR_Y - 1, speed_x, 240.0)
+    }
+
+    #[test]
+    fn air_dash_down_onto_a_ledge_edge_slips_off() {
+        let mut s = air_dashing_down_at(LEDGE_X - 1, 0.0);
+        s.remainder.y = 0.25;
+        move_v(&mut s, &room(), 4.0);
+        assert_eq!(s.position, IVec2 { x: LEDGE_X + 1, y: FLOOR_Y + 1 });
+        assert_eq!(s.speed.y, 240.0);
+        assert_eq!(s.remainder.y, 0.0);
+    }
+
+    #[test]
+    fn downward_corner_correction_reaches_four_pixels() {
+        let mut s = air_dashing_down_at(LEDGE_X - 3, 0.0);
+        move_v(&mut s, &room(), 4.0);
+        assert_eq!(s.position, IVec2 { x: LEDGE_X + 1, y: FLOOR_Y + 1 });
+
+        let mut s = air_dashing_down_at(LEDGE_X - 4, 0.0);
+        move_v(&mut s, &room(), 4.0);
+        assert_eq!(s.position, IVec2 { x: LEDGE_X - 4, y: FLOOR_Y });
+        assert_eq!(s.speed.y, 0.0);
+    }
+
+    #[test]
+    fn downward_corner_correction_only_slips_the_way_she_is_moving() {
+        let mut s = air_dashing_down_at(LEDGE_X - 1, -10.0);
+        move_v(&mut s, &room(), 4.0);
+        assert_eq!(s.position, IVec2 { x: LEDGE_X - 1, y: FLOOR_Y });
+
+        let mut s = air_dashing_down_at(LEDGE_X - 1, 10.0);
+        move_v(&mut s, &room(), 4.0);
+        assert_eq!(s.position, IVec2 { x: LEDGE_X + 1, y: FLOOR_Y + 1 });
+    }
+
+    #[test]
+    fn downward_corner_correction_not_for_ground_dashes_or_falls() {
+        let mut s = air_dashing_down_at(LEDGE_X - 1, 0.0);
+        s.dash_started_on_ground = true;
+        move_v(&mut s, &room(), 4.0);
+        assert_eq!(s.position, IVec2 { x: LEDGE_X - 1, y: FLOOR_Y });
+
+        let mut s = player_at(LEDGE_X - 1, FLOOR_Y - 1, 0.0, 240.0);
+        move_v(&mut s, &room(), 4.0);
+        assert_eq!(s.position, IVec2 { x: LEDGE_X - 1, y: FLOOR_Y });
+        assert_eq!(s.speed.y, 0.0);
+    }
+
+    #[test]
+    fn landing_after_a_down_diagonal_dash_slides() {
+        let d = 1.0 / 2f32.sqrt();
+        let mut s = player_at(0, FLOOR_Y - 1, 100.0, 200.0);
+        s.dash_dir = Vec2 { x: d, y: d };
+        move_v(&mut s, &room(), 4.0);
+        assert_eq!(s.position.y, FLOOR_Y);
+        assert_eq!(s.speed, Vec2 { x: 100.0 * DODGE_SLIDE_SPEED_MULT, y: 0.0 });
+        assert_eq!(s.dash_dir, Vec2 { x: 1.0, y: 0.0 });
+        assert!(s.ducking);
+    }
+
+    #[test]
+    fn landing_after_a_straight_down_dash_does_not_slide() {
+        let mut s = player_at(0, FLOOR_Y - 1, 100.0, 200.0);
+        s.dash_dir = Vec2 { x: 0.0, y: 1.0 };
+        move_v(&mut s, &room(), 4.0);
+        assert_eq!(s.speed, Vec2 { x: 100.0, y: 0.0 });
+        assert!(!s.ducking);
     }
 
     #[test]

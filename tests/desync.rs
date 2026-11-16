@@ -193,56 +193,14 @@ fn input_from_row(row: &str) -> Input {
     input
 }
 
-// frames of the community TAS's first room that match the game. raise it as the simulator improves
-const COMMUNITY_LVL_1_MATCHED: usize = 87;
-
-// run with: cargo test --test desync community -- --nocapture
+// the community TAS's first room, up to where the room transition takes control away
 #[test]
-fn community_lvl_1_progress() {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/traces/community/1A_lvl_1.txt");
-    let Ok(text) = std::fs::read_to_string(path) else {
-        eprintln!("community lvl_1: skipped. no trace at {path}");
-        return;
-    };
-    let Some(room) = common::room("lvl_1") else {
-        eprintln!("community lvl_1: skipped. Celeste install could not be found, try setting CELESTE_DIR");
-        return;
-    };
-
-    // stop where the room transition takes control away
-    let rows: Vec<&str> = text
+fn community_lvl_1() {
+    let text: String = include_str!("traces/community/1A_lvl_1.txt")
         .lines()
-        .skip(1)
-        .take_while(|row| !column(row, 7).contains("NoControl"))
+        .take_while(|row| !row.contains("NoControl"))
+        .map(|row| format!("{row}\n"))
         .collect();
-    let total = rows.len() - 1;
-
-    let mut state = start_state(&text);
-    let mut matched = 0;
-    for &row in &rows[1..] {
-        let input = input_from_row(row);
-        state = step(state, input, &room);
-        let expected = Observed {
-            position: column(row, 4).to_string(),
-            speed: column(row, 5).to_string(),
-            mode: column(row, 6).to_string(),
-            dead: is_dead(row),
-        };
-        let actual = observe(&state);
-        if actual != expected {
-            eprintln!(
-                "community lvl_1: desync on frame {} (inputs {})\n  simulator: {actual:?}\n  game:      {expected:?}",
-                matched + 1,
-                column(row, 1).trim()
-            );
-            break;
-        }
-        matched += 1;
-    }
-
-    eprintln!("community lvl_1: matched {matched} of {total} frames");
-    assert!(
-        matched >= COMMUNITY_LVL_1_MATCHED,
-        "community lvl_1: matched {matched} frames, used to match {COMMUNITY_LVL_1_MATCHED}"
-    );
+    let inputs: Vec<Input> = text.lines().skip(2).map(input_from_row).collect();
+    assert_matches_trace_in("lvl_1", "community lvl_1", &text, &inputs);
 }

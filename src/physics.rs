@@ -893,7 +893,7 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
         nudge_v(&mut state, room, JUMP_THRU_ASSIST_SPEED * DELTA_TIME);
     }
 
-    if state.speed.y > 0.0 && !ground && can_unduck(&state, room) {
+    if state.speed.y > 0.0 && !ground && input.move_y != 1 && can_unduck(&state, room) {
         state.ducking = false;
     }
 
@@ -2102,7 +2102,14 @@ mod tests {
     fn step_stands_up_when_falling() {
         let mut s = ducking_at(0, 64);
         s.speed.y = 50.0;
-        assert!(!step(s, DOWN, &room()).ducking);
+        assert!(!step(s, Input::default(), &room()).ducking);
+    }
+
+    #[test]
+    fn step_stays_ducked_when_falling_with_down_held() {
+        let mut s = ducking_at(0, 64);
+        s.speed.y = 50.0;
+        assert!(step(s, DOWN, &room()).ducking);
     }
 
     #[test]

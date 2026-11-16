@@ -172,3 +172,76 @@ fn fall_out_of_the_room() {
     let inputs = expand(&[(37, RIGHT)]);
     assert_matches_trace_in("lvl_3", "11_fall_out", include_str!("traces/11_fall_out.txt"), &inputs);
 }
+
+// the trace's Inputs column looks like "3/   5,R,X"
+fn input_from_row(row: &str) -> Input {
+    let (_, line) = column(row, 1).split_once('/').expect("bad inputs column");
+    let mut input = NONE;
+    for key in line.split(',').skip(1) {
+        match key.trim() {
+            "L" => input.move_x = -1,
+            "R" => input.move_x = 1,
+            "U" => input.move_y = -1,
+            "D" => input.move_y = 1,
+            "J" | "K" => input.jump = true,
+            "X" | "C" => input.dash = true,
+            // grab isn't simulated yet
+            _ => {}
+        }
+    }
+    input
+}
+
+// frames of the community TAS's first room that match the game. raise it as the simulator improves
+const COMMUNITY_LVL_1_MATCHED: usize = 5;
+
+// run with: cargo test --test desync community -- --nocapture
+#[test]
+fn community_lvl_1_progress() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/traces/community/1A_lvl_1.txt");
+    let Ok(text) = std::fs::read_to_string(path) else {
+        eprintln!("community lvl_1: skipped. no trace at {path}");
+        return;
+    };
+    let Some(room) = common::room("lvl_1") else {
+        eprintln!("community lvl_1: skipped. Celeste install could not be found, try setting CELESTE_DIR");
+        return;
+    };
+
+    // stop where the room transition takes control away
+    let rows: Vec<&str> = text
+        .lines()
+        .skip(1)
+        .take_while(|row| !column(row, 7).contains("NoControl"))
+        .collect();
+    let total = rows.len() - 1;
+
+    let mut state = start_state(&text);
+    let mut matched = 0;
+    for &row in &rows[1..] {
+        let input = input_from_row(row);
+        state = step(state, input, &room);
+        let expected = Observed {
+            position: column(row, 4).to_string(),
+            speed: column(row, 5).to_string(),
+            mode: column(row, 6).to_string(),
+            dead: is_dead(row),
+        };
+        let actual = observe(&state);
+        if actual != expected {
+            eprintln!(
+                "community lvl_1: desync on frame {} (inputs {})\n  simulator: {actual:?}\n  game:      {expected:?}",
+                matched + 1,
+                column(row, 1).trim()
+            );
+            break;
+        }
+        matched += 1;
+    }
+
+    eprintln!("community lvl_1: matched {matched} of {total} frames");
+    assert!(
+        matched >= COMMUNITY_LVL_1_MATCHED,
+        "community lvl_1: matched {matched} frames, used to match {COMMUNITY_LVL_1_MATCHED}"
+    );
+}

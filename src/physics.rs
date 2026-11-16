@@ -24,6 +24,7 @@ pub const DASH_COOLDOWN: f32 = 0.2;
 pub const DASH_REFILL_COOLDOWN: f32 = 0.1;
 pub const DASH_FREEZE_TIME: f32 = 0.05;
 pub const MAX_DASHES: u8 = 1;
+pub const SUPER_JUMP_H: f32 = 260.0;
 
 // normal hitbox size in pixels for collisions
 pub const HITBOX_WIDTH: i32 = 8;
@@ -233,6 +234,21 @@ pub fn aim_vector(input: Input, facing: i8) -> Vec2 {
     }
 }
 
+pub fn can_super_jump(state: &PlayerState, jump_pressed: bool) -> bool {
+    jump_pressed && state.jump_grace_timer > 0.0 && state.dash_dir.y == 0.0
+}
+
+pub fn super_jump(state: &mut PlayerState) {
+    state.jump_grace_timer = 0.0;
+    state.var_jump_timer = VAR_JUMP_TIME;
+    state.auto_jump = false;
+    state.wall_slide_timer = WALL_SLIDE_TIME;
+    state.speed.x = SUPER_JUMP_H * state.facing as f32;
+    state.speed.y = JUMP_SPEED;
+    state.var_jump_speed = state.speed.y;
+    state.mode = Mode::Normal;
+}
+
 pub fn can_dash(state: &PlayerState, dash_pressed: bool) -> bool {
     dash_pressed && state.dash_cooldown_timer <= 0.0 && state.dashes > 0
 }
@@ -345,7 +361,9 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
 
     match state.mode {
         Mode::Normal => {
-            if can_dash(&state, dash_pressed) {
+            if can_super_jump(&state, jump_pressed) {
+                super_jump(&mut state);
+            } else if can_dash(&state, dash_pressed) {
                 dash_begin(&mut state);
             } else {
                 normal_update(&mut state, room, input, ground, jump_pressed);
@@ -357,7 +375,9 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
         }
         
         Mode::Dashing { timer } => {
-            if timer > 0.0 {
+            if can_super_jump(&state, jump_pressed) {
+                super_jump(&mut state);
+            } else if timer > 0.0 {
                 state.mode = Mode::Dashing { timer: timer - DELTA_TIME };
             } else {
                 dash_end(&mut state);
@@ -975,6 +995,118 @@ mod tests {
     fn falling_inside_the_room_is_not_death() {
         let s = step(player_at(60, 150, 0.0, 160.0), Input::default(), &room());
         assert!(!s.dead);
+    }
+
+    fn dashing_right() -> PlayerState {
+        let mut s = standing();
+        s.mode = Mode::Dashing { timer: DASH_TIME };
+        s.dash_dir = Vec2 { x: 1.0, y: 0.0 };
+        s.speed = Vec2 { x: DASH_SPEED, y: 0.0 };
+        s.jump_grace_timer = JUMP_GRACE_TIME;
+        s
+    }
+
+    #[test]
+    fn can_super_jump_during_a_horizontal_dash() {
+        assert!(can_super_jump(&dashing_right(), true));
+    }
+
+    #[test]
+    fn can_super_jump_needs_a_jump_press() {
+        assert!(!can_super_jump(&dashing_right(), false));
+    }
+
+    #[test]
+    fn can_super_jump_needs_coyote_time() {
+        let mut s = dashing_right();
+        s.jump_grace_timer = 0.0;
+        assert!(!can_super_jump(&s, true));
+    }
+
+    #[test]
+    fn can_super_jump_not_in_a_vertical_or_diagonal_dash() {
+        let d = 1.0 / 2f32.sqrt();
+        let mut s = dashing_right();
+        s.dash_dir = Vec2 { x: 0.0, y: -1.0 };
+        assert!(!can_super_jump(&s, true));
+        s.dash_dir = Vec2 { x: d, y: -d };
+        assert!(!can_super_jump(&s, true));
+        s.dash_dir = Vec2 { x: 0.0, y: 1.0 };
+        assert!(!can_super_jump(&s, true));
+    }
+
+    #[test]
+    fn super_jump_launches_the_way_she_faces() {
+        let mut s = dashing_right();
+        super_jump(&mut s);
+        assert_eq!(s.speed, Vec2 { x: SUPER_JUMP_H, y: JUMP_SPEED });
+
+        let mut s = dashing_right();
+        s.facing = -1;
+        super_jump(&mut s);
+        assert_eq!(s.speed, Vec2 { x: -SUPER_JUMP_H, y: JUMP_SPEED });
+    }
+
+    #[test]
+    fn super_jump_ends_the_dash_and_starts_a_variable_jump() {
+        let mut s = dashing_right();
+        s.auto_jump = true;
+        s.wall_slide_timer = 0.5;
+        super_jump(&mut s);
+        assert_eq!(s.mode, Mode::Normal);
+        assert_eq!(s.jump_grace_timer, 0.0);
+        assert_eq!(s.var_jump_timer, VAR_JUMP_TIME);
+        assert_eq!(s.var_jump_speed, JUMP_SPEED);
+        assert_eq!(s.wall_slide_timer, WALL_SLIDE_TIME);
+        assert!(!s.auto_jump);
+    }
+
+    fn dash_for(start: PlayerState, frames: usize, input: Input) -> PlayerState {
+        let room = room();
+        let mut s = start;
+        for _ in 0..frames {
+            s = step(s, input, &room);
+        }
+        s
+    }
+
+    const DASH_RIGHT: Input = Input { move_x: 1, move_y: 0, jump: false, dash: true };
+    const JUMP_RIGHT: Input = Input { move_x: 1, move_y: 0, jump: true, dash: false };
+
+    #[test]
+    fn step_super_jumps_out_of_a_dash() {
+        let s = step(dash_for(standing(), 5, DASH_RIGHT), JUMP_RIGHT, &room());
+        assert_eq!(s.mode, Mode::Normal);
+        assert_eq!(s.speed, Vec2 { x: SUPER_JUMP_H, y: JUMP_SPEED });
+    }
+
+    #[test]
+    fn step_super_jumps_on_the_launch_frame() {
+        let s = step(dash_for(standing(), 4, DASH_RIGHT), JUMP_RIGHT, &room());
+        assert_eq!(s.mode, Mode::Normal);
+        assert_eq!(s.speed, Vec2 { x: SUPER_JUMP_H, y: JUMP_SPEED });
+    }
+
+    #[test]
+    fn step_super_jumps_on_the_last_dash_frame() {
+        let s = step(dash_for(standing(), 14, DASH_RIGHT), JUMP_RIGHT, &room());
+        assert_eq!(s.mode, Mode::Normal);
+        assert_eq!(s.speed, Vec2 { x: SUPER_JUMP_H, y: JUMP_SPEED });
+    }
+
+    #[test]
+    fn step_no_super_jump_in_the_air() {
+        let s = step(dash_for(at_rest(), 5, DASH_RIGHT), JUMP_RIGHT, &room());
+        assert!(matches!(s.mode, Mode::Dashing { .. }));
+        assert_eq!(s.speed, Vec2 { x: DASH_SPEED, y: 0.0 });
+    }
+
+    #[test]
+    fn step_no_super_jump_out_of_an_up_dash() {
+        let up_dash = Input { move_x: 0, move_y: -1, jump: false, dash: true };
+        let s = step(dash_for(standing(), 5, up_dash), JUMP_RIGHT, &room());
+        assert!(matches!(s.mode, Mode::Dashing { .. }));
+        assert_eq!(s.speed, Vec2 { x: 0.0, y: -DASH_SPEED });
     }
 
     #[test]

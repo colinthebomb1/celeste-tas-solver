@@ -173,7 +173,7 @@ fn dash_up_held_one_frame_short() {
 
 #[test]
 fn fall_out_of_the_room() {
-    let inputs = expand(&[(37, RIGHT)]);
+    let inputs = expand(&[(48, RIGHT)]);
     assert_matches_trace_in("lvl_3", "11_fall_out", include_str!("traces/11_fall_out.txt"), &inputs);
 }
 
@@ -210,7 +210,7 @@ fn community_lvl_1() {
 }
 
 // frames of the whole chapter that match the game so far. raise it as the simulator improves
-const CHAPTER_1A_MATCHED: usize = 132;
+const CHAPTER_1A_MATCHED: usize = 338;
 
 // one simulation of the community TAS through every room of 1A.
 // run with: cargo test --test desync chapter -- --nocapture

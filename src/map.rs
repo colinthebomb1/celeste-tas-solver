@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::physics::IVec2;
-use crate::room::{Chapter, Direction, Room, Spikes};
+use crate::room::{jump_thru, Chapter, Direction, Rect, Room, Spikes};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MapError {
@@ -254,6 +254,7 @@ fn room_from_level(level: &Element) -> Result<Room, MapError> {
         room.set_size(width, height);
     }
     room.spikes = load_spikes(level, origin)?;
+    room.jump_thrus = load_jump_thrus(level, origin)?;
     
     Ok(room)
 }
@@ -288,6 +289,24 @@ pub fn load_spikes(level: &Element, origin: IVec2) -> Result<Vec<Spikes>, MapErr
     Ok(spikes)
 }
 
+pub fn load_jump_thrus(level: &Element, origin: IVec2) -> Result<Vec<Rect>, MapError> {
+    let Some(entities) = level.child("entities") else {
+        return Ok(Vec::new());
+    };
+
+    let mut jump_thrus = Vec::new();
+
+    for entity in entities.children.iter().filter(|entity| entity.name == "jumpThru") {
+        let x = entity.int("x").ok_or(MapError::MissingField("x"))?;
+        let y = entity.int("y").ok_or(MapError::MissingField("y"))?;
+        let width = entity.int("width").ok_or(MapError::MissingField("width"))?;
+
+        jump_thrus.push(jump_thru(origin.x + x, origin.y + y, width));
+    }
+
+    Ok(jump_thrus)
+}
+
 pub fn load_map(path: &Path) -> Result<Element, MapError> {
     let bytes = std::fs::read(path).map_err(|e| MapError::Io(e.to_string()))?;
     parse_map(&bytes)
@@ -305,10 +324,10 @@ pub fn find_celeste_dir() -> Option<PathBuf> {
 mod tests {
     use super::*;
 
-    const LOOKUP: [&str; 22] = [
+    const LOOKUP: [&str; 23] = [
         "Map", "levels", "level", "name", "x", "y", "solids", "innerText", "room_a", "room_b",
         "flag", "big", "ratio", "note", "entities", "spikesUp", "spikesDown", "spikesLeft",
-        "spikesRight", "width", "height", "strawberry",
+        "spikesRight", "width", "height", "strawberry", "jumpThru",
     ];
 
     fn string(s: &str) -> Vec<u8> {
@@ -641,6 +660,24 @@ mod tests {
                 Spikes::new(Direction::Right, 336, -152, 40),
             ]
         );
+    }
+
+    #[test]
+    fn load_room_reads_jump_thrus_in_world_coordinates() {
+        let map = map_with_entities(&[
+            entity("jumpThru", 8, 160, Some(("width", 40))),
+            entity("strawberry", 1, 1, None),
+            entity("jumpThru", 0, 16, Some(("width", 8))),
+        ]);
+        let room = load_room(&map, "room_b").unwrap();
+        assert_eq!(room.jump_thrus, vec![jump_thru(328, -24, 40), jump_thru(320, -168, 8)]);
+        assert!(room.spikes.is_empty());
+    }
+
+    #[test]
+    fn load_room_jump_thru_missing_its_width() {
+        let map = map_with_entities(&[entity("jumpThru", 8, 160, None)]);
+        assert_eq!(load_room(&map, "room_b"), Err(MapError::MissingField("width")));
     }
 
     #[test]

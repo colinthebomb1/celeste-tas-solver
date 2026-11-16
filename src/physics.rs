@@ -49,6 +49,8 @@ pub const HURTBOX_HEIGHT: i32 = 9;
 pub const DUCK_HITBOX_HEIGHT: i32 = 6;
 pub const DUCK_HURTBOX_HEIGHT: i32 = 4;
 pub const DUCK_FRICTION: f32 = 500.0;
+pub const JUMP_THRU_ASSIST_SPEED: f32 = -40.0;
+pub const DASH_H_JUMP_THRU_NUDGE: i32 = 6;
 pub const DODGE_SLIDE_SPEED_MULT: f32 = 1.2;
 pub const DUCK_SUPER_JUMP_X_MULT: f32 = 1.25;
 pub const DUCK_SUPER_JUMP_Y_MULT: f32 = 0.5;
@@ -230,8 +232,36 @@ pub fn fell_out(state: &PlayerState, room: &Room) -> bool {
     state.position.y - HITBOX_HEIGHT > room.bottom() + 4
 }
 
+fn hitbox(state: &PlayerState, dx: i32, dy: i32) -> Rect {
+    let height = hitbox_height(state);
+
+    Rect {
+        left: state.position.x + dx - HITBOX_WIDTH / 2,
+        top: state.position.y + dy - height,
+        width: HITBOX_WIDTH,
+        height,
+    }
+}
+
+pub fn touches_jump_thru(state: &PlayerState, room: &Room, dx: i32, dy: i32) -> bool {
+    let moved = hitbox(state, dx, dy);
+    room.jump_thrus.iter().any(|jump_thru| jump_thru.overlaps(&moved))
+}
+
+pub fn enters_jump_thru(state: &PlayerState, room: &Room, dx: i32, dy: i32) -> bool {
+    let now = hitbox(state, 0, 0);
+    let moved = hitbox(state, dx, dy);
+    room.jump_thrus
+        .iter()
+        .any(|jump_thru| !jump_thru.overlaps(&now) && jump_thru.overlaps(&moved))
+}
+
+pub fn floor_below(state: &PlayerState, room: &Room, dx: i32) -> bool {
+    collides(state, room, dx, 1) || enters_jump_thru(state, room, dx, 1)
+}
+
 pub fn on_ground(state: &PlayerState, room: &Room) -> bool {
-    state.speed.y >= 0.0 && collides(state, room, 0, 1)
+    state.speed.y >= 0.0 && floor_below(state, room, 0)
 }
 
 pub fn approach(value: f32, target: f32, max_move: f32) -> f32 {
@@ -326,7 +356,7 @@ pub fn move_v(state: &mut PlayerState, room: &Room, amount: f32) {
 
     let step = movement_y.signum();
     for _ in 0..movement_y.abs() {
-        if collides(state, room, 0, step) {
+        if blocked_v(state, room, step) {
             state.remainder.y = 0.0;
 
             if state.speed.y < 0.0 {
@@ -358,6 +388,41 @@ pub fn move_v(state: &mut PlayerState, room: &Room, amount: f32) {
     }
 }
 
+// jump-throughs only block her on the way down
+fn blocked_v(state: &PlayerState, room: &Room, step: i32) -> bool {
+    collides(state, room, 0, step) || (step > 0 && enters_jump_thru(state, room, 0, step))
+}
+
+pub fn nudge_v(state: &mut PlayerState, room: &Room, amount: f32) {
+    let new_remainder = state.remainder.y + amount;
+    let movement_y = new_remainder.round_ties_even() as i32;
+    state.remainder.y = new_remainder - (movement_y as f32);
+
+    let step = movement_y.signum();
+    for _ in 0..movement_y.abs() {
+        if blocked_v(state, room, step) {
+            state.remainder.y = 0.0;
+            return;
+        }
+        state.position.y += step;
+    }
+}
+
+pub fn dash_jump_thru_nudge(state: &mut PlayerState, room: &Room) {
+    for jump_thru in &room.jump_thrus {
+        let depth = state.position.y - jump_thru.top;
+
+        if jump_thru.overlaps(&hitbox(state, 0, 0)) && depth <= DASH_H_JUMP_THRU_NUDGE {
+            for _ in 0..depth {
+                if collides(state, room, 0, -1) {
+                    break;
+                }
+                state.position.y -= 1;
+            }
+        }
+    }
+}
+
 pub fn dash_corner_correction_down(state: &mut PlayerState, room: &Room) -> bool {
     if !dashing(state) || state.dash_started_on_ground {
         return false;
@@ -373,14 +438,14 @@ pub fn dash_corner_correction_down(state: &mut PlayerState, room: &Room) -> bool
 
     for dir in dirs {
         for i in 1..=DASH_CORNER_CORRECTION {
-            if !collides(state, room, dir * i, 1) {
+            if !floor_below(state, room, dir * i) {
                 for _ in 0..i {
                     if collides(state, room, dir, 0) {
                         break;
                     }
                     state.position.x += dir;
                 }
-                if !collides(state, room, 0, 1) {
+                if !blocked_v(state, room, 1) {
                     state.position.y += 1;
                 }
                 return true;
@@ -783,6 +848,10 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
         state.var_jump_timer -= DELTA_TIME;
     }
 
+    if dashing(&state) && state.dash_dir.y == 0.0 {
+        dash_jump_thru_nudge(&mut state, room);
+    }
+
     match state.mode {
         Mode::Normal => {
             if can_dash(&state, dash_pressed) {
@@ -813,6 +882,10 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
                 dash_end(&mut state);
             }
         }
+    }
+
+    if !ground && state.speed.y <= 0.0 && touches_jump_thru(&state, room, 0, 0) {
+        nudge_v(&mut state, room, JUMP_THRU_ASSIST_SPEED * DELTA_TIME);
     }
 
     if state.speed.y > 0.0 && !ground && can_unduck(&state, room) {
@@ -2594,6 +2667,126 @@ mod tests {
         track_buttons(&mut s, Input::default());
         assert!(!s.jump2_held);
         assert!(!s.dash_held);
+    }
+
+    // the usual room with a platform over the pit, spanning x 40..80 with its top at y 120
+    const PLATFORM_Y: i32 = 120;
+
+    fn platform_room() -> Room {
+        let mut room = room();
+        room.jump_thrus.push(crate::room::jump_thru(40, PLATFORM_Y, 40));
+        room
+    }
+
+    #[test]
+    fn standing_on_a_jump_thru_is_on_the_ground() {
+        let room = platform_room();
+        assert!(on_ground(&player_at(60, PLATFORM_Y, 0.0, 0.0), &room));
+        assert!(!on_ground(&player_at(60, PLATFORM_Y - 1, 0.0, 0.0), &room));
+        assert!(!on_ground(&player_at(30, PLATFORM_Y, 0.0, 0.0), &room));
+    }
+
+    #[test]
+    fn inside_a_jump_thru_is_not_on_the_ground() {
+        assert!(!on_ground(&player_at(60, PLATFORM_Y + 2, 0.0, 0.0), &platform_room()));
+    }
+
+    #[test]
+    fn falling_onto_a_jump_thru_lands_on_it() {
+        let mut s = player_at(60, PLATFORM_Y - 2, 0.0, 100.0);
+        move_v(&mut s, &platform_room(), 5.0);
+        assert_eq!(s.position.y, PLATFORM_Y);
+        assert_eq!(s.speed.y, 0.0);
+    }
+
+    #[test]
+    fn rising_goes_through_a_jump_thru() {
+        let mut s = player_at(60, PLATFORM_Y + 15, 0.0, -100.0);
+        move_v(&mut s, &platform_room(), -20.0);
+        assert_eq!(s.position.y, PLATFORM_Y - 5);
+        assert_eq!(s.speed.y, -100.0);
+    }
+
+    #[test]
+    fn falling_while_inside_a_jump_thru_keeps_falling() {
+        let mut s = player_at(60, PLATFORM_Y + 2, 0.0, 100.0);
+        move_v(&mut s, &platform_room(), 5.0);
+        assert_eq!(s.position.y, PLATFORM_Y + 7);
+        assert_eq!(s.speed.y, 100.0);
+    }
+
+    #[test]
+    fn jump_thrus_do_not_block_sideways_movement() {
+        let mut s = player_at(30, PLATFORM_Y + 2, 100.0, 0.0);
+        move_h(&mut s, &platform_room(), 20.0, false);
+        assert_eq!(s.position.x, 50);
+        assert_eq!(s.speed.x, 100.0);
+    }
+
+    fn exact_y(s: &PlayerState) -> f32 {
+        s.position.y as f32 + s.remainder.y
+    }
+
+    #[test]
+    fn step_rising_through_a_jump_thru_is_pushed_up() {
+        let start = player_at(60, PLATFORM_Y + 3, 0.0, -50.0);
+        let with = step(start, Input::default(), &platform_room());
+        let without = step(start, Input::default(), &room());
+        let push = exact_y(&with) - exact_y(&without);
+        assert!((push - JUMP_THRU_ASSIST_SPEED * DELTA_TIME).abs() < 1e-4, "pushed {push}");
+    }
+
+    #[test]
+    fn step_no_push_when_falling_through_a_jump_thru() {
+        let start = player_at(60, PLATFORM_Y + 3, 0.0, 50.0);
+        let with = step(start, Input::default(), &platform_room());
+        let without = step(start, Input::default(), &room());
+        assert_eq!(with, without);
+    }
+
+    #[test]
+    fn step_stands_on_a_jump_thru() {
+        let room = platform_room();
+        let mut s = player_at(60, PLATFORM_Y, 0.0, 0.0);
+        for _ in 0..10 {
+            s = step(s, Input::default(), &room);
+        }
+        assert_eq!(s.position, IVec2 { x: 60, y: PLATFORM_Y });
+        assert_eq!(s.jump_grace_timer, JUMP_GRACE_TIME);
+    }
+
+    #[test]
+    fn step_jumps_off_a_jump_thru() {
+        let s = step(player_at(60, PLATFORM_Y, 0.0, 0.0), JUMP, &platform_room());
+        assert_eq!(s.speed.y, JUMP_SPEED);
+    }
+
+    #[test]
+    fn level_dash_clipping_a_jump_thru_is_lifted_onto_it() {
+        let mut s = dashing_at(60, PLATFORM_Y + 4, DASH_SPEED, 0.0);
+        s.dash_dir = Vec2 { x: 1.0, y: 0.0 };
+        s = step(s, Input::default(), &platform_room());
+        assert_eq!(s.position.y, PLATFORM_Y);
+    }
+
+    #[test]
+    fn dash_jump_thru_nudge_reaches_six_pixels() {
+        let room = platform_room();
+        let mut s = player_at(60, PLATFORM_Y + 6, 0.0, 0.0);
+        dash_jump_thru_nudge(&mut s, &room);
+        assert_eq!(s.position.y, PLATFORM_Y);
+
+        let mut s = player_at(60, PLATFORM_Y + 7, 0.0, 0.0);
+        dash_jump_thru_nudge(&mut s, &room);
+        assert_eq!(s.position.y, PLATFORM_Y + 7);
+    }
+
+    #[test]
+    fn dash_up_through_a_jump_thru_is_not_lifted() {
+        let mut s = dashing_at(60, PLATFORM_Y + 4, 0.0, -DASH_SPEED);
+        s.dash_dir = Vec2 { x: 0.0, y: -1.0 };
+        let with = step(s, Input::default(), &platform_room());
+        assert_eq!(with.position.y, PLATFORM_Y + 4 - 5);
     }
 
     #[test]

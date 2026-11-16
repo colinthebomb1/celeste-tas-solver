@@ -2,6 +2,7 @@ use crate::physics::IVec2;
 
 pub const TILE_SIZE: i32 = 8;
 pub const SCREEN_HEIGHT: i32 = 180;
+pub const JUMP_THRU_HEIGHT: i32 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
@@ -90,6 +91,12 @@ pub struct Room {
     // tile (x, y) is at index y * width + x
     solid: Vec<bool>,
     pub spikes: Vec<Spikes>,
+    // platforms she can jump up through and stand on
+    pub jump_thrus: Vec<Rect>,
+}
+
+pub fn jump_thru(x: i32, y: i32, width: i32) -> Rect {
+    Rect { left: x, top: y, width, height: JUMP_THRU_HEIGHT }
 }
 
 impl Room {
@@ -118,6 +125,7 @@ impl Room {
             height,
             solid,
             spikes: Vec::new(),
+            jump_thrus: Vec::new(),
         };
         room.set_size(width as i32 * TILE_SIZE, height as i32 * TILE_SIZE);
         room

@@ -4,7 +4,7 @@ use celeste_tas_solver::Vec2;
 
 mod common;
 
-const NONE: Input = Input { move_x: 0, move_y: 0, jump: false, jump2: false, dash: false };
+const NONE: Input = Input { move_x: 0, move_y: 0, jump: false, jump2: false, dash: false, grab: false };
 const RIGHT: Input = Input { move_x: 1, ..NONE };
 const JUMP: Input = Input { jump: true, ..NONE };
 const RIGHT_JUMP: Input = Input { move_x: 1, jump: true, ..NONE };
@@ -186,7 +186,7 @@ fn input_from_row(row: &str) -> Input {
             "J" => input.jump = true,
             "K" => input.jump2 = true,
             "X" | "C" => input.dash = true,
-            // grab isn't simulated yet
+            "G" => input.grab = true,
             _ => {}
         }
     }
@@ -194,7 +194,7 @@ fn input_from_row(row: &str) -> Input {
 }
 
 // frames of the community TAS's first room that match the game. raise it as the simulator improves
-const COMMUNITY_LVL_1_MATCHED: usize = 19;
+const COMMUNITY_LVL_1_MATCHED: usize = 40;
 
 // run with: cargo test --test desync community -- --nocapture
 #[test]

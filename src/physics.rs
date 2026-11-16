@@ -25,6 +25,9 @@ pub const DASH_REFILL_COOLDOWN: f32 = 0.1;
 pub const DASH_FREEZE_TIME: f32 = 0.05;
 pub const MAX_DASHES: u8 = 1;
 pub const SUPER_JUMP_H: f32 = 260.0;
+pub const CLIMB_MAX_STAMINA: f32 = 110.0;
+pub const CLIMB_JUMP_COST: f32 = 110.0 / 4.0;
+pub const WALL_JUMP_CHECK_DIST: i32 = 3;
 
 // normal hitbox size in pixels for collisions
 pub const HITBOX_WIDTH: i32 = 8;
@@ -60,6 +63,7 @@ pub struct PlayerState {
     pub facing: i8,
     pub wall_slide_timer: f32,
     pub wall_slide_dir: i8,
+    pub stamina: f32,
     pub mode: Mode,
     pub dashes: u8,
     pub dash_cooldown_timer: f32,
@@ -86,6 +90,7 @@ impl PlayerState {
             facing: 1,
             wall_slide_timer: WALL_SLIDE_TIME,
             wall_slide_dir: 0,
+            stamina: CLIMB_MAX_STAMINA,
             mode: Mode::Normal,
             dashes: MAX_DASHES,
             dash_cooldown_timer: 0.0,
@@ -111,6 +116,7 @@ pub struct Input {
     // second jump button
     pub jump2: bool,
     pub dash: bool,
+    pub grab: bool,
 }
 
 impl Input {
@@ -264,6 +270,32 @@ pub fn super_jump(state: &mut PlayerState) {
     state.mode = Mode::Normal;
 }
 
+// up to 3 pixels from wall
+pub fn wall_jump_check(state: &PlayerState, room: &Room, dir: i8) -> bool {
+    collide_at(room, state.position.x + dir as i32 * 3, state.position.y)
+}
+
+pub fn can_climb_jump(state: &PlayerState, room: &Room, input: Input) -> bool {
+    let able = input.grab && state.stamina > 0.0;
+
+    if wall_jump_check(state, room, 1) {
+        state.facing == 1 && able
+    } else if wall_jump_check(state, room, -1) {
+        state.facing == -1 && able
+    } else {
+        false
+    }
+}
+
+pub fn climb_jump(state: &mut PlayerState, input: Input, ground: bool) {
+    if !ground {
+        state.stamina -= CLIMB_JUMP_COST;
+    }
+
+    jump(state, input);
+    state.mode = Mode::Normal;
+}
+
 pub fn can_dash(state: &PlayerState, dash_pressed: bool) -> bool {
     dash_pressed && state.dash_cooldown_timer <= 0.0 && state.dashes > 0
 }
@@ -351,6 +383,7 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
     if ground {
         state.jump_grace_timer = JUMP_GRACE_TIME;
         state.wall_slide_timer = WALL_SLIDE_TIME;
+        state.stamina = CLIMB_MAX_STAMINA;
         state.auto_jump = false;
     } else if state.jump_grace_timer > 0.0 {
         state.jump_grace_timer -= DELTA_TIME;
@@ -388,6 +421,8 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
         Mode::DashStart => {
             if can_super_jump(&state, jump_pressed) {
                 super_jump(&mut state);
+            } else if jump_pressed && can_climb_jump(&state, room, input) {
+                climb_jump(&mut state, input, ground);
             } else {
                 dash_launch(&mut state, aim);
             }
@@ -396,6 +431,8 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
         Mode::Dashing { timer } => {
             if can_super_jump(&state, jump_pressed) {
                 super_jump(&mut state);
+            } else if jump_pressed && can_climb_jump(&state, room, input) {
+                climb_jump(&mut state, input, ground);
             } else if timer > 0.0 {
                 state.mode = Mode::Dashing { timer: timer - DELTA_TIME };
             } else {
@@ -452,6 +489,8 @@ fn normal_update(state: &mut PlayerState, room: &Room, input: Input, ground: boo
 
     if jump_pressed && state.jump_grace_timer > 0.0 {
         jump(state, input);
+    } else if can_climb_jump(state, room, input) {
+        climb_jump(state, input, ground);
     }
 }
 
@@ -1089,8 +1128,8 @@ mod tests {
         s
     }
 
-    const DASH_RIGHT: Input = Input { move_x: 1, move_y: 0, jump: false, jump2: false, dash: true };
-    const JUMP_RIGHT: Input = Input { move_x: 1, move_y: 0, jump: true, jump2: false, dash: false };
+    const DASH_RIGHT: Input = Input { move_x: 1, move_y: 0, jump: false, jump2: false, dash: true, grab: false };
+    const JUMP_RIGHT: Input = Input { move_x: 1, move_y: 0, jump: true, jump2: false, dash: false, grab: false };
 
     #[test]
     fn step_super_jumps_out_of_a_dash() {
@@ -1122,15 +1161,15 @@ mod tests {
 
     #[test]
     fn step_no_super_jump_out_of_an_up_dash() {
-        let up_dash = Input { move_x: 0, move_y: -1, jump: false, jump2: false, dash: true };
+        let up_dash = Input { move_x: 0, move_y: -1, jump: false, jump2: false, dash: true, grab: false };
         let s = step(dash_for(standing(), 5, up_dash), JUMP_RIGHT, &room());
         assert!(matches!(s.mode, Mode::Dashing { .. }));
         assert_eq!(s.speed, Vec2 { x: 0.0, y: -DASH_SPEED });
     }
 
-    const JUMP_1: Input = Input { move_x: 0, move_y: 0, jump: true, jump2: false, dash: false };
-    const JUMP_2: Input = Input { move_x: 0, move_y: 0, jump: false, jump2: true, dash: false };
-    const JUMP_BOTH: Input = Input { move_x: 0, move_y: 0, jump: true, jump2: true, dash: false };
+    const JUMP_1: Input = Input { move_x: 0, move_y: 0, jump: true, jump2: false, dash: false, grab: false };
+    const JUMP_2: Input = Input { move_x: 0, move_y: 0, jump: false, jump2: true, dash: false, grab: false };
+    const JUMP_BOTH: Input = Input { move_x: 0, move_y: 0, jump: true, jump2: true, dash: false, grab: false };
 
     #[test]
     fn jump_down_with_either_button() {
@@ -1194,6 +1233,141 @@ mod tests {
             s = step(s, JUMP_2, &room);
         }
         assert_eq!(s.speed.y, JUMP_SPEED);
+    }
+
+    fn left_wall_room() -> Room {
+        Room::from_tiles(IVec2 { x: 0, y: 0 }, &"10000000000\n".repeat(23))
+    }
+
+    // flush against the left wall
+    const LEFT_WALL_X: i32 = 12;
+
+    const JUMP_GRAB: Input = Input { move_x: 0, move_y: 0, jump: true, jump2: false, dash: false, grab: true };
+
+    #[test]
+    fn wall_jump_check_reaches_two_pixels_of_gap() {
+        let room = room();
+        assert!(wall_jump_check(&player_at(WALL_X, 100, 0.0, 0.0), &room, 1));
+        assert!(wall_jump_check(&player_at(WALL_X - 2, 100, 0.0, 0.0), &room, 1));
+        assert!(!wall_jump_check(&player_at(WALL_X - 3, 100, 0.0, 0.0), &room, 1));
+    }
+
+    #[test]
+    fn wall_jump_check_only_on_the_side_asked() {
+        assert!(!wall_jump_check(&player_at(WALL_X, 100, 0.0, 0.0), &room(), -1));
+
+        let room = left_wall_room();
+        assert!(wall_jump_check(&player_at(LEFT_WALL_X, 100, 0.0, 0.0), &room, -1));
+        assert!(wall_jump_check(&player_at(LEFT_WALL_X + 2, 100, 0.0, 0.0), &room, -1));
+        assert!(!wall_jump_check(&player_at(LEFT_WALL_X + 3, 100, 0.0, 0.0), &room, -1));
+        assert!(!wall_jump_check(&player_at(LEFT_WALL_X, 100, 0.0, 0.0), &room, 1));
+    }
+
+    #[test]
+    fn can_climb_jump_facing_a_wall_with_grab_held() {
+        assert!(can_climb_jump(&player_at(WALL_X, 100, 0.0, 0.0), &room(), JUMP_GRAB));
+
+        let mut s = player_at(LEFT_WALL_X, 100, 0.0, 0.0);
+        s.facing = -1;
+        assert!(can_climb_jump(&s, &left_wall_room(), JUMP_GRAB));
+    }
+
+    #[test]
+    fn can_climb_jump_needs_grab() {
+        let no_grab = Input { grab: false, ..JUMP_GRAB };
+        assert!(!can_climb_jump(&player_at(WALL_X, 100, 0.0, 0.0), &room(), no_grab));
+    }
+
+    #[test]
+    fn can_climb_jump_needs_stamina() {
+        let mut s = player_at(WALL_X, 100, 0.0, 0.0);
+        s.stamina = 0.0;
+        assert!(!can_climb_jump(&s, &room(), JUMP_GRAB));
+    }
+
+    #[test]
+    fn can_climb_jump_needs_a_wall() {
+        assert!(!can_climb_jump(&player_at(WALL_X - 3, 100, 0.0, 0.0), &room(), JUMP_GRAB));
+    }
+
+    #[test]
+    fn can_climb_jump_not_facing_away_from_the_wall() {
+        let mut s = player_at(WALL_X, 100, 0.0, 0.0);
+        s.facing = -1;
+        assert!(!can_climb_jump(&s, &room(), JUMP_GRAB));
+
+        let s = player_at(LEFT_WALL_X, 100, 0.0, 0.0);
+        assert!(!can_climb_jump(&s, &left_wall_room(), JUMP_GRAB));
+    }
+
+    #[test]
+    fn climb_jump_in_the_air_costs_stamina() {
+        let mut s = player_at(WALL_X, 100, 0.0, 30.0);
+        s.mode = Mode::Dashing { timer: 0.1 };
+        climb_jump(&mut s, Input { move_x: 1, ..JUMP_GRAB }, false);
+        assert_eq!(s.stamina, CLIMB_MAX_STAMINA - CLIMB_JUMP_COST);
+        assert_eq!(s.speed, Vec2 { x: JUMP_H_BOOST, y: JUMP_SPEED });
+        assert_eq!(s.var_jump_timer, VAR_JUMP_TIME);
+        assert_eq!(s.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn climb_jump_on_the_ground_is_free() {
+        let mut s = standing();
+        climb_jump(&mut s, JUMP_GRAB, true);
+        assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
+        assert_eq!(s.speed.y, JUMP_SPEED);
+    }
+
+    #[test]
+    fn step_refills_stamina_on_the_ground() {
+        let mut s = standing();
+        s.stamina = 10.0;
+        s = step(s, Input::default(), &room());
+        assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
+    }
+
+    #[test]
+    fn step_does_not_refill_stamina_in_the_air() {
+        let mut s = at_rest();
+        s.stamina = 10.0;
+        s = step(s, Input::default(), &room());
+        assert_eq!(s.stamina, 10.0);
+    }
+
+    #[test]
+    fn step_climb_jumps_next_to_a_wall() {
+        let s = step(player_at(WALL_X, 100, 0.0, 30.0), JUMP_GRAB, &room());
+        assert_eq!(s.speed.y, JUMP_SPEED);
+        assert_eq!(s.stamina, CLIMB_MAX_STAMINA - CLIMB_JUMP_COST);
+    }
+
+    #[test]
+    fn step_no_climb_jump_without_grab() {
+        let no_grab = Input { grab: false, ..JUMP_GRAB };
+        let s = step(player_at(WALL_X, 100, 0.0, 30.0), no_grab, &room());
+        assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
+    }
+
+    #[test]
+    fn step_ground_jump_wins_over_climb_jump() {
+        let mut s = player_at(36, FLOOR_Y, 0.0, 0.0);
+        s.stamina = 50.0;
+        s = step(s, Input { move_x: 1, ..JUMP_GRAB }, &room());
+        assert_eq!(s.speed.y, JUMP_SPEED);
+        assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
+    }
+
+    #[test]
+    fn step_climb_jumps_out_of_a_dash() {
+        let mut s = player_at(WALL_X - 2, 100, DASH_SPEED, 0.0);
+        s.mode = Mode::Dashing { timer: 0.1 };
+        s.dash_dir = Vec2 { x: 1.0, y: 0.0 };
+        s = step(s, Input { move_x: 1, ..JUMP_GRAB }, &room());
+        assert_eq!(s.mode, Mode::Normal);
+        assert_eq!(s.stamina, CLIMB_MAX_STAMINA - CLIMB_JUMP_COST);
+        assert_eq!(s.position.x, WALL_X);
+        assert_eq!(s.speed, Vec2 { x: 0.0, y: JUMP_SPEED });
     }
 
     #[test]

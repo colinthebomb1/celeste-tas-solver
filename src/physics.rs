@@ -27,6 +27,9 @@ pub const DASH_COOLDOWN: f32 = 0.2;
 pub const DASH_REFILL_COOLDOWN: f32 = 0.1;
 pub const DASH_FREEZE_TIME: f32 = 0.05;
 pub const MAX_DASHES: u8 = 1;
+pub const TWO_DASHES: u8 = 2;
+// a crystal also works below this much stamina
+pub const CLIMB_TIRED_THRESHOLD: f32 = 20.0;
 pub const SUPER_JUMP_H: f32 = 260.0;
 pub const CLIMB_MAX_STAMINA: f32 = 110.0;
 pub const CLIMB_JUMP_COST: f32 = 110.0 / 4.0;
@@ -887,6 +890,18 @@ pub fn super_bounce(state: &mut PlayerState, room: &Room, from_y: i32) {
     state.speed.x = 0.0;
     state.speed.y = SUPER_BOUNCE_SPEED;
     state.var_jump_speed = SUPER_BOUNCE_SPEED;
+}
+
+pub fn use_refill(state: &mut PlayerState, two_dashes: bool) -> bool {
+    let dashes = if two_dashes { TWO_DASHES } else { MAX_DASHES };
+
+    if state.dashes < dashes || state.stamina < CLIMB_TIRED_THRESHOLD {
+        state.dashes = dashes;
+        state.stamina = CLIMB_MAX_STAMINA;
+        true
+    } else {
+        false
+    }
 }
 
 pub fn bounce_on_springs(state: &mut PlayerState, room: &Room) {

@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::physics::IVec2;
 use crate::entities::dash_block::load_dash_blocks;
 use crate::entities::jump_thru::load_jump_thrus;
+use crate::entities::refill::load_refills;
 use crate::entities::spikes::load_spikes;
 use crate::entities::spring::load_springs;
 use crate::entities::zip_mover::load_zip_movers;
@@ -51,6 +52,14 @@ impl Element {
     pub fn int(&self, key: &str) -> Option<i32> {
         match self.attributes.get(key) {
             Some(Value::Int(value)) => Some(*value),
+            _ => None,
+        }
+    }
+
+    // The attribute's value if it exists and is a Value::Bool.
+    pub fn bool(&self, key: &str) -> Option<bool> {
+        match self.attributes.get(key) {
+            Some(Value::Bool(value)) => Some(*value),
             _ => None,
         }
     }
@@ -261,6 +270,7 @@ fn room_from_level(level: &Element) -> Result<Room, MapError> {
     room.spikes = load_spikes(level, origin)?;
     room.jump_thrus = load_jump_thrus(level, origin)?;
     room.springs = load_springs(level, origin)?;
+    room.refills = load_refills(level, origin)?;
     room.dash_blocks = load_dash_blocks(level, origin)?;
     room.zip_movers = load_zip_movers(level, origin)?;
     
@@ -283,13 +293,14 @@ pub fn find_celeste_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::{DashBlock, JumpThru, Spikes, Spring, ZipMover};
+    use crate::entities::{DashBlock, JumpThru, Refill, Spikes, Spring, ZipMover};
     use crate::room::Direction;
 
-    const LOOKUP: [&str; 27] = [
+    const LOOKUP: [&str; 30] = [
         "Map", "levels", "level", "name", "x", "y", "solids", "innerText", "room_a", "room_b",
         "flag", "big", "ratio", "note", "entities", "spikesUp", "spikesDown", "spikesLeft",
         "spikesRight", "width", "height", "strawberry", "jumpThru", "zipMover", "node", "spring", "dashBlock",
+        "refill", "twoDash", "oneUse",
     ];
 
     fn string(s: &str) -> Vec<u8> {
@@ -657,6 +668,15 @@ mod tests {
         let map = map_with_entities(&[element("dashBlock", &attributes, &[])]);
         let room = load_room(&map, "room_b").unwrap();
         assert_eq!(room.dash_blocks, vec![DashBlock::new(568, -72, 16, 24)]);
+    }
+
+    #[test]
+    fn load_room_reads_refills_in_world_coordinates() {
+        let plain = entity("refill", 152, 72, None);
+        let attributes = [("x", v_i16(8)), ("y", v_i16(16)), ("twoDash", v_bool(true)), ("oneUse", v_bool(true))];
+        let map = map_with_entities(&[plain, element("refill", &attributes, &[])]);
+        let room = load_room(&map, "room_b").unwrap();
+        assert_eq!(room.refills, vec![Refill::new(472, -112, false, false), Refill::new(328, -168, true, true)]);
     }
 
     #[test]

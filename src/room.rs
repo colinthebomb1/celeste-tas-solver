@@ -1,4 +1,4 @@
-use crate::entities::{DashBlock, JumpThru, Spikes, Spring, ZipMover};
+use crate::entities::{DashBlock, JumpThru, Refill, Spikes, Spring, ZipMover};
 use crate::physics::IVec2;
 
 pub const TILE_SIZE: i32 = 8;
@@ -55,6 +55,7 @@ pub struct Room {
     // platforms she can jump up through and stand on
     pub jump_thrus: Vec<JumpThru>,
     pub springs: Vec<Spring>,
+    pub refills: Vec<Refill>,
     pub dash_blocks: Vec<DashBlock>,
     pub zip_movers: Vec<ZipMover>,
 }
@@ -87,6 +88,7 @@ impl Room {
             spikes: Vec::new(),
             jump_thrus: Vec::new(),
             springs: Vec::new(),
+            refills: Vec::new(),
             dash_blocks: Vec::new(),
             zip_movers: Vec::new(),
         };

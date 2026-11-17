@@ -1,4 +1,4 @@
-use crate::entities::{JumpThru, Spikes, Spring, ZipMover};
+use crate::entities::{DashBlock, JumpThru, Spikes, Spring, ZipMover};
 use crate::physics::IVec2;
 
 pub const TILE_SIZE: i32 = 8;
@@ -55,6 +55,7 @@ pub struct Room {
     // platforms she can jump up through and stand on
     pub jump_thrus: Vec<JumpThru>,
     pub springs: Vec<Spring>,
+    pub dash_blocks: Vec<DashBlock>,
     pub zip_movers: Vec<ZipMover>,
 }
 
@@ -86,6 +87,7 @@ impl Room {
             spikes: Vec::new(),
             jump_thrus: Vec::new(),
             springs: Vec::new(),
+            dash_blocks: Vec::new(),
             zip_movers: Vec::new(),
         };
         room.set_size(width as i32 * TILE_SIZE, height as i32 * TILE_SIZE);
@@ -132,6 +134,7 @@ impl Room {
 
         let rect = Rect { left, top, width, height };
         self.zip_movers.iter().any(|zip| zip.collidable && zip.rect().overlaps(&rect))
+            || self.dash_blocks.iter().any(|block| !block.broken && block.hitbox.overlaps(&rect))
     }
 }
 
@@ -171,6 +174,17 @@ mod tests {
         let mut room = at_origin("0000\n0000\n0000\n0000");
         room.zip_movers.push(ZipMover::new(8, 8, 16, 8, 8, 0));
         room.zip_movers[0].collidable = false;
+        assert!(!room.collide_rect(10, 10, 2, 2));
+    }
+
+    #[test]
+    fn collide_rect_hits_a_dash_block_until_it_is_broken() {
+        let mut room = at_origin("0000\n0000\n0000\n0000");
+        room.dash_blocks.push(DashBlock::new(8, 8, 16, 8));
+        assert!(room.collide_rect(10, 10, 2, 2));
+        assert!(!room.collide_rect(2, 2, 2, 2));
+
+        room.dash_blocks[0].broken = true;
         assert!(!room.collide_rect(10, 10, 2, 2));
     }
 

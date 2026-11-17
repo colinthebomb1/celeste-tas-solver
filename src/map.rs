@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::physics::IVec2;
+use crate::entities::dash_block::load_dash_blocks;
 use crate::entities::jump_thru::load_jump_thrus;
 use crate::entities::spikes::load_spikes;
 use crate::entities::spring::load_springs;
@@ -260,6 +261,7 @@ fn room_from_level(level: &Element) -> Result<Room, MapError> {
     room.spikes = load_spikes(level, origin)?;
     room.jump_thrus = load_jump_thrus(level, origin)?;
     room.springs = load_springs(level, origin)?;
+    room.dash_blocks = load_dash_blocks(level, origin)?;
     room.zip_movers = load_zip_movers(level, origin)?;
     
     Ok(room)
@@ -281,13 +283,13 @@ pub fn find_celeste_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::{JumpThru, Spikes, Spring, ZipMover};
+    use crate::entities::{DashBlock, JumpThru, Spikes, Spring, ZipMover};
     use crate::room::Direction;
 
-    const LOOKUP: [&str; 26] = [
+    const LOOKUP: [&str; 27] = [
         "Map", "levels", "level", "name", "x", "y", "solids", "innerText", "room_a", "room_b",
         "flag", "big", "ratio", "note", "entities", "spikesUp", "spikesDown", "spikesLeft",
-        "spikesRight", "width", "height", "strawberry", "jumpThru", "zipMover", "node", "spring",
+        "spikesRight", "width", "height", "strawberry", "jumpThru", "zipMover", "node", "spring", "dashBlock",
     ];
 
     fn string(s: &str) -> Vec<u8> {
@@ -647,6 +649,14 @@ mod tests {
             .into_iter()
             .collect();
         element("zipMover", &attributes, &nodes)
+    }
+
+    #[test]
+    fn load_room_reads_dash_blocks_in_world_coordinates() {
+        let attributes = [("x", v_i16(248)), ("y", v_i16(112)), ("width", v_u8(16)), ("height", v_u8(24))];
+        let map = map_with_entities(&[element("dashBlock", &attributes, &[])]);
+        let room = load_room(&map, "room_b").unwrap();
+        assert_eq!(room.dash_blocks, vec![DashBlock::new(568, -72, 16, 24)]);
     }
 
     #[test]

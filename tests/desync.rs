@@ -212,7 +212,7 @@ fn community_lvl_1() {
 }
 
 // frames of the whole chapter that match the game so far. raise it as the simulator improves
-const CHAPTER_1A_MATCHED: usize = 1069;
+const CHAPTER_1A_MATCHED: usize = 1137;
 
 // one simulation of the community TAS through every room of 1A.
 // run with: cargo test --test desync chapter -- --nocapture

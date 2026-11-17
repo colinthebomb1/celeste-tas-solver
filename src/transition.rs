@@ -1,6 +1,6 @@
 use crate::entities::dash_block::DASH_BLOCK_FREEZE_TIME;
 use crate::physics::{
-    collides, hitbox_height, Mode, PlayerState, CLIMB_MAX_STAMINA, DASH_COOLDOWN, HITBOX_WIDTH, JUMP_SPEED,
+    collides, hitbox_height, set_normal, PlayerState, CLIMB_MAX_STAMINA, DASH_COOLDOWN, HITBOX_WIDTH, JUMP_SPEED,
     MAX_DASHES, VAR_JUMP_TIME, WALL_SLIDE_TIME,
 };
 use crate::room::{Chapter, Direction};
@@ -67,14 +67,14 @@ pub fn before_transition(state: &mut PlayerState, direction: Direction) {
             state.var_jump_speed = JUMP_SPEED;
             state.var_jump_timer = VAR_JUMP_TIME;
             state.auto_jump = true;
-            state.mode = Mode::Normal;
+            set_normal(state);
             state.dash_cooldown_timer = DASH_COOLDOWN;
         }
         Direction::Down => {
             state.speed.y = state.speed.y.max(0.0);
             state.var_jump_timer = 0.0;
             state.auto_jump = false;
-            state.mode = Mode::Normal;
+            set_normal(state);
         }
         Direction::Left | Direction::Right => {}
     }
@@ -115,7 +115,7 @@ pub fn finish_transition(state: &mut PlayerState, chapter: &Chapter, transition:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::physics::IVec2;
+    use crate::physics::{IVec2, Mode};
     use crate::room::Room;
     use crate::Vec2;
 

@@ -10,6 +10,8 @@ pub const GROUND_MULT: f32 = 1.0;
 pub const AIR_MULT: f32 = 0.65;
 pub const GRAVITY: f32 = 900.0;
 pub const MAX_FALL: f32 = 160.0;
+pub const FAST_MAX_FALL: f32 = 240.0;
+pub const FAST_MAX_ACCEL: f32 = 300.0;
 pub const HALF_GRAV_THRESHOLD: f32 = 40.0;
 pub const JUMP_SPEED: f32 = -105.0;
 pub const JUMP_H_BOOST: f32 = 40.0;
@@ -92,6 +94,8 @@ pub struct PlayerState {
     pub facing: i8,
     pub wall_slide_timer: f32,
     pub wall_slide_dir: i8,
+    // her current top fall speed, between MAX_FALL and FAST_MAX_FALL
+    pub max_fall: f32,
     pub stamina: f32,
     pub ducking: bool,
     // last frame's horizontal input
@@ -139,6 +143,7 @@ impl PlayerState {
             facing: 1,
             wall_slide_timer: WALL_SLIDE_TIME,
             wall_slide_dir: 0,
+            max_fall: MAX_FALL,
             stamina: CLIMB_MAX_STAMINA,
             ducking: false,
             move_x: 0,
@@ -552,11 +557,25 @@ pub fn lerp(value1: f32, value2: f32, amount: f32) -> f32 {
 }
 
 
+// coming from another state resets her top fall speed
+pub fn set_normal(state: &mut PlayerState) {
+    if state.mode != Mode::Normal {
+        state.max_fall = MAX_FALL;
+    }
+    state.mode = Mode::Normal;
+}
+
 pub fn wall_slide_max_fall(state: &mut PlayerState, room: &Room, input: Input) -> f32 {
-    let mut max = MAX_FALL;
-    
-    if input.move_x == state.facing {
-        if state.speed.y >= 0.0 && state.wall_slide_timer > 0.0 && wall_at(state, room, state.facing) {
+    let mut max = state.max_fall;
+    let into_wall = input.move_x == state.facing || (input.move_x == 0 && input.grab);
+
+    if into_wall && input.move_y != 1 {
+        if state.speed.y >= 0.0
+            && state.wall_slide_timer > 0.0
+            && wall_at(state, room, state.facing)
+            && can_unduck(state, room)
+        {
+            state.ducking = false;
             state.wall_slide_dir = state.facing;
         }
 
@@ -615,7 +634,7 @@ pub fn super_jump(state: &mut PlayerState) {
     }
 
     state.var_jump_speed = state.speed.y;
-    state.mode = Mode::Normal;
+    set_normal(state);
 }
 
 pub fn wall_bounce_ready(state: &PlayerState) -> bool {
@@ -675,7 +694,7 @@ pub fn wall_jump(state: &mut PlayerState, room: &Room, dir: i8, move_x: i8) {
     state.speed.y = JUMP_SPEED;
     add_lift_boost(state);
     state.var_jump_speed = state.speed.y;
-    state.mode = Mode::Normal;
+    set_normal(state);
 }
 
 pub fn super_wall_jump(state: &mut PlayerState, dir: i8) {
@@ -691,7 +710,7 @@ pub fn super_wall_jump(state: &mut PlayerState, dir: i8) {
     state.speed.y = SUPER_WALL_JUMP_SPEED;
     add_lift_boost(state);
     state.var_jump_speed = state.speed.y;
-    state.mode = Mode::Normal;
+    set_normal(state);
 }
 
 pub fn jump_off_wall(state: &mut PlayerState, room: &Room, input: Input, ground: bool) -> bool {
@@ -746,7 +765,7 @@ pub fn climb_jump(state: &mut PlayerState, input: Input, ground: bool) {
         state.wall_boost_timer = CLIMB_JUMP_BOOST_TIME;
     }
 
-    state.mode = Mode::Normal;
+    set_normal(state);
 }
 
 pub fn update_wall_speed_retention(state: &mut PlayerState, room: &Room) {
@@ -841,7 +860,7 @@ pub fn dash_end(state: &mut PlayerState) {
         state.speed.y *= END_DASH_UP_MULT;
     }
 
-    state.mode = Mode::Normal;
+    set_normal(state);
 }
 
 pub fn track_buttons(state: &mut PlayerState, input: Input) {
@@ -856,7 +875,7 @@ pub fn super_bounce(state: &mut PlayerState, room: &Room, from_y: i32) {
 
     state.dashes = MAX_DASHES;
     state.stamina = CLIMB_MAX_STAMINA;
-    state.mode = Mode::Normal;
+    set_normal(state);
 
     state.jump_grace_timer = 0.0;
     state.var_jump_timer = SUPER_BOUNCE_VAR_JUMP_TIME;
@@ -1070,6 +1089,10 @@ fn normal_update(state: &mut PlayerState, room: &Room, input: Input, ground: boo
     } else {
         state.speed.x = approach(state.speed.x, target, max_move_x);
     }
+
+    let fast_fall = input.move_y == 1 && state.speed.y >= MAX_FALL;
+    let fall_limit = if fast_fall { FAST_MAX_FALL } else { MAX_FALL };
+    state.max_fall = approach(state.max_fall, fall_limit, FAST_MAX_ACCEL * DELTA_TIME);
 
     if !ground {
         let max_fall = wall_slide_max_fall(state, room, input);
@@ -3177,6 +3200,95 @@ mod tests {
             s = step(s, Input::default(), &room);
         }
         assert_eq!(s.speed.y, SUPER_BOUNCE_SPEED);
+    }
+
+    fn falling(speed_y: f32) -> PlayerState {
+        player_at(60, 20, 0.0, speed_y)
+    }
+
+    #[test]
+    fn step_holding_down_at_full_fall_speed_falls_faster() {
+        let room = room();
+        let mut s = step(falling(MAX_FALL), DOWN, &room);
+        assert_eq!(s.max_fall, MAX_FALL + FAST_MAX_ACCEL * DELTA_TIME);
+        assert_eq!(s.speed.y, s.max_fall);
+
+        // 2 px a frame for long enough would leave the room, so check the limit directly
+        s.max_fall = FAST_MAX_FALL - 1.0;
+        s.speed.y = FAST_MAX_FALL - 1.0;
+        s.position.y = 20;
+        s = step(s, DOWN, &room);
+        assert_eq!(s.max_fall, FAST_MAX_FALL);
+        assert_eq!(s.speed.y, FAST_MAX_FALL);
+    }
+
+    #[test]
+    fn step_no_fast_fall_below_full_fall_speed() {
+        let s = step(falling(100.0), DOWN, &room());
+        assert_eq!(s.max_fall, MAX_FALL);
+    }
+
+    #[test]
+    fn step_no_fast_fall_without_down() {
+        let s = step(falling(MAX_FALL), Input::default(), &room());
+        assert_eq!(s.max_fall, MAX_FALL);
+        assert_eq!(s.speed.y, MAX_FALL);
+    }
+
+    #[test]
+    fn step_letting_go_of_down_slows_her_back() {
+        let mut s = falling(FAST_MAX_FALL);
+        s.max_fall = FAST_MAX_FALL;
+        s = step(s, Input::default(), &room());
+        assert_eq!(s.max_fall, FAST_MAX_FALL - FAST_MAX_ACCEL * DELTA_TIME);
+        assert_eq!(s.speed.y, s.max_fall);
+    }
+
+    #[test]
+    fn set_normal_resets_the_fall_limit_only_when_leaving_another_state() {
+        let mut s = falling(FAST_MAX_FALL);
+        s.max_fall = FAST_MAX_FALL;
+        set_normal(&mut s);
+        assert_eq!(s.max_fall, FAST_MAX_FALL);
+
+        s.mode = Mode::Dashing { timer: 0.0 };
+        set_normal(&mut s);
+        assert_eq!(s.max_fall, MAX_FALL);
+        assert_eq!(s.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn dash_end_resets_the_fall_limit() {
+        let mut s = falling(0.0);
+        s.max_fall = FAST_MAX_FALL;
+        s.mode = Mode::Dashing { timer: 0.0 };
+        s.dash_dir = Vec2 { x: 0.0, y: 1.0 };
+        dash_end(&mut s);
+        assert_eq!(s.max_fall, MAX_FALL);
+    }
+
+    #[test]
+    fn no_wall_slide_while_holding_down() {
+        let mut s = player_at(WALL_X, 100, 0.0, 50.0);
+        let max = wall_slide_max_fall(&mut s, &room(), Input { move_x: 1, ..DOWN });
+        assert_eq!(max, MAX_FALL);
+        assert_eq!(s.wall_slide_dir, 0);
+    }
+
+    #[test]
+    fn wall_slide_with_grab_held_and_no_direction() {
+        let mut s = player_at(WALL_X, 100, 0.0, 50.0);
+        let max = wall_slide_max_fall(&mut s, &room(), Input { grab: true, ..Input::default() });
+        assert_eq!(s.wall_slide_dir, 1);
+        assert_eq!(max, WALL_SLIDE_START_MAX);
+    }
+
+    #[test]
+    fn wall_slide_stands_her_up() {
+        let mut s = ducking_at(WALL_X, 100);
+        s.speed.y = 50.0;
+        wall_slide_max_fall(&mut s, &room(), Input { move_x: 1, ..Input::default() });
+        assert!(!s.ducking);
     }
 
     #[test]

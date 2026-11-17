@@ -2,7 +2,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::physics::IVec2;
-use crate::room::{jump_thru, Chapter, Direction, Rect, Room, Spikes};
+use crate::entities::jump_thru::load_jump_thrus;
+use crate::entities::spikes::load_spikes;
+use crate::entities::zip_mover::load_zip_movers;
+use crate::room::{Chapter, Room};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MapError {
@@ -255,56 +258,9 @@ fn room_from_level(level: &Element) -> Result<Room, MapError> {
     }
     room.spikes = load_spikes(level, origin)?;
     room.jump_thrus = load_jump_thrus(level, origin)?;
+    room.zip_movers = load_zip_movers(level, origin)?;
     
     Ok(room)
-}
-
-// The spikes among a level's "entities" children: elements named "spikesUp", "spikesDown",
-// "spikesLeft" and "spikesRight". "x" and "y" are relative to the room's origin. The length
-// is "width" for Up and Down and "height" for Left and Right. A level with no "entities"
-// child has no spikes.
-pub fn load_spikes(level: &Element, origin: IVec2) -> Result<Vec<Spikes>, MapError> {
-    let Some(entities) = level.child("entities") else {
-        return Ok(Vec::new());
-    };
-
-    let mut spikes = Vec::new();
-
-    for entity in entities.children.iter() {
-        let (direction, length_attribute) = match entity.name.as_str() {
-            "spikesUp" => (Direction::Up, "width"),
-            "spikesDown" => (Direction::Down, "width"),
-            "spikesLeft" => (Direction::Left, "height"),
-            "spikesRight" => (Direction::Right, "height"),
-            _ => continue,
-        };
-
-        let x = entity.int("x").ok_or(MapError::MissingField("x"))?;
-        let y = entity.int("y").ok_or(MapError::MissingField("y"))?;
-        let size = entity.int(length_attribute).ok_or(MapError::MissingField(length_attribute))?;
-
-        spikes.push(Spikes::new(direction, origin.x + x, origin.y + y, size));
-    }
-
-    Ok(spikes)
-}
-
-pub fn load_jump_thrus(level: &Element, origin: IVec2) -> Result<Vec<Rect>, MapError> {
-    let Some(entities) = level.child("entities") else {
-        return Ok(Vec::new());
-    };
-
-    let mut jump_thrus = Vec::new();
-
-    for entity in entities.children.iter().filter(|entity| entity.name == "jumpThru") {
-        let x = entity.int("x").ok_or(MapError::MissingField("x"))?;
-        let y = entity.int("y").ok_or(MapError::MissingField("y"))?;
-        let width = entity.int("width").ok_or(MapError::MissingField("width"))?;
-
-        jump_thrus.push(jump_thru(origin.x + x, origin.y + y, width));
-    }
-
-    Ok(jump_thrus)
 }
 
 pub fn load_map(path: &Path) -> Result<Element, MapError> {
@@ -323,11 +279,13 @@ pub fn find_celeste_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::entities::{jump_thru, Spikes, ZipMover};
+    use crate::room::Direction;
 
-    const LOOKUP: [&str; 23] = [
+    const LOOKUP: [&str; 25] = [
         "Map", "levels", "level", "name", "x", "y", "solids", "innerText", "room_a", "room_b",
         "flag", "big", "ratio", "note", "entities", "spikesUp", "spikesDown", "spikesLeft",
-        "spikesRight", "width", "height", "strawberry", "jumpThru",
+        "spikesRight", "width", "height", "strawberry", "jumpThru", "zipMover", "node",
     ];
 
     fn string(s: &str) -> Vec<u8> {
@@ -678,6 +636,28 @@ mod tests {
     fn load_room_jump_thru_missing_its_width() {
         let map = map_with_entities(&[entity("jumpThru", 8, 160, None)]);
         assert_eq!(load_room(&map, "room_b"), Err(MapError::MissingField("width")));
+    }
+
+    fn zip_mover_entity(node: Option<(i16, i16)>) -> Vec<u8> {
+        let attributes = [("x", v_i16(104)), ("y", v_i16(264)), ("width", v_u8(32)), ("height", v_u8(16))];
+        let nodes: Vec<Vec<u8>> = node
+            .map(|(x, y)| element("node", &[("x", v_i16(x)), ("y", v_i16(y))], &[]))
+            .into_iter()
+            .collect();
+        element("zipMover", &attributes, &nodes)
+    }
+
+    #[test]
+    fn load_room_reads_zip_movers_in_world_coordinates() {
+        let map = map_with_entities(&[zip_mover_entity(Some((104, 184)))]);
+        let room = load_room(&map, "room_b").unwrap();
+        assert_eq!(room.zip_movers, vec![ZipMover::new(424, 80, 32, 16, 424, 0)]);
+    }
+
+    #[test]
+    fn load_room_zip_mover_missing_its_target() {
+        let map = map_with_entities(&[zip_mover_entity(None)]);
+        assert_eq!(load_room(&map, "room_b"), Err(MapError::MissingField("node")));
     }
 
     #[test]

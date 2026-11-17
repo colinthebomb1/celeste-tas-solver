@@ -1,4 +1,5 @@
-use crate::room::{Direction, Rect, Room, Spikes};
+use crate::entities::Spikes;
+use crate::room::{Direction, Rect, Room};
 use crate::Vec2;
 
 pub const MAX_RUN: f32 = 90.0;
@@ -50,6 +51,12 @@ pub const DUCK_HITBOX_HEIGHT: i32 = 6;
 pub const DUCK_HURTBOX_HEIGHT: i32 = 4;
 pub const DUCK_FRICTION: f32 = 500.0;
 pub const JUMP_THRU_ASSIST_SPEED: f32 = -40.0;
+pub const DASH_V_FLOOR_SNAP_DIST: i32 = 3;
+// lift speed from moving blocks
+pub const LIFT_X_CAP: f32 = 250.0;
+pub const LIFT_Y_CAP: f32 = -130.0;
+pub const LIFT_SPEED_GRACE_TIME: f32 = 0.16;
+const NO_LIFT: Vec2 = Vec2 { x: 0.0, y: 0.0 };
 pub const DASH_H_JUMP_THRU_NUDGE: i32 = 6;
 pub const DODGE_SLIDE_SPEED_MULT: f32 = 1.2;
 pub const DUCK_SUPER_JUMP_X_MULT: f32 = 1.25;
@@ -91,6 +98,11 @@ pub struct PlayerState {
     pub wall_boost_dir: i8,
     pub wall_boost_timer: f32,
     pub dash_attack_timer: f32,
+    // from a block that moved her this frame, and the last one that did, kept for a short while
+    pub lift_speed: Vec2,
+    pub last_lift_speed: Vec2,
+    pub lift_speed_timer: f32,
+    pub was_on_ground: bool,
     // after a wall jump, her left and right input is replaced by this for a while
     pub force_move_x: i8,
     pub force_move_x_timer: f32,
@@ -131,6 +143,10 @@ impl PlayerState {
             wall_boost_dir: 0,
             wall_boost_timer: 0.0,
             dash_attack_timer: 0.0,
+            lift_speed: Vec2 { x: 0.0, y: 0.0 },
+            last_lift_speed: Vec2 { x: 0.0, y: 0.0 },
+            lift_speed_timer: 0.0,
+            was_on_ground: false,
             force_move_x: 0,
             force_move_x_timer: 0.0,
             wall_speed_retained: 0.0,
@@ -235,7 +251,7 @@ pub fn fell_out(state: &PlayerState, room: &Room) -> bool {
     state.position.y - HITBOX_HEIGHT > room.bottom() + 4
 }
 
-fn hitbox(state: &PlayerState, dx: i32, dy: i32) -> Rect {
+pub fn hitbox(state: &PlayerState, dx: i32, dy: i32) -> Rect {
     let height = hitbox_height(state);
 
     Rect {
@@ -261,6 +277,48 @@ pub fn enters_jump_thru(state: &PlayerState, room: &Room, dx: i32, dy: i32) -> b
 
 pub fn floor_below(state: &PlayerState, room: &Room, dx: i32) -> bool {
     collides(state, room, dx, 1) || enters_jump_thru(state, room, dx, 1)
+}
+
+pub fn set_lift_speed(state: &mut PlayerState, lift_speed: Vec2) {
+    state.lift_speed = lift_speed;
+
+    if lift_speed != NO_LIFT {
+        state.last_lift_speed = lift_speed;
+        state.lift_speed_timer = LIFT_SPEED_GRACE_TIME;
+    }
+}
+
+pub fn lift_boost(state: &PlayerState) -> Vec2 {
+    let lift = if state.lift_speed == NO_LIFT { state.last_lift_speed } else { state.lift_speed };
+
+    Vec2 {
+        x: lift.x.clamp(-LIFT_X_CAP, LIFT_X_CAP),
+        y: lift.y.clamp(LIFT_Y_CAP, 0.0),
+    }
+}
+
+pub fn move_exact_h(state: &mut PlayerState, room: &Room, amount: i32) -> bool {
+    let step = amount.signum();
+    for _ in 0..amount.abs() {
+        if collides(state, room, step, 0) {
+            state.remainder.x = 0.0;
+            return true;
+        }
+        state.position.x += step;
+    }
+    false
+}
+
+pub fn move_exact_v(state: &mut PlayerState, room: &Room, amount: i32) -> bool {
+    let step = amount.signum();
+    for _ in 0..amount.abs() {
+        if blocked_v(state, room, step) {
+            state.remainder.y = 0.0;
+            return true;
+        }
+        state.position.y += step;
+    }
+    false
 }
 
 pub fn on_ground(state: &PlayerState, room: &Room) -> bool {
@@ -514,6 +572,7 @@ pub fn jump(state: &mut PlayerState, input: Input) {
     state.var_jump_timer = VAR_JUMP_TIME;
     state.speed.x += JUMP_H_BOOST * input.move_x as f32;
     state.speed.y = JUMP_SPEED;
+    add_lift_boost(state);
     state.var_jump_speed = state.speed.y;
     state.auto_jump = false;
     state.wall_boost_timer = 0.0;
@@ -544,6 +603,7 @@ pub fn super_jump(state: &mut PlayerState) {
     state.dash_attack_timer = 0.0;
     state.speed.x = SUPER_JUMP_H * state.facing as f32;
     state.speed.y = JUMP_SPEED;
+    add_lift_boost(state);
 
     // hyper
     if state.ducking {
@@ -582,7 +642,13 @@ pub fn wall_jump_check(state: &PlayerState, room: &Room, dir: i8) -> bool {
     collides(state, room, dir * dist, 0)
 }
 
-pub fn wall_jump(state: &mut PlayerState, dir: i8, move_x: i8) {
+fn add_lift_boost(state: &mut PlayerState) {
+    let boost = lift_boost(state);
+    state.speed.x += boost.x;
+    state.speed.y += boost.y;
+}
+
+pub fn wall_jump(state: &mut PlayerState, room: &Room, dir: i8, move_x: i8) {
     state.ducking = false;
     state.jump_grace_timer = 0.0;
     state.var_jump_timer = VAR_JUMP_TIME;
@@ -596,8 +662,16 @@ pub fn wall_jump(state: &mut PlayerState, dir: i8, move_x: i8) {
         state.force_move_x_timer = WALL_JUMP_FORCE_TIME;
     }
 
+    if state.lift_speed == NO_LIFT && state.last_lift_speed == NO_LIFT {
+        let reach = hitbox(state, WALL_JUMP_CHECK_DIST, 0);
+        if let Some(zip) = room.zip_movers.iter().find(|zip| zip.rect().overlaps(&reach)) {
+            set_lift_speed(state, zip.lift_speed);
+        }
+    }
+
     state.speed.x = WALL_JUMP_H_SPEED * dir as f32;
     state.speed.y = JUMP_SPEED;
+    add_lift_boost(state);
     state.var_jump_speed = state.speed.y;
     state.mode = Mode::Normal;
 }
@@ -613,6 +687,7 @@ pub fn super_wall_jump(state: &mut PlayerState, dir: i8) {
 
     state.speed.x = SUPER_WALL_JUMP_H * dir as f32;
     state.speed.y = SUPER_WALL_JUMP_SPEED;
+    add_lift_boost(state);
     state.var_jump_speed = state.speed.y;
     state.mode = Mode::Normal;
 }
@@ -639,7 +714,7 @@ pub fn jump_off_wall(state: &mut PlayerState, room: &Room, input: Input, ground:
     } else if wall_bounce_ready(state) {
         super_wall_jump(state, -wall);
     } else {
-        wall_jump(state, -wall, input.move_x);
+        wall_jump(state, room, -wall, input.move_x);
     }
 
     true
@@ -860,6 +935,7 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
     match state.mode {
         Mode::Normal => {
             if can_dash(&state, dash_pressed || crouch_dash_pressed) {
+                add_lift_boost(&mut state);
                 dash_begin(&mut state, room, input, ground, crouch_dash_pressed);
             } else {
                 normal_update(&mut state, room, input, ground, jump_pressed);
@@ -889,8 +965,24 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
         }
     }
 
+    // lift speed lasts a bit after the block stops moving
+    state.lift_speed = NO_LIFT;
+    if state.lift_speed_timer > 0.0 {
+        state.lift_speed_timer -= DELTA_TIME;
+        if state.lift_speed_timer <= 0.0 {
+            state.last_lift_speed = NO_LIFT;
+        }
+    }
+
     if !ground && state.speed.y <= 0.0 && touches_jump_thru(&state, room, 0, 0) {
         nudge_v(&mut state, room, JUMP_THRU_ASSIST_SPEED * DELTA_TIME);
+    }
+
+    if !ground && state.dash_attack_timer > 0.0 && state.dash_dir.y == 0.0 {
+        let near = DASH_V_FLOOR_SNAP_DIST;
+        if collides(&state, room, 0, near) || enters_jump_thru(&state, room, 0, near) {
+            move_exact_v(&mut state, room, near);
+        }
     }
 
     if state.speed.y > 0.0 && !ground && input.move_y != 1 && can_unduck(&state, room) {
@@ -906,10 +998,18 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
         state.dead = true;
     }
 
+    state.was_on_ground = ground;
+
     state
 }
 
 fn normal_update(state: &mut PlayerState, room: &Room, input: Input, ground: bool, jump_pressed: bool) {
+    // walking off a rising block keeps its upward speed
+    let boost = lift_boost(state);
+    if boost.y < 0.0 && state.was_on_ground && !ground && state.speed.y >= 0.0 {
+        state.speed.y = boost.y;
+    }
+
     if state.ducking {
         if ground && input.move_y != 1 && can_unduck(state, room) {
             state.ducking = false;
@@ -2576,7 +2676,7 @@ mod tests {
         s.mode = Mode::Dashing { timer: 0.1 };
         s.dash_attack_timer = 0.2;
         s.auto_jump = true;
-        wall_jump(&mut s, -1, 0);
+        wall_jump(&mut s, &room(), -1, 0);
         assert_eq!(s.speed, Vec2 { x: -WALL_JUMP_H_SPEED, y: JUMP_SPEED });
         assert_eq!(s.var_jump_speed, JUMP_SPEED);
         assert_eq!(s.var_jump_timer, VAR_JUMP_TIME);
@@ -2589,11 +2689,11 @@ mod tests {
     #[test]
     fn wall_jump_forces_her_direction_only_if_one_is_held() {
         let mut s = player_at(WALL_X, 100, 0.0, 0.0);
-        wall_jump(&mut s, -1, 0);
+        wall_jump(&mut s, &room(), -1, 0);
         assert_eq!(s.force_move_x_timer, 0.0);
 
         let mut s = player_at(WALL_X, 100, 0.0, 0.0);
-        wall_jump(&mut s, -1, 1);
+        wall_jump(&mut s, &room(), -1, 1);
         assert_eq!(s.force_move_x, -1);
         assert_eq!(s.force_move_x_timer, WALL_JUMP_FORCE_TIME);
     }
@@ -2686,7 +2786,7 @@ mod tests {
 
     fn platform_room() -> Room {
         let mut room = room();
-        room.jump_thrus.push(crate::room::jump_thru(40, PLATFORM_Y, 40));
+        room.jump_thrus.push(crate::entities::jump_thru(40, PLATFORM_Y, 40));
         room
     }
 
@@ -2854,6 +2954,117 @@ mod tests {
         s = step(s, Input { dash: true, ..CROUCH_DASH }, &room());
         assert_eq!(s.mode, Mode::DashStart);
         assert!(!s.ducking);
+    }
+
+    fn lifted(mut s: PlayerState, x: f32, y: f32) -> PlayerState {
+        set_lift_speed(&mut s, Vec2 { x, y });
+        s
+    }
+
+    #[test]
+    fn lift_boost_is_capped_and_never_downward() {
+        assert_eq!(lift_boost(&lifted(standing(), 100.0, -60.0)), Vec2 { x: 100.0, y: -60.0 });
+        assert_eq!(lift_boost(&lifted(standing(), 400.0, -300.0)), Vec2 { x: LIFT_X_CAP, y: LIFT_Y_CAP });
+        assert_eq!(lift_boost(&lifted(standing(), -400.0, 80.0)), Vec2 { x: -LIFT_X_CAP, y: 0.0 });
+        assert_eq!(lift_boost(&standing()), Vec2 { x: 0.0, y: 0.0 });
+    }
+
+    #[test]
+    fn jumps_add_lift_boost() {
+        let mut s = lifted(standing(), 50.0, -70.0);
+        jump(&mut s, Input::default());
+        assert_eq!(s.speed, Vec2 { x: 50.0, y: JUMP_SPEED - 70.0 });
+        assert_eq!(s.var_jump_speed, JUMP_SPEED - 70.0);
+
+        let mut s = lifted(dashing_right(), 0.0, -70.0);
+        super_jump(&mut s);
+        assert_eq!(s.speed, Vec2 { x: SUPER_JUMP_H, y: JUMP_SPEED - 70.0 });
+
+        let mut s = lifted(player_at(WALL_X, 100, 0.0, 0.0), 0.0, -70.0);
+        wall_jump(&mut s, &room(), -1, 0);
+        assert_eq!(s.speed, Vec2 { x: -WALL_JUMP_H_SPEED, y: JUMP_SPEED - 70.0 });
+
+        let mut s = lifted(bouncing_at(WALL_X), 0.0, -70.0);
+        super_wall_jump(&mut s, -1);
+        assert_eq!(s.speed, Vec2 { x: -SUPER_WALL_JUMP_H, y: SUPER_WALL_JUMP_SPEED - 70.0 });
+    }
+
+    #[test]
+    fn hyper_halves_the_lift_too() {
+        let mut s = lifted(dashing_right(), 0.0, -70.0);
+        s.ducking = true;
+        super_jump(&mut s);
+        assert_eq!(s.speed.y, (JUMP_SPEED - 70.0) * DUCK_SUPER_JUMP_Y_MULT);
+    }
+
+    #[test]
+    fn step_lift_speed_lasts_ten_frames() {
+        let room = room();
+        let mut s = lifted(standing(), 0.0, -70.0);
+        for _ in 0..9 {
+            s = step(s, Input::default(), &room);
+        }
+        assert_eq!(lift_boost(&s).y, -70.0);
+        s = step(s, Input::default(), &room);
+        assert_eq!(lift_boost(&s).y, 0.0);
+    }
+
+    #[test]
+    fn step_dash_start_adds_lift_boost_to_the_speed_it_remembers() {
+        let s = step(lifted(standing(), 60.0, 0.0), DASH_RIGHT, &room());
+        assert_eq!(s.before_dash_speed.x, 60.0);
+    }
+
+    #[test]
+    fn step_walking_off_a_rising_block_keeps_its_speed() {
+        let mut s = lifted(player_at(60, 100, 0.0, 0.0), 0.0, -70.0);
+        s.was_on_ground = true;
+        s = step(s, Input::default(), &room());
+        assert!(s.speed.y < -50.0);
+    }
+
+    #[test]
+    fn step_remembers_whether_she_was_on_the_ground() {
+        assert!(step(standing(), Input::default(), &room()).was_on_ground);
+        assert!(!step(at_rest(), Input::default(), &room()).was_on_ground);
+    }
+
+    #[test]
+    fn wall_jump_takes_lift_from_a_moving_wall_on_her_right() {
+        let mut room = room();
+        room.zip_movers.push(crate::entities::ZipMover::new(60, 80, 16, 40, 60, 0));
+        room.zip_movers[0].lift_speed = Vec2 { x: 0.0, y: -90.0 };
+
+        let mut s = player_at(54, 100, 0.0, 0.0);
+        wall_jump(&mut s, &room, -1, 0);
+        assert_eq!(s.speed.y, JUMP_SPEED - 90.0);
+    }
+
+    #[test]
+    fn level_dash_just_above_a_floor_snaps_down_onto_it() {
+        let mut s = dashing_at(0, FLOOR_Y - 2, DASH_SPEED, 0.0);
+        s.dash_dir = Vec2 { x: 1.0, y: 0.0 };
+        s.dash_attack_timer = 0.2;
+        s.remainder.y = 0.25;
+        s = step(s, Input::default(), &room());
+        assert_eq!(s.position.y, FLOOR_Y);
+        assert_eq!(s.remainder.y, 0.0);
+    }
+
+    #[test]
+    fn no_floor_snap_from_three_pixels_up_or_in_a_diagonal_dash() {
+        let mut s = dashing_at(0, FLOOR_Y - 3, DASH_SPEED, 0.0);
+        s.dash_dir = Vec2 { x: 1.0, y: 0.0 };
+        s.dash_attack_timer = 0.2;
+        s = step(s, Input::default(), &room());
+        assert_eq!(s.position.y, FLOOR_Y - 3);
+
+        let d = 1.0 / 2f32.sqrt();
+        let mut s = dashing_at(0, FLOOR_Y - 2, 0.0, 0.0);
+        s.dash_dir = Vec2 { x: d, y: -d };
+        s.dash_attack_timer = 0.2;
+        s = step(s, Input::default(), &room());
+        assert_eq!(s.position.y, FLOOR_Y - 2);
     }
 
     #[test]

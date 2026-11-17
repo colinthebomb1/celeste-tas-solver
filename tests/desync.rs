@@ -1,3 +1,4 @@
+use celeste_tas_solver::entities::step_room;
 use celeste_tas_solver::physics::{step, track_buttons, IVec2, Input, Mode, PlayerState};
 use celeste_tas_solver::trace::parse_trace;
 use celeste_tas_solver::transition::{before_transition, find_transition, finish_transition, TRANSITION_FRAMES};
@@ -211,14 +212,14 @@ fn community_lvl_1() {
 }
 
 // frames of the whole chapter that match the game so far. raise it as the simulator improves
-const CHAPTER_1A_MATCHED: usize = 743;
+const CHAPTER_1A_MATCHED: usize = 796;
 
 // one simulation of the community TAS through every room of 1A.
 // run with: cargo test --test desync chapter -- --nocapture
 #[test]
 fn chapter_1a_progress() {
     let text = include_str!("traces/community/1A_full.txt");
-    let Some(chapter) = common::chapter_1a() else {
+    let Some(mut chapter) = common::chapter_1a() else {
         eprintln!("chapter 1A: skipped. Celeste install could not be found, try setting CELESTE_DIR");
         return;
     };
@@ -233,10 +234,10 @@ fn chapter_1a_progress() {
     let mut matched = 0;
     let mut frame = 1;
 
-    let desync = |frame: usize, room: usize, state: &PlayerState| {
+    let desync = |frame: usize, room: &str, state: &PlayerState| {
         eprintln!(
             "chapter 1A: desync on frame {frame} in {} (inputs {})\n  simulator: {:?}\n  game:      {:?}",
-            chapter.rooms[room].name,
+            room,
             column(rows[frame], 1).trim(),
             observe(state),
             game_row(rows[frame]),
@@ -244,7 +245,7 @@ fn chapter_1a_progress() {
     };
 
     while frame < rows.len() {
-        state = step(state, input_from_row(rows[frame]), &chapter.rooms[room]);
+        state = step_room(state, input_from_row(rows[frame]), &mut chapter.rooms[room]);
 
         let transition = if state.dead { None } else { find_transition(&state, &chapter, room) };
         if let Some(transition) = transition {
@@ -252,7 +253,7 @@ fn chapter_1a_progress() {
         }
 
         if observe(&state) != game_row(rows[frame]) {
-            desync(frame, room, &state);
+            desync(frame, &chapter.rooms[room].name, &state);
             break;
         }
         matched = frame;
@@ -274,7 +275,7 @@ fn chapter_1a_progress() {
                 break;
             }
             if observe(&state) != game_row(rows[frame]) {
-                desync(frame, room, &state);
+                desync(frame, &chapter.rooms[room].name, &state);
                 break;
             }
             matched = frame;

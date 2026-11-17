@@ -1,8 +1,8 @@
+use crate::entities::{Spikes, ZipMover};
 use crate::physics::IVec2;
 
 pub const TILE_SIZE: i32 = 8;
 pub const SCREEN_HEIGHT: i32 = 180;
-pub const JUMP_THRU_HEIGHT: i32 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
@@ -39,45 +39,6 @@ pub enum Direction {
     Right,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Spikes {
-    pub direction: Direction,
-    pub hitbox: Rect,
-}
-
-impl Spikes {
-    pub fn new(direction: Direction, x: i32, y: i32, size: i32) -> Spikes {
-        let hitbox = match direction {
-            Direction::Up => Rect { 
-                left: x,
-                top: y - 3,
-                width: size,
-                height: 3
-            },
-            Direction::Down => Rect { 
-                left: x,
-                top: y,
-                width: size,
-                height: 3
-            },
-            Direction::Right => Rect { 
-                left: x,
-                top: y,
-                width: 3,
-                height: size
-            },
-            Direction::Left => Rect { 
-                left: x - 3,
-                top: y,
-                width: 3,
-                height: size
-            },
-        };
-
-        Spikes { direction, hitbox }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Room {
     pub name: String,
@@ -93,10 +54,7 @@ pub struct Room {
     pub spikes: Vec<Spikes>,
     // platforms she can jump up through and stand on
     pub jump_thrus: Vec<Rect>,
-}
-
-pub fn jump_thru(x: i32, y: i32, width: i32) -> Rect {
-    Rect { left: x, top: y, width, height: JUMP_THRU_HEIGHT }
+    pub zip_movers: Vec<ZipMover>,
 }
 
 impl Room {
@@ -126,6 +84,7 @@ impl Room {
             solid,
             spikes: Vec::new(),
             jump_thrus: Vec::new(),
+            zip_movers: Vec::new(),
         };
         room.set_size(width as i32 * TILE_SIZE, height as i32 * TILE_SIZE);
         room
@@ -169,7 +128,8 @@ impl Room {
             }
         }
 
-        false
+        let rect = Rect { left, top, width, height };
+        self.zip_movers.iter().any(|zip| zip.collidable && zip.rect().overlaps(&rect))
     }
 }
 
@@ -191,6 +151,26 @@ impl Chapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collide_rect_hits_a_zip_mover_where_it_is_now() {
+        let mut room = at_origin("0000\n0000\n0000\n0000");
+        room.zip_movers.push(ZipMover::new(8, 8, 16, 8, 8, 0));
+        assert!(room.collide_rect(10, 10, 2, 2));
+        assert!(!room.collide_rect(10, 2, 2, 2));
+
+        room.zip_movers[0].position.y = 0;
+        assert!(!room.collide_rect(10, 10, 2, 2));
+        assert!(room.collide_rect(10, 2, 2, 2));
+    }
+
+    #[test]
+    fn collide_rect_skips_a_zip_mover_that_is_not_collidable() {
+        let mut room = at_origin("0000\n0000\n0000\n0000");
+        room.zip_movers.push(ZipMover::new(8, 8, 16, 8, 8, 0));
+        room.zip_movers[0].collidable = false;
+        assert!(!room.collide_rect(10, 10, 2, 2));
+    }
 
     #[test]
     fn from_tiles_bounds_cover_the_grid() {
@@ -263,19 +243,6 @@ mod tests {
         let a = rect(10, 10, 8, 8);
         assert!(!a.overlaps(&rect(100, 10, 8, 8)));
         assert!(!a.overlaps(&rect(10, -50, 8, 8)));
-    }
-
-    #[test]
-    fn spikes_hitbox_sits_on_the_side_the_points_face() {
-        assert_eq!(Spikes::new(Direction::Up, 40, 168, 24).hitbox, rect(40, 165, 24, 3));
-        assert_eq!(Spikes::new(Direction::Down, 40, 168, 24).hitbox, rect(40, 168, 24, 3));
-        assert_eq!(Spikes::new(Direction::Left, 40, 168, 24).hitbox, rect(37, 168, 3, 24));
-        assert_eq!(Spikes::new(Direction::Right, 40, 168, 24).hitbox, rect(40, 168, 3, 24));
-    }
-
-    #[test]
-    fn spikes_remember_their_direction() {
-        assert_eq!(Spikes::new(Direction::Left, 0, 0, 8).direction, Direction::Left);
     }
 
     #[test]

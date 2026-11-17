@@ -1,5 +1,5 @@
-use celeste_tas_solver::entities::step_room;
 use celeste_tas_solver::physics::{step, track_buttons, IVec2, Input, Mode, PlayerState};
+use celeste_tas_solver::sim::step_room;
 use celeste_tas_solver::trace::parse_trace;
 use celeste_tas_solver::transition::{before_transition, find_transition, finish_transition, TRANSITION_FRAMES};
 use celeste_tas_solver::Vec2;
@@ -212,7 +212,7 @@ fn community_lvl_1() {
 }
 
 // frames of the whole chapter that match the game so far. raise it as the simulator improves
-const CHAPTER_1A_MATCHED: usize = 796;
+const CHAPTER_1A_MATCHED: usize = 885;
 
 // one simulation of the community TAS through every room of 1A.
 // run with: cargo test --test desync chapter -- --nocapture

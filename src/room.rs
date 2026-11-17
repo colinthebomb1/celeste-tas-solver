@@ -1,4 +1,4 @@
-use crate::entities::{Spikes, ZipMover};
+use crate::entities::{JumpThru, Spikes, Spring, ZipMover};
 use crate::physics::IVec2;
 
 pub const TILE_SIZE: i32 = 8;
@@ -53,7 +53,8 @@ pub struct Room {
     solid: Vec<bool>,
     pub spikes: Vec<Spikes>,
     // platforms she can jump up through and stand on
-    pub jump_thrus: Vec<Rect>,
+    pub jump_thrus: Vec<JumpThru>,
+    pub springs: Vec<Spring>,
     pub zip_movers: Vec<ZipMover>,
 }
 
@@ -84,6 +85,7 @@ impl Room {
             solid,
             spikes: Vec::new(),
             jump_thrus: Vec::new(),
+            springs: Vec::new(),
             zip_movers: Vec::new(),
         };
         room.set_size(width as i32 * TILE_SIZE, height as i32 * TILE_SIZE);

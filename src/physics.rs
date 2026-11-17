@@ -56,6 +56,8 @@ pub const DASH_V_FLOOR_SNAP_DIST: i32 = 3;
 pub const LIFT_X_CAP: f32 = 250.0;
 pub const LIFT_Y_CAP: f32 = -130.0;
 pub const LIFT_SPEED_GRACE_TIME: f32 = 0.16;
+pub const SUPER_BOUNCE_SPEED: f32 = -185.0;
+pub const SUPER_BOUNCE_VAR_JUMP_TIME: f32 = 0.2;
 const NO_LIFT: Vec2 = Vec2 { x: 0.0, y: 0.0 };
 pub const DASH_H_JUMP_THRU_NUDGE: i32 = 6;
 pub const DODGE_SLIDE_SPEED_MULT: f32 = 1.2;
@@ -264,7 +266,7 @@ pub fn hitbox(state: &PlayerState, dx: i32, dy: i32) -> Rect {
 
 pub fn touches_jump_thru(state: &PlayerState, room: &Room, dx: i32, dy: i32) -> bool {
     let moved = hitbox(state, dx, dy);
-    room.jump_thrus.iter().any(|jump_thru| jump_thru.overlaps(&moved))
+    room.jump_thrus.iter().any(|jump_thru| jump_thru.hitbox.overlaps(&moved))
 }
 
 pub fn enters_jump_thru(state: &PlayerState, room: &Room, dx: i32, dy: i32) -> bool {
@@ -272,7 +274,7 @@ pub fn enters_jump_thru(state: &PlayerState, room: &Room, dx: i32, dy: i32) -> b
     let moved = hitbox(state, dx, dy);
     room.jump_thrus
         .iter()
-        .any(|jump_thru| !jump_thru.overlaps(&now) && jump_thru.overlaps(&moved))
+        .any(|jump_thru| !jump_thru.hitbox.overlaps(&now) && jump_thru.hitbox.overlaps(&moved))
 }
 
 pub fn floor_below(state: &PlayerState, room: &Room, dx: i32) -> bool {
@@ -471,9 +473,9 @@ pub fn nudge_v(state: &mut PlayerState, room: &Room, amount: f32) {
 
 pub fn dash_jump_thru_nudge(state: &mut PlayerState, room: &Room) {
     for jump_thru in &room.jump_thrus {
-        let depth = state.position.y - jump_thru.top;
+        let depth = state.position.y - jump_thru.hitbox.top;
 
-        if jump_thru.overlaps(&hitbox(state, 0, 0)) && depth <= DASH_H_JUMP_THRU_NUDGE {
+        if jump_thru.hitbox.overlaps(&hitbox(state, 0, 0)) && depth <= DASH_H_JUMP_THRU_NUDGE {
             for _ in 0..depth {
                 if collides(state, room, 0, -1) {
                     break;
@@ -849,6 +851,33 @@ pub fn track_buttons(state: &mut PlayerState, input: Input) {
     state.crouch_dash_held = input.crouch_dash;
 }
 
+pub fn super_bounce(state: &mut PlayerState, room: &Room, from_y: i32) {
+    nudge_v(state, room, (from_y - state.position.y) as f32);
+
+    state.dashes = MAX_DASHES;
+    state.stamina = CLIMB_MAX_STAMINA;
+    state.mode = Mode::Normal;
+
+    state.jump_grace_timer = 0.0;
+    state.var_jump_timer = SUPER_BOUNCE_VAR_JUMP_TIME;
+    state.auto_jump = true;
+    state.dash_attack_timer = 0.0;
+    state.wall_slide_timer = WALL_SLIDE_TIME;
+    state.wall_boost_timer = 0.0;
+
+    state.speed.x = 0.0;
+    state.speed.y = SUPER_BOUNCE_SPEED;
+    state.var_jump_speed = SUPER_BOUNCE_SPEED;
+}
+
+pub fn bounce_on_springs(state: &mut PlayerState, room: &Room) {
+    for spring in &room.springs {
+        if state.speed.y >= 0.0 && spring.hitbox.overlaps(&hurtbox(state)) {
+            super_bounce(state, room, spring.hitbox.top);
+        }
+    }
+}
+
 pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
     if state.dead {
         return state;
@@ -993,7 +1022,12 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
     move_h(&mut state, room, speed_x * DELTA_TIME, ground);
     move_v(&mut state, room, speed_y * DELTA_TIME);
 
-    if room.spikes.iter().any(|s| spikes_kill(&state, s)) || fell_out(&state, room) {
+    let spiked = room.spikes.iter().any(|s| spikes_kill(&state, s));
+    if !spiked {
+        bounce_on_springs(&mut state, room);
+    }
+
+    if spiked || fell_out(&state, room) {
         state.speed = Vec2 { x: 0.0, y: 0.0 };
         state.dead = true;
     }
@@ -2786,7 +2820,7 @@ mod tests {
 
     fn platform_room() -> Room {
         let mut room = room();
-        room.jump_thrus.push(crate::entities::jump_thru(40, PLATFORM_Y, 40));
+        room.jump_thrus.push(crate::entities::JumpThru::new(40, PLATFORM_Y, 40));
         room
     }
 
@@ -3065,6 +3099,84 @@ mod tests {
         s.dash_attack_timer = 0.2;
         s = step(s, Input::default(), &room());
         assert_eq!(s.position.y, FLOOR_Y - 2);
+    }
+
+    // the usual room with a spring on the floor, its base centred at x = 20
+    fn spring_room() -> Room {
+        let mut room = room();
+        room.springs.push(crate::entities::Spring::new(20, FLOOR_Y));
+        room
+    }
+
+    #[test]
+    fn super_bounce_launches_her_straight_up() {
+        let mut s = dashing_at(20, FLOOR_Y, 200.0, 50.0);
+        s.dashes = 0;
+        s.stamina = 20.0;
+        s.dash_attack_timer = 0.2;
+        super_bounce(&mut s, &spring_room(), FLOOR_Y - 6);
+        assert_eq!(s.speed, Vec2 { x: 0.0, y: SUPER_BOUNCE_SPEED });
+        assert_eq!(s.var_jump_speed, SUPER_BOUNCE_SPEED);
+        assert_eq!(s.var_jump_timer, SUPER_BOUNCE_VAR_JUMP_TIME);
+        assert_eq!(s.mode, Mode::Normal);
+        assert_eq!(s.dashes, MAX_DASHES);
+        assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
+        assert_eq!(s.dash_attack_timer, 0.0);
+        assert_eq!(s.jump_grace_timer, 0.0);
+        assert!(s.auto_jump);
+    }
+
+    #[test]
+    fn super_bounce_lifts_her_to_the_springs_top_and_keeps_her_remainder() {
+        let mut s = player_at(20, FLOOR_Y - 2, 0.0, 50.0);
+        s.remainder.y = -0.25;
+        super_bounce(&mut s, &spring_room(), FLOOR_Y - 6);
+        assert_eq!(s.position.y, FLOOR_Y - 6);
+        assert_eq!(s.remainder.y, -0.25);
+    }
+
+    #[test]
+    fn step_landing_on_a_spring_bounces() {
+        let s = step(player_at(20, FLOOR_Y - 4, 0.0, 120.0), Input::default(), &spring_room());
+        assert_eq!(s.speed, Vec2 { x: 0.0, y: SUPER_BOUNCE_SPEED });
+        assert_eq!(s.position.y, FLOOR_Y - 6);
+        assert!(!s.dead);
+    }
+
+    #[test]
+    fn step_running_into_a_spring_bounces() {
+        let room = spring_room();
+        let mut s = standing();
+        let right = Input { move_x: 1, ..Input::default() };
+        let mut frames = 0;
+        while s.speed.y == 0.0 && frames < 30 {
+            s = step(s, right, &room);
+            frames += 1;
+        }
+        assert_eq!(s.speed, Vec2 { x: 0.0, y: SUPER_BOUNCE_SPEED });
+    }
+
+    #[test]
+    fn step_rising_past_a_spring_does_not_bounce() {
+        let s = step(player_at(20, FLOOR_Y - 2, 0.0, -100.0), Input::default(), &spring_room());
+        assert!(s.speed.y > SUPER_BOUNCE_SPEED);
+        assert_eq!(s.var_jump_timer, 0.0);
+    }
+
+    #[test]
+    fn step_no_bounce_beside_a_spring() {
+        let s = step(player_at(34, FLOOR_Y - 4, 0.0, 120.0), Input::default(), &spring_room());
+        assert!(s.speed.y >= 0.0);
+    }
+
+    #[test]
+    fn step_spring_bounce_holds_its_height_without_jump_held() {
+        let room = spring_room();
+        let mut s = step(player_at(20, FLOOR_Y - 4, 0.0, 120.0), Input::default(), &room);
+        for _ in 0..5 {
+            s = step(s, Input::default(), &room);
+        }
+        assert_eq!(s.speed.y, SUPER_BOUNCE_SPEED);
     }
 
     #[test]

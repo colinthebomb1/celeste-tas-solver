@@ -5,11 +5,18 @@ use crate::room::Rect;
 pub const JUMP_THRU_HEIGHT: i32 = 5;
 
 // a platform she can jump up through and stand on. (x, y) is its top-left corner
-pub fn jump_thru(x: i32, y: i32, width: i32) -> Rect {
-    Rect { left: x, top: y, width, height: JUMP_THRU_HEIGHT }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JumpThru {
+    pub hitbox: Rect,
 }
 
-pub fn load_jump_thrus(level: &Element, origin: IVec2) -> Result<Vec<Rect>, MapError> {
+impl JumpThru {
+    pub fn new(x: i32, y: i32, width: i32) -> JumpThru {
+        JumpThru { hitbox: Rect { left: x, top: y, width, height: JUMP_THRU_HEIGHT } }
+    }
+}
+
+pub fn load_jump_thrus(level: &Element, origin: IVec2) -> Result<Vec<JumpThru>, MapError> {
     let Some(entities) = level.child("entities") else {
         return Ok(Vec::new());
     };
@@ -21,7 +28,7 @@ pub fn load_jump_thrus(level: &Element, origin: IVec2) -> Result<Vec<Rect>, MapE
         let y = entity.int("y").ok_or(MapError::MissingField("y"))?;
         let width = entity.int("width").ok_or(MapError::MissingField("width"))?;
 
-        jump_thrus.push(jump_thru(origin.x + x, origin.y + y, width));
+        jump_thrus.push(JumpThru::new(origin.x + x, origin.y + y, width));
     }
 
     Ok(jump_thrus)

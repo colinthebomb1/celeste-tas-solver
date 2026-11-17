@@ -1,6 +1,6 @@
 use celeste_tas_solver::map::load_room;
 use celeste_tas_solver::physics::IVec2;
-use celeste_tas_solver::entities::{jump_thru, Spikes};
+use celeste_tas_solver::entities::{JumpThru, Spikes, Spring};
 use celeste_tas_solver::room::{Direction, Rect};
 
 mod common;
@@ -48,8 +48,20 @@ fn rooms_load_their_jump_thrus() {
     let room = |name: &str| &chapter.rooms[chapter.room_named(name).unwrap()];
 
     assert!(room("lvl_1").jump_thrus.is_empty());
-    assert_eq!(room("lvl_3").jump_thrus, vec![jump_thru(512, -200, 32)]);
+    assert_eq!(room("lvl_3").jump_thrus, vec![JumpThru::new(512, -200, 32)]);
     assert_eq!(chapter.rooms.iter().map(|room| room.jump_thrus.len()).sum::<usize>(), 77);
+}
+
+#[test]
+fn rooms_load_their_springs() {
+    let Some(chapter) = common::chapter_1a() else {
+        eprintln!("skipped. Celeste install could not be found, try setting CELESTE_DIR");
+        return;
+    };
+    let lvl_5 = &chapter.rooms[chapter.room_named("lvl_5").unwrap()];
+
+    assert_eq!(lvl_5.springs, vec![Spring::new(1320, -896)]);
+    assert_eq!(chapter.rooms.iter().map(|room| room.springs.len()).sum::<usize>(), 13);
 }
 
 #[test]

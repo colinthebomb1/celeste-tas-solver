@@ -245,8 +245,8 @@ fn move_pixels(room: &mut Room, index: usize, state: &mut PlayerState, dx: i32, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::step_room;
     use crate::physics::{lift_boost, Input, LIFT_Y_CAP};
+    use crate::sim::step_room;
 
     // an empty room with one block at (40, 120), 32 x 16, that travels 80 px up
     fn zip_room() -> Room {

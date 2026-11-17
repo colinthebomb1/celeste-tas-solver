@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::physics::IVec2;
 use crate::entities::jump_thru::load_jump_thrus;
 use crate::entities::spikes::load_spikes;
+use crate::entities::spring::load_springs;
 use crate::entities::zip_mover::load_zip_movers;
 use crate::room::{Chapter, Room};
 
@@ -258,6 +259,7 @@ fn room_from_level(level: &Element) -> Result<Room, MapError> {
     }
     room.spikes = load_spikes(level, origin)?;
     room.jump_thrus = load_jump_thrus(level, origin)?;
+    room.springs = load_springs(level, origin)?;
     room.zip_movers = load_zip_movers(level, origin)?;
     
     Ok(room)
@@ -279,13 +281,13 @@ pub fn find_celeste_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::{jump_thru, Spikes, ZipMover};
+    use crate::entities::{JumpThru, Spikes, Spring, ZipMover};
     use crate::room::Direction;
 
-    const LOOKUP: [&str; 25] = [
+    const LOOKUP: [&str; 26] = [
         "Map", "levels", "level", "name", "x", "y", "solids", "innerText", "room_a", "room_b",
         "flag", "big", "ratio", "note", "entities", "spikesUp", "spikesDown", "spikesLeft",
-        "spikesRight", "width", "height", "strawberry", "jumpThru", "zipMover", "node",
+        "spikesRight", "width", "height", "strawberry", "jumpThru", "zipMover", "node", "spring",
     ];
 
     fn string(s: &str) -> Vec<u8> {
@@ -628,7 +630,7 @@ mod tests {
             entity("jumpThru", 0, 16, Some(("width", 8))),
         ]);
         let room = load_room(&map, "room_b").unwrap();
-        assert_eq!(room.jump_thrus, vec![jump_thru(328, -24, 40), jump_thru(320, -168, 8)]);
+        assert_eq!(room.jump_thrus, vec![JumpThru::new(328, -24, 40), JumpThru::new(320, -168, 8)]);
         assert!(room.spikes.is_empty());
     }
 
@@ -645,6 +647,13 @@ mod tests {
             .into_iter()
             .collect();
         element("zipMover", &attributes, &nodes)
+    }
+
+    #[test]
+    fn load_room_reads_springs_in_world_coordinates() {
+        let map = map_with_entities(&[entity("spring", 40, 128, None), entity("strawberry", 1, 1, None)]);
+        let room = load_room(&map, "room_b").unwrap();
+        assert_eq!(room.springs, vec![Spring::new(360, -56)]);
     }
 
     #[test]

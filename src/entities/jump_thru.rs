@@ -1,5 +1,5 @@
-use crate::level::map::{Element, MapError};
-use crate::level::room::Rect;
+use crate::level::map::{Element, MapError, entities};
+use crate::level::room::{Rect, Room};
 use crate::player::IVec2;
 
 pub const JUMP_THRU_HEIGHT: i32 = 5;
@@ -23,24 +23,14 @@ impl JumpThru {
     }
 }
 
-pub fn load_jump_thrus(level: &Element, origin: IVec2) -> Result<Vec<JumpThru>, MapError> {
-    let Some(entities) = level.child("entities") else {
-        return Ok(Vec::new());
-    };
-
-    let mut jump_thrus = Vec::new();
-
-    for entity in entities
-        .children
-        .iter()
-        .filter(|entity| entity.name == "jumpThru")
-    {
-        let x = entity.int("x").ok_or(MapError::MissingField("x"))?;
-        let y = entity.int("y").ok_or(MapError::MissingField("y"))?;
-        let width = entity.int("width").ok_or(MapError::MissingField("width"))?;
-
-        jump_thrus.push(JumpThru::new(origin.x + x, origin.y + y, width));
+pub fn load_jump_thrus(level: &Element, origin: IVec2, room: &mut Room) -> Result<(), MapError> {
+    for entity in entities(level, "jumpThru") {
+        room.jump_thrus.push(JumpThru::new(
+            origin.x + entity.require("x")?,
+            origin.y + entity.require("y")?,
+            entity.require("width")?,
+        ));
     }
 
-    Ok(jump_thrus)
+    Ok(())
 }

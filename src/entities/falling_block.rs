@@ -1,9 +1,7 @@
-use crate::Vec2;
-use crate::level::map::{Element, MapError};
+use crate::entities::solid::{advance_v, move_solid};
+use crate::level::map::{Element, MapError, entities};
 use crate::level::room::{Rect, Room};
-use crate::player::{
-    DELTA_TIME, IVec2, PlayerState, approach, hitbox, is_riding, move_exact_v, set_lift_speed,
-};
+use crate::player::{DELTA_TIME, IVec2, PlayerState, approach, hitbox, is_riding};
 
 pub const FALL_SHAKE_TIME: f32 = 0.2;
 pub const FALL_WAIT_TIME: f32 = 0.4;
@@ -27,69 +25,47 @@ pub enum FallStage {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FallingBlock {
-    pub width: i32,
-    pub height: i32,
+    pub solid: usize,
     pub climb_fall: bool,
 
     // everything below changes as it runs
-    pub position: IVec2,
-    pub remainder: f32,
     pub speed: f32,
     pub stage: FallStage,
     pub timer: f32,
-    pub collidable: bool,
 }
 
-impl FallingBlock {
-    pub fn new(x: i32, y: i32, width: i32, height: i32, climb_fall: bool) -> FallingBlock {
-        FallingBlock {
-            width,
-            height,
+impl Room {
+    // (x, y) is its top-left corner
+    pub fn add_falling_block(&mut self, x: i32, y: i32, width: i32, height: i32, climb_fall: bool) {
+        let solid = self.add_solid(Rect::new(x, y, width, height));
+        self.falling_blocks.push(FallingBlock {
+            solid,
             climb_fall,
-            position: IVec2 { x, y },
-            remainder: 0.0,
             speed: 0.0,
             stage: FallStage::Idle,
             timer: 0.0,
-            collidable: true,
-        }
-    }
-
-    pub fn rect(&self) -> Rect {
-        Rect {
-            left: self.position.x,
-            top: self.position.y,
-            width: self.width,
-            height: self.height,
-        }
+        });
     }
 }
 
-pub fn load_falling_blocks(level: &Element, origin: IVec2) -> Result<Vec<FallingBlock>, MapError> {
-    let Some(entities) = level.child("entities") else {
-        return Ok(Vec::new());
-    };
-
-    let mut falling_blocks = Vec::new();
-
-    for entity in entities
-        .children
-        .iter()
-        .filter(|entity| entity.name == "fallingBlock")
-    {
-        let int = |key: &'static str| entity.int(key).ok_or(MapError::MissingField(key));
+pub fn load_falling_blocks(
+    level: &Element,
+    origin: IVec2,
+    room: &mut Room,
+) -> Result<(), MapError> {
+    for entity in entities(level, "fallingBlock") {
         let climb_fall = entity.bool("climbFall").unwrap_or(true);
 
-        falling_blocks.push(FallingBlock::new(
-            origin.x + int("x")?,
-            origin.y + int("y")?,
-            int("width")?,
-            int("height")?,
+        room.add_falling_block(
+            origin.x + entity.require("x")?,
+            origin.y + entity.require("y")?,
+            entity.require("width")?,
+            entity.require("height")?,
             climb_fall,
-        ));
+        );
     }
 
-    Ok(falling_blocks)
+    Ok(())
 }
 
 pub fn update_falling_blocks(room: &mut Room, state: &mut PlayerState) {
@@ -98,42 +74,49 @@ pub fn update_falling_blocks(room: &mut Room, state: &mut PlayerState) {
     }
 }
 
-fn sets_it_off(state: &PlayerState, block: &FallingBlock) -> bool {
-    if block.climb_fall {
-        is_riding(state, &block.rect())
+fn rect(room: &Room, index: usize) -> Rect {
+    room.solids[room.falling_blocks[index].solid].rect
+}
+
+fn sets_it_off(room: &Room, index: usize, state: &PlayerState) -> bool {
+    if room.falling_blocks[index].climb_fall {
+        is_riding(state, &rect(room, index))
     } else {
-        !state.dead && hitbox(state, 0, 1).overlaps(&block.rect())
+        !state.dead && hitbox(state, 0, 1).overlaps(&rect(room, index))
     }
 }
 
 // once it's shaking, standing beside it also holds it up
-fn holds_it_up(state: &PlayerState, block: &FallingBlock) -> bool {
+fn holds_it_up(room: &Room, index: usize, state: &PlayerState) -> bool {
+    let block = rect(room, index);
     let beside = !state.dead
-        && (hitbox(state, 1, 0).overlaps(&block.rect())
-            || hitbox(state, -1, 0).overlaps(&block.rect()));
+        && (hitbox(state, 1, 0).overlaps(&block) || hitbox(state, -1, 0).overlaps(&block));
 
-    sets_it_off(state, block) || (block.climb_fall && beside)
+    sets_it_off(room, index, state) || (room.falling_blocks[index].climb_fall && beside)
 }
 
-fn solid_below(room: &mut Room, index: usize) -> bool {
-    let below = room.falling_blocks[index].rect().shifted(0, 1);
+// whether something solid other than itself is right under it, counting from this far down
+fn solid_below(room: &mut Room, index: usize, down: i32) -> bool {
+    let id = room.falling_blocks[index].solid;
+    let below = room.solids[id].rect.shifted(0, down + 1);
 
-    room.falling_blocks[index].collidable = false;
+    room.solids[id].collidable = false;
     let solid = room.solid(&below);
-    room.falling_blocks[index].collidable = true;
+    room.solids[id].collidable = true;
 
     solid
 }
 
 fn tiles_below(room: &Room, index: usize) -> bool {
-    let block = room.falling_blocks[index].rect();
+    let block = rect(room, index);
 
     room.tiles_solid(&Rect::new(block.left, block.bottom(), block.width, 1))
 }
 
-fn jump_thru_below(room: &Room, index: usize) -> bool {
-    let block = &room.falling_blocks[index];
-    let (here, below) = (block.rect(), block.rect().shifted(0, 1));
+// a platform it would land on, as opposed to one it is already inside
+fn jump_thru_below(room: &Room, index: usize, down: i32) -> bool {
+    let here = rect(room, index).shifted(0, down);
+    let below = here.shifted(0, 1);
 
     room.jump_thrus
         .iter()
@@ -145,7 +128,7 @@ fn update_falling_block(room: &mut Room, index: usize, state: &mut PlayerState) 
 
     match block.stage {
         FallStage::Idle => {
-            if sets_it_off(state, block) {
+            if sets_it_off(room, index, state) {
                 start_shaking(&mut room.falling_blocks[index]);
             }
         }
@@ -194,9 +177,7 @@ fn start_shaking(block: &mut FallingBlock) {
 }
 
 fn wait_or_fall(room: &mut Room, index: usize, state: &mut PlayerState) {
-    let block = &room.falling_blocks[index];
-
-    if block.timer > 0.0 && holds_it_up(state, block) {
+    if room.falling_blocks[index].timer > 0.0 && holds_it_up(room, index, state) {
         room.falling_blocks[index].stage = FallStage::Waiting;
     } else {
         let block = &mut room.falling_blocks[index];
@@ -207,14 +188,13 @@ fn wait_or_fall(room: &mut Room, index: usize, state: &mut PlayerState) {
 }
 
 fn wait_while_propped(room: &mut Room, index: usize) {
-    let on_jump_thru = {
-        let below = room.falling_blocks[index].rect().shifted(0, 1);
-        room.jump_thrus
-            .iter()
-            .any(|thru| thru.hitbox.overlaps(&below))
-    };
+    let below = rect(room, index).shifted(0, 1);
+    let on_jump_thru = room
+        .jump_thrus
+        .iter()
+        .any(|thru| thru.hitbox.overlaps(&below));
 
-    if solid_below(room, index) || on_jump_thru {
+    if solid_below(room, index, 0) || on_jump_thru {
         let block = &mut room.falling_blocks[index];
         block.timer = FALL_RECHECK_TIME;
         block.stage = FallStage::Propped;
@@ -226,53 +206,42 @@ fn wait_while_propped(room: &mut Room, index: usize) {
 fn fall(room: &mut Room, index: usize, state: &mut PlayerState) {
     let block = &mut room.falling_blocks[index];
     block.speed = approach(block.speed, FALL_MAX_SPEED, FALL_ACCEL * DELTA_TIME);
-    let amount = block.speed * DELTA_TIME;
+    let (id, amount) = (block.solid, block.speed * DELTA_TIME);
 
-    block.remainder += amount;
-    let pixels = block.remainder.round_ties_even() as i32;
-    block.remainder -= pixels as f32;
+    let pixels = advance_v(&mut room.solids[id], amount);
 
-    if pixels != 0 && move_down(room, index, state, pixels, amount / DELTA_TIME) {
+    if pixels != 0 && move_down(room, index, state, pixels) {
         let block = &mut room.falling_blocks[index];
         block.timer = FALL_LAND_TIME;
         block.stage = FallStage::Landed;
         return;
     }
 
-    let top = room.falling_blocks[index].position.y;
+    let top = room.solids[id].rect.top;
     let fell_out = top > room.bottom() + FALL_OUT_MARGIN
-        || (top > room.bottom() - 1 && solid_below(room, index));
+        || (top > room.bottom() - 1 && solid_below(room, index, 0));
     if fell_out {
-        let block = &mut room.falling_blocks[index];
-        block.collidable = false;
-        block.stage = FallStage::Gone;
+        room.solids[id].collidable = false;
+        room.falling_blocks[index].stage = FallStage::Gone;
     }
 }
 
-fn move_down(
-    room: &mut Room,
-    index: usize,
-    state: &mut PlayerState,
-    pixels: i32,
-    lift_speed: f32,
-) -> bool {
+// true if something stopped it. it breaks dash blocks on the way
+fn move_down(room: &mut Room, index: usize, state: &mut PlayerState, pixels: i32) -> bool {
+    let id = room.falling_blocks[index].solid;
     let mut moved = 0;
     let mut stopped = false;
 
     while moved < pixels {
-        let below = room.falling_blocks[index].rect().shifted(0, moved + 1);
-        for dash_block in room
-            .dash_blocks
-            .iter_mut()
-            .filter(|dash_block| dash_block.hitbox.overlaps(&below))
-        {
-            dash_block.broken = true;
+        let below = room.solids[id].rect.shifted(0, moved + 1);
+        for dash_block in 0..room.dash_blocks.len() {
+            let dash_solid = room.dash_blocks[dash_block].solid;
+            if room.solids[dash_solid].rect.overlaps(&below) {
+                room.solids[dash_solid].collidable = false;
+            }
         }
 
-        room.falling_blocks[index].position.y += moved;
-        stopped = solid_below(room, index) || jump_thru_below(room, index);
-        room.falling_blocks[index].position.y -= moved;
-
+        stopped = solid_below(room, index, moved) || jump_thru_below(room, index, moved);
         if stopped {
             break;
         }
@@ -280,58 +249,17 @@ fn move_down(
     }
 
     if moved != 0 {
-        carry_down(room, index, state, moved, lift_speed);
+        move_solid(room, id, state, 0, moved);
     }
 
     stopped
 }
 
-fn carry_down(
-    room: &mut Room,
-    index: usize,
-    state: &mut PlayerState,
-    pixels: i32,
-    lift_speed: f32,
-) {
-    let riding = is_riding(state, &room.falling_blocks[index].rect());
-    let before = room.falling_blocks[index].rect();
-
-    room.falling_blocks[index].position.y += pixels;
-
-    if state.dead {
-        return;
-    }
-
-    let her = hitbox(state, 0, 0);
-    let pushed = room.falling_blocks[index].rect().overlaps(&her);
-    if !pushed && !riding {
-        return;
-    }
-
-    let her_pixels = if pushed {
-        pixels - (her.top - before.bottom())
-    } else {
-        pixels
-    };
-
-    // the block moving her doesn't block her
-    room.falling_blocks[index].collidable = false;
-    move_exact_v(state, room, her_pixels);
-    room.falling_blocks[index].collidable = true;
-
-    set_lift_speed(
-        state,
-        Vec2 {
-            x: 0.0,
-            y: lift_speed,
-        },
-    );
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::{DashBlock, JumpThru};
+    use crate::Vec2;
+    use crate::entities::JumpThru;
     use crate::player::Input;
     use crate::sim::step_room;
 
@@ -344,8 +272,7 @@ mod tests {
     // a 16 x 16 block at (40, 80)
     fn block_room() -> Room {
         let mut room = floor_room();
-        room.falling_blocks
-            .push(FallingBlock::new(40, 80, 16, 16, true));
+        room.add_falling_block(40, 80, 16, 16, true);
         room
     }
 
@@ -379,7 +306,10 @@ mod tests {
     fn stays_put_with_nobody_on_it() {
         let mut room = block_room();
         idle(&mut room, at(100, 176), 120);
-        assert_eq!(room.falling_blocks[0].position, IVec2 { x: 40, y: 80 });
+        assert_eq!(
+            room.solids[room.falling_blocks[0].solid].position(),
+            IVec2 { x: 40, y: 80 }
+        );
         assert_eq!(room.falling_blocks[0].stage, FallStage::Idle);
     }
 
@@ -413,8 +343,7 @@ mod tests {
     #[test]
     fn grabbing_its_side_does_nothing_when_climbing_does_not_count() {
         let mut room = floor_room();
-        room.falling_blocks
-            .push(FallingBlock::new(40, 80, 16, 16, false));
+        room.add_falling_block(40, 80, 16, 16, false);
         let mut s = PlayerState {
             climb_trigger_dir: -1,
             ..at(60, 96)
@@ -475,7 +404,10 @@ mod tests {
         let mut room = block_room();
         let s = idle(&mut room, at(48, 80), 120);
 
-        assert_eq!(room.falling_blocks[0].position, IVec2 { x: 40, y: 160 });
+        assert_eq!(
+            room.solids[room.falling_blocks[0].solid].position(),
+            IVec2 { x: 40, y: 160 }
+        );
         assert_eq!(room.falling_blocks[0].stage, FallStage::Resting);
         assert_eq!(s.position, IVec2 { x: 48, y: 160 });
         assert!(!s.dead);
@@ -484,8 +416,7 @@ mod tests {
     #[test]
     fn it_speeds_up_to_its_top_speed() {
         let mut room = Room::from_tiles(IVec2 { x: 0, y: 0 }, &"00000000000\n".repeat(60));
-        room.falling_blocks
-            .push(FallingBlock::new(40, 0, 16, 16, true));
+        room.add_falling_block(40, 0, 16, 16, true);
         room.falling_blocks[0].stage = FallStage::Falling;
 
         let mut away = at(8, 8);
@@ -503,7 +434,7 @@ mod tests {
         let mut s = at(48, 80);
         update(&mut room, &mut s, 1);
 
-        assert_eq!(room.falling_blocks[0].position.y, 83);
+        assert_eq!(room.solids[room.falling_blocks[0].solid].position().y, 83);
         assert_eq!(s.position.y, 83);
         assert_eq!(s.lift_speed.y, FALL_MAX_SPEED * DELTA_TIME / DELTA_TIME);
     }
@@ -518,23 +449,25 @@ mod tests {
         let mut s = at(48, 108);
         update(&mut room, &mut s, 1);
 
-        assert_eq!(room.falling_blocks[0].position.y, 83);
+        assert_eq!(room.solids[room.falling_blocks[0].solid].position().y, 83);
         assert_eq!(s.position.y, 110);
     }
 
     #[test]
     fn it_disappears_below_the_room() {
         let mut room = Room::from_tiles(IVec2 { x: 0, y: 0 }, &"00000000000\n".repeat(23));
-        room.falling_blocks
-            .push(FallingBlock::new(40, 80, 16, 16, true));
+        room.add_falling_block(40, 80, 16, 16, true);
         room.falling_blocks[0].stage = FallStage::Falling;
 
         let mut away = at(8, 8);
         update(&mut room, &mut away, 120);
 
         assert_eq!(room.falling_blocks[0].stage, FallStage::Gone);
-        assert!(room.falling_blocks[0].position.y > room.bottom() + FALL_OUT_MARGIN);
-        assert!(!room.falling_blocks[0].collidable);
+        assert!(
+            room.solids[room.falling_blocks[0].solid].position().y
+                > room.bottom() + FALL_OUT_MARGIN
+        );
+        assert!(!room.solids[room.falling_blocks[0].solid].collidable);
     }
 
     #[test]
@@ -546,38 +479,37 @@ mod tests {
         let mut away = at(8, 8);
         update(&mut room, &mut away, 60);
 
-        assert_eq!(room.falling_blocks[0].position.y, 104);
+        assert_eq!(room.solids[room.falling_blocks[0].solid].position().y, 104);
         assert_eq!(room.falling_blocks[0].stage, FallStage::Propped);
     }
 
     #[test]
     fn it_breaks_dash_blocks_it_falls_on() {
         let mut room = block_room();
-        room.dash_blocks.push(DashBlock::new(40, 120, 16, 16));
+        room.add_dash_block(40, 120, 16, 16);
         room.falling_blocks[0].stage = FallStage::Falling;
 
         let mut away = at(8, 8);
         update(&mut room, &mut away, 120);
 
-        assert!(room.dash_blocks[0].broken);
-        assert_eq!(room.falling_blocks[0].position.y, 160);
+        assert!(!room.solids[room.dash_blocks[0].solid].collidable);
+        assert_eq!(room.solids[room.falling_blocks[0].solid].position().y, 160);
     }
 
     #[test]
     fn it_falls_again_when_the_block_under_it_goes() {
         let mut room = block_room();
-        room.falling_blocks
-            .push(FallingBlock::new(40, 120, 16, 16, true));
+        room.add_falling_block(40, 120, 16, 16, true);
         room.falling_blocks[0].stage = FallStage::Falling;
 
         let mut away = at(8, 8);
         update(&mut room, &mut away, 60);
-        assert_eq!(room.falling_blocks[0].position.y, 104);
+        assert_eq!(room.solids[room.falling_blocks[0].solid].position().y, 104);
         assert_eq!(room.falling_blocks[0].stage, FallStage::Propped);
 
-        room.falling_blocks[1].collidable = false;
+        room.solids[room.falling_blocks[1].solid].collidable = false;
         update(&mut room, &mut away, 120);
-        assert_eq!(room.falling_blocks[0].position.y, 160);
+        assert_eq!(room.solids[room.falling_blocks[0].solid].position().y, 160);
         assert_eq!(room.falling_blocks[0].stage, FallStage::Resting);
     }
 }

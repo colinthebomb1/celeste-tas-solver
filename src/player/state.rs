@@ -14,17 +14,11 @@ pub enum Mode {
     Dashing { timer: f32 },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MovingSolid {
-    ZipMover,
-    FallingBlock,
-}
-
 // the moving block she is hopping onto, and where it was when she last looked
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HopSolid {
-    pub kind: MovingSolid,
-    pub index: usize,
+    // its index in the room's solids
+    pub id: usize,
     pub position: IVec2,
 }
 

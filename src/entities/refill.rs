@@ -1,4 +1,4 @@
-use crate::level::map::{Element, MapError};
+use crate::level::map::{Element, MapError, entities};
 use crate::level::room::{Rect, Room};
 use crate::player::{DELTA_TIME, IVec2, PlayerState, hurtbox, use_refill};
 
@@ -38,27 +38,20 @@ impl Refill {
     }
 }
 
-pub fn load_refills(level: &Element, origin: IVec2) -> Result<Vec<Refill>, MapError> {
-    let Some(entities) = level.child("entities") else {
-        return Ok(Vec::new());
-    };
-
-    let mut refills = Vec::new();
-
-    for entity in entities
-        .children
-        .iter()
-        .filter(|entity| entity.name == "refill")
-    {
-        let x = entity.int("x").ok_or(MapError::MissingField("x"))?;
-        let y = entity.int("y").ok_or(MapError::MissingField("y"))?;
+pub fn load_refills(level: &Element, origin: IVec2, room: &mut Room) -> Result<(), MapError> {
+    for entity in entities(level, "refill") {
         let two_dashes = entity.bool("twoDash").unwrap_or(false);
         let one_use = entity.bool("oneUse").unwrap_or(false);
 
-        refills.push(Refill::new(origin.x + x, origin.y + y, two_dashes, one_use));
+        room.refills.push(Refill::new(
+            origin.x + entity.require("x")?,
+            origin.y + entity.require("y")?,
+            two_dashes,
+            one_use,
+        ));
     }
 
-    Ok(refills)
+    Ok(())
 }
 
 pub fn update_refills(room: &mut Room, state: &mut PlayerState) {

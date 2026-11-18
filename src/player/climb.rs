@@ -65,50 +65,22 @@ pub fn climb_begin(state: &mut PlayerState, room: &Room) {
     state.mode = Mode::Climb;
 }
 
-pub(crate) fn moving_solid_at(room: &Room, rect: &Rect) -> Option<HopSolid> {
-    let zip = room
-        .zip_movers
+fn solid_in(room: &Room, rect: &Rect) -> Option<HopSolid> {
+    let id = room
+        .solids
         .iter()
-        .position(|zip| zip.collidable && zip.rect().overlaps(rect));
-    let falling = room
-        .falling_blocks
-        .iter()
-        .position(|block| block.collidable && block.rect().overlaps(rect));
+        .position(|solid| solid.collidable && solid.rect.overlaps(rect))?;
 
-    if let Some(index) = zip {
-        Some(HopSolid {
-            kind: MovingSolid::ZipMover,
-            index,
-            position: room.zip_movers[index].position,
-        })
-    } else {
-        falling.map(|index| HopSolid {
-            kind: MovingSolid::FallingBlock,
-            index,
-            position: room.falling_blocks[index].position,
-        })
-    }
-}
-
-pub(crate) fn moving_solid_position(room: &Room, solid: HopSolid) -> Option<IVec2> {
-    let (position, collidable) = match solid.kind {
-        MovingSolid::ZipMover => (
-            room.zip_movers[solid.index].position,
-            room.zip_movers[solid.index].collidable,
-        ),
-        MovingSolid::FallingBlock => (
-            room.falling_blocks[solid.index].position,
-            room.falling_blocks[solid.index].collidable,
-        ),
-    };
-
-    collidable.then_some(position)
+    Some(HopSolid {
+        id,
+        position: room.solids[id].position(),
+    })
 }
 
 // she pops up over the ledge. the sideways push waits until the wall is out of her way
 pub fn climb_hop(state: &mut PlayerState, room: &Room) {
     if collides(state, room, state.facing as i32, 0) {
-        state.climb_hop_solid = moving_solid_at(room, &hitbox(state, state.facing as i32, 0));
+        state.climb_hop_solid = solid_in(room, &hitbox(state, state.facing as i32, 0));
         state.hop_wait_x = state.facing;
         state.hop_wait_x_speed = state.facing as f32 * CLIMB_HOP_X;
     } else {
@@ -129,7 +101,9 @@ pub(crate) fn follow_hop_solid(state: &mut PlayerState, room: &Room) {
         return;
     };
 
-    match moving_solid_position(room, solid) {
+    let now = room.solids[solid.id];
+
+    match now.collidable.then_some(now.position()) {
         None => state.climb_hop_solid = None,
         Some(position) if position != solid.position => {
             state.climb_hop_solid = Some(HopSolid { position, ..solid });

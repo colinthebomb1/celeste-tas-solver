@@ -12,6 +12,20 @@ use crate::entities::zip_mover::load_zip_movers;
 use crate::level::room::{Chapter, Room};
 use crate::player::IVec2;
 
+// adds one kind of entity from a level to its room. positions in the map are relative to the room's origin
+type Loader = fn(&Element, IVec2, &mut Room) -> Result<(), MapError>;
+
+const LOADERS: [Loader; 8] = [
+    load_spikes,
+    load_jump_thrus,
+    load_springs,
+    load_refills,
+    load_dash_blocks,
+    load_crumble_blocks,
+    load_falling_blocks,
+    load_zip_movers,
+];
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum MapError {
     // ran out of bytes mid read
@@ -58,6 +72,11 @@ impl Element {
         }
     }
 
+    // The attribute's value, or an error naming it if it is missing or not a Value::Int.
+    pub fn require(&self, key: &'static str) -> Result<i32, MapError> {
+        self.int(key).ok_or(MapError::MissingField(key))
+    }
+
     // The attribute's value if it exists and is a Value::Bool.
     pub fn bool(&self, key: &str) -> Option<bool> {
         match self.attributes.get(key) {
@@ -73,6 +92,15 @@ impl Element {
             _ => None,
         }
     }
+}
+
+// the entities with this name among a level's "entities" children
+pub fn entities<'a>(level: &'a Element, name: &'a str) -> impl Iterator<Item = &'a Element> {
+    level
+        .child("entities")
+        .into_iter()
+        .flat_map(|entities| &entities.children)
+        .filter(move |entity| entity.name == name)
 }
 
 pub struct MapReader<'file> {
@@ -285,14 +313,9 @@ fn room_from_level(level: &Element) -> Result<Room, MapError> {
     if let (Some(width), Some(height)) = (level.int("width"), level.int("height")) {
         room.set_size(width, height);
     }
-    room.spikes = load_spikes(level, origin)?;
-    room.jump_thrus = load_jump_thrus(level, origin)?;
-    room.springs = load_springs(level, origin)?;
-    room.refills = load_refills(level, origin)?;
-    room.dash_blocks = load_dash_blocks(level, origin)?;
-    room.crumble_blocks = load_crumble_blocks(level, origin)?;
-    room.falling_blocks = load_falling_blocks(level, origin)?;
-    room.zip_movers = load_zip_movers(level, origin)?;
+    for load in LOADERS {
+        load(level, origin, &mut room)?;
+    }
 
     Ok(room)
 }
@@ -313,10 +336,9 @@ pub fn find_celeste_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::{
-        CrumbleBlock, DashBlock, FallingBlock, JumpThru, Refill, Spikes, Spring, ZipMover,
-    };
+    use crate::entities::{JumpThru, Refill, Spikes, Spring};
     use crate::level::room::Direction;
+    use crate::level::room::Rect;
 
     const LOOKUP: [&str; 33] = [
         "Map",
@@ -718,12 +740,14 @@ mod tests {
             entity("spikesRight", 16, 32, Some(("height", 40))),
         ]);
         let room = load_room(&map, "room_b").unwrap();
+
+        // grouped by direction, not in map order
         assert_eq!(
             room.spikes,
             vec![
                 Spikes::new(Direction::Up, 328, -168, 24),
-                Spikes::new(Direction::Left, 360, -184, 16),
                 Spikes::new(Direction::Down, 320, -176, 8),
+                Spikes::new(Direction::Left, 360, -184, 16),
                 Spikes::new(Direction::Right, 336, -152, 40),
             ]
         );
@@ -777,7 +801,10 @@ mod tests {
         ];
         let map = map_with_entities(&[element("dashBlock", &attributes, &[])]);
         let room = load_room(&map, "room_b").unwrap();
-        assert_eq!(room.dash_blocks, vec![DashBlock::new(568, -72, 16, 24)]);
+        assert_eq!(
+            room.solids[room.dash_blocks[0].solid].rect,
+            Rect::new(568, -72, 16, 24)
+        );
     }
 
     #[test]
@@ -816,19 +843,25 @@ mod tests {
         ]);
         let room = load_room(&map, "room_b").unwrap();
         assert_eq!(
-            room.falling_blocks,
-            vec![
-                FallingBlock::new(472, -24, 32, 24, true),
-                FallingBlock::new(472, -24, 32, 24, false)
-            ]
+            room.solids[room.falling_blocks[0].solid].rect,
+            Rect::new(472, -24, 32, 24)
         );
+        assert_eq!(
+            room.solids[room.falling_blocks[1].solid].rect,
+            Rect::new(472, -24, 32, 24)
+        );
+        assert!(room.falling_blocks[0].climb_fall);
+        assert!(!room.falling_blocks[1].climb_fall);
     }
 
     #[test]
     fn load_room_reads_crumble_blocks_in_world_coordinates() {
         let map = map_with_entities(&[entity("crumbleBlock", 304, 64, Some(("width", 40)))]);
         let room = load_room(&map, "room_b").unwrap();
-        assert_eq!(room.crumble_blocks, vec![CrumbleBlock::new(624, -120, 40)]);
+        assert_eq!(
+            room.solids[room.crumble_blocks[0].solid].rect,
+            Rect::new(624, -120, 40, 8)
+        );
     }
 
     #[test]
@@ -846,9 +879,11 @@ mod tests {
         let map = map_with_entities(&[zip_mover_entity(Some((104, 184)))]);
         let room = load_room(&map, "room_b").unwrap();
         assert_eq!(
-            room.zip_movers,
-            vec![ZipMover::new(424, 80, 32, 16, 424, 0)]
+            room.solids[room.zip_movers[0].solid].rect,
+            Rect::new(424, 80, 32, 16)
         );
+        assert_eq!(room.zip_movers[0].start, IVec2 { x: 424, y: 80 });
+        assert_eq!(room.zip_movers[0].target, IVec2 { x: 424, y: 0 });
     }
 
     #[test]

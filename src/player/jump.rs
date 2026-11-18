@@ -120,12 +120,12 @@ pub fn wall_jump(state: &mut PlayerState, room: &Room, dir: i8, move_x: i8) {
 
     if state.lift_speed == NO_LIFT && state.last_lift_speed == NO_LIFT {
         let reach = hitbox(state, WALL_JUMP_CHECK_DIST, 0);
-        if let Some(zip) = room
-            .zip_movers
+        if let Some(wall) = room
+            .solids
             .iter()
-            .find(|zip| zip.rect().overlaps(&reach))
+            .find(|solid| solid.collidable && solid.rect.overlaps(&reach))
         {
-            set_lift_speed(state, zip.lift_speed);
+            set_lift_speed(state, wall.lift_speed);
         }
     }
 

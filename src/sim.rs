@@ -1,6 +1,7 @@
 use crate::entities::crumble_block::update_crumble_blocks;
 use crate::entities::falling_block::update_falling_blocks;
 use crate::entities::refill::update_refills;
+use crate::entities::solid::reset_lift_speeds;
 use crate::entities::zip_mover::update_zip_movers;
 use crate::level::room::Room;
 use crate::player::{Input, PlayerState, step};
@@ -11,6 +12,7 @@ pub fn step_room(state: PlayerState, input: Input, room: &mut Room) -> PlayerSta
     let mut state = step(state, input, room);
 
     if !frozen {
+        reset_lift_speeds(room);
         update_refills(room, &mut state);
         update_zip_movers(room, &mut state);
         update_falling_blocks(room, &mut state);

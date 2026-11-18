@@ -1,5 +1,5 @@
-use crate::level::map::{Element, MapError};
-use crate::level::room::{Direction, Rect};
+use crate::level::map::{Element, MapError, entities};
+use crate::level::room::{Direction, Rect, Room};
 use crate::player::IVec2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,36 +41,26 @@ impl Spikes {
     }
 }
 
-// The spikes among a level's "entities" children: elements named "spikesUp", "spikesDown",
-// "spikesLeft" and "spikesRight". "x" and "y" are relative to the room's origin. The length
-// is "width" for Up and Down and "height" for Left and Right. A level with no "entities"
-// child has no spikes.
-pub fn load_spikes(level: &Element, origin: IVec2) -> Result<Vec<Spikes>, MapError> {
-    let Some(entities) = level.child("entities") else {
-        return Ok(Vec::new());
-    };
+const SPIKE_KINDS: [(&str, Direction, &str); 4] = [
+    ("spikesUp", Direction::Up, "width"),
+    ("spikesDown", Direction::Down, "width"),
+    ("spikesLeft", Direction::Left, "height"),
+    ("spikesRight", Direction::Right, "height"),
+];
 
-    let mut spikes = Vec::new();
-
-    for entity in entities.children.iter() {
-        let (direction, length_attribute) = match entity.name.as_str() {
-            "spikesUp" => (Direction::Up, "width"),
-            "spikesDown" => (Direction::Down, "width"),
-            "spikesLeft" => (Direction::Left, "height"),
-            "spikesRight" => (Direction::Right, "height"),
-            _ => continue,
-        };
-
-        let x = entity.int("x").ok_or(MapError::MissingField("x"))?;
-        let y = entity.int("y").ok_or(MapError::MissingField("y"))?;
-        let size = entity
-            .int(length_attribute)
-            .ok_or(MapError::MissingField(length_attribute))?;
-
-        spikes.push(Spikes::new(direction, origin.x + x, origin.y + y, size));
+pub fn load_spikes(level: &Element, origin: IVec2, room: &mut Room) -> Result<(), MapError> {
+    for (name, direction, length) in SPIKE_KINDS {
+        for entity in entities(level, name) {
+            room.spikes.push(Spikes::new(
+                direction,
+                origin.x + entity.require("x")?,
+                origin.y + entity.require("y")?,
+                entity.require(length)?,
+            ));
+        }
     }
 
-    Ok(spikes)
+    Ok(())
 }
 
 #[cfg(test)]

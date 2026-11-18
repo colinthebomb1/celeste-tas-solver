@@ -1,5 +1,5 @@
 use crate::entities::{
-    CrumbleBlock, DashBlock, FallingBlock, JumpThru, Refill, Spikes, Spring, ZipMover,
+    CrumbleBlock, DashBlock, FallingBlock, JumpThru, Refill, Solid, Spikes, Spring, ZipMover,
 };
 use crate::player::IVec2;
 
@@ -81,6 +81,7 @@ pub struct Room {
     pub jump_thrus: Vec<JumpThru>,
     pub springs: Vec<Spring>,
     pub refills: Vec<Refill>,
+    pub solids: Vec<Solid>,
     pub dash_blocks: Vec<DashBlock>,
     pub crumble_blocks: Vec<CrumbleBlock>,
     pub falling_blocks: Vec<FallingBlock>,
@@ -121,6 +122,7 @@ impl Room {
             jump_thrus: Vec::new(),
             springs: Vec::new(),
             refills: Vec::new(),
+            solids: Vec::new(),
             dash_blocks: Vec::new(),
             crumble_blocks: Vec::new(),
             falling_blocks: Vec::new(),
@@ -170,21 +172,15 @@ impl Room {
     pub fn solid(&self, rect: &Rect) -> bool {
         self.tiles_solid(rect)
             || self
-                .zip_movers
+                .solids
                 .iter()
-                .any(|zip| zip.collidable && zip.rect().overlaps(rect))
-            || self
-                .dash_blocks
-                .iter()
-                .any(|block| !block.broken && block.hitbox.overlaps(rect))
-            || self
-                .falling_blocks
-                .iter()
-                .any(|block| block.collidable && block.rect().overlaps(rect))
-            || self
-                .crumble_blocks
-                .iter()
-                .any(|block| block.collidable && block.hitbox.overlaps(rect))
+                .any(|solid| solid.collidable && solid.rect.overlaps(rect))
+    }
+
+    // returns its place in the list
+    pub fn add_solid(&mut self, rect: Rect) -> usize {
+        self.solids.push(Solid::new(rect));
+        self.solids.len() - 1
     }
 
     // one pixel
@@ -217,11 +213,11 @@ mod tests {
     #[test]
     fn collide_rect_hits_a_zip_mover_where_it_is_now() {
         let mut room = at_origin("0000\n0000\n0000\n0000");
-        room.zip_movers.push(ZipMover::new(8, 8, 16, 8, 8, 0));
+        room.add_zip_mover(8, 8, 16, 8, 8, 0);
         assert!(room.solid(&Rect::new(10, 10, 2, 2)));
         assert!(!room.solid(&Rect::new(10, 2, 2, 2)));
 
-        room.zip_movers[0].position.y = 0;
+        room.solids[0].rect.top = 0;
         assert!(!room.solid(&Rect::new(10, 10, 2, 2)));
         assert!(room.solid(&Rect::new(10, 2, 2, 2)));
     }
@@ -229,19 +225,19 @@ mod tests {
     #[test]
     fn collide_rect_skips_a_zip_mover_that_is_not_collidable() {
         let mut room = at_origin("0000\n0000\n0000\n0000");
-        room.zip_movers.push(ZipMover::new(8, 8, 16, 8, 8, 0));
-        room.zip_movers[0].collidable = false;
+        room.add_zip_mover(8, 8, 16, 8, 8, 0);
+        room.solids[room.zip_movers[0].solid].collidable = false;
         assert!(!room.solid(&Rect::new(10, 10, 2, 2)));
     }
 
     #[test]
     fn collide_rect_hits_a_dash_block_until_it_is_broken() {
         let mut room = at_origin("0000\n0000\n0000\n0000");
-        room.dash_blocks.push(DashBlock::new(8, 8, 16, 8));
+        room.add_dash_block(8, 8, 16, 8);
         assert!(room.solid(&Rect::new(10, 10, 2, 2)));
         assert!(!room.solid(&Rect::new(2, 2, 2, 2)));
 
-        room.dash_blocks[0].broken = true;
+        room.solids[room.dash_blocks[0].solid].collidable = false;
         assert!(!room.solid(&Rect::new(10, 10, 2, 2)));
     }
 

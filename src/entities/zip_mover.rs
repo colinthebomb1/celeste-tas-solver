@@ -1,10 +1,7 @@
-use crate::Vec2;
-use crate::level::map::{Element, MapError};
+use crate::entities::solid::move_solid_to;
+use crate::level::map::{Element, MapError, entities};
 use crate::level::room::{Rect, Room};
-use crate::player::{
-    DELTA_TIME, IVec2, PlayerState, approach, hitbox, is_riding as rides, move_exact_h,
-    move_exact_v, set_lift_speed,
-};
+use crate::player::{DELTA_TIME, IVec2, PlayerState, approach, is_riding};
 
 pub const ZIP_START_DELAY: f32 = 0.1;
 pub const ZIP_PAUSE: f32 = 0.5;
@@ -24,82 +21,59 @@ pub enum ZipStage {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ZipMover {
+    pub solid: usize,
     // top-left corners in world pixels
     pub start: IVec2,
     pub target: IVec2,
-    pub width: i32,
-    pub height: i32,
 
     // everything below changes as it runs
-    pub position: IVec2,
-    pub remainder: Vec2,
-    pub lift_speed: Vec2,
     pub stage: ZipStage,
     pub wait_timer: f32,
     // how far along the trip it is, 0 to 1
     pub at: f32,
-    // off while it is moving her, so it doesn't block her
-    pub collidable: bool,
 }
 
-impl ZipMover {
-    pub fn new(x: i32, y: i32, width: i32, height: i32, target_x: i32, target_y: i32) -> ZipMover {
-        ZipMover {
+impl Room {
+    pub fn add_zip_mover(
+        &mut self,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+        target_x: i32,
+        target_y: i32,
+    ) {
+        let solid = self.add_solid(Rect::new(x, y, width, height));
+
+        self.zip_movers.push(ZipMover {
+            solid,
             start: IVec2 { x, y },
             target: IVec2 {
                 x: target_x,
                 y: target_y,
             },
-            width,
-            height,
-            position: IVec2 { x, y },
-            remainder: Vec2 { x: 0.0, y: 0.0 },
-            lift_speed: Vec2 { x: 0.0, y: 0.0 },
             stage: ZipStage::Idle,
             wait_timer: 0.0,
             at: 0.0,
-            collidable: true,
-        }
-    }
-
-    pub fn rect(&self) -> Rect {
-        Rect {
-            left: self.position.x,
-            top: self.position.y,
-            width: self.width,
-            height: self.height,
-        }
+        });
     }
 }
 
-pub fn load_zip_movers(level: &Element, origin: IVec2) -> Result<Vec<ZipMover>, MapError> {
-    let Some(entities) = level.child("entities") else {
-        return Ok(Vec::new());
-    };
-
-    let mut zip_movers = Vec::new();
-
-    for entity in entities
-        .children
-        .iter()
-        .filter(|entity| entity.name == "zipMover")
-    {
-        let int = |element: &Element, key: &'static str| {
-            element.int(key).ok_or(MapError::MissingField(key))
-        };
+pub fn load_zip_movers(level: &Element, origin: IVec2, room: &mut Room) -> Result<(), MapError> {
+    for entity in entities(level, "zipMover") {
         let node = entity.child("node").ok_or(MapError::MissingField("node"))?;
 
-        zip_movers.push(ZipMover::new(
-            origin.x + int(entity, "x")?,
-            origin.y + int(entity, "y")?,
-            int(entity, "width")?,
-            int(entity, "height")?,
-            origin.x + int(node, "x")?,
-            origin.y + int(node, "y")?,
-        ));
+        room.add_zip_mover(
+            origin.x + entity.require("x")?,
+            origin.y + entity.require("y")?,
+            entity.require("width")?,
+            entity.require("height")?,
+            origin.x + node.require("x")?,
+            origin.y + node.require("y")?,
+        );
     }
 
-    Ok(zip_movers)
+    Ok(())
 }
 
 pub fn update_zip_movers(room: &mut Room, state: &mut PlayerState) {
@@ -108,8 +82,8 @@ pub fn update_zip_movers(room: &mut Room, state: &mut PlayerState) {
     }
 }
 
-pub fn is_riding(state: &PlayerState, room: &Room, index: usize) -> bool {
-    rides(state, &room.zip_movers[index].rect())
+pub fn is_ridden(room: &Room, index: usize, state: &PlayerState) -> bool {
+    is_riding(state, &room.solids[room.zip_movers[index].solid].rect)
 }
 
 fn sine_in(t: f32) -> f32 {
@@ -122,11 +96,11 @@ fn lerp(from: i32, to: i32, amount: f32) -> f32 {
 
 fn update_zip_mover(room: &mut Room, index: usize, state: &mut PlayerState) {
     let zip = &room.zip_movers[index];
-    let (start, target) = (zip.start, zip.target);
+    let (solid, start, target) = (zip.solid, zip.start, zip.target);
 
     match zip.stage {
         ZipStage::Idle => {
-            if is_riding(state, room, index) {
+            if is_ridden(room, index, state) {
                 let zip = &mut room.zip_movers[index];
                 zip.wait_timer = ZIP_START_DELAY;
                 zip.stage = ZipStage::Starting;
@@ -147,9 +121,9 @@ fn update_zip_mover(room: &mut Room, index: usize, state: &mut PlayerState) {
             let at = approach(zip.at, 1.0, ZIP_GO_RATE * DELTA_TIME);
             let percent = sine_in(at);
             room.zip_movers[index].at = at;
-            move_to(
+            move_solid_to(
                 room,
-                index,
+                solid,
                 state,
                 lerp(start.x, target.x, percent),
                 lerp(start.y, target.y, percent),
@@ -176,9 +150,9 @@ fn update_zip_mover(room: &mut Room, index: usize, state: &mut PlayerState) {
             let at = approach(zip.at, 1.0, ZIP_RETURN_RATE * DELTA_TIME);
             let percent = sine_in(at);
             room.zip_movers[index].at = at;
-            move_to(
+            move_solid_to(
                 room,
-                index,
+                solid,
                 state,
                 lerp(target.x, start.x, percent),
                 lerp(target.y, start.y, percent),
@@ -194,7 +168,7 @@ fn update_zip_mover(room: &mut Room, index: usize, state: &mut PlayerState) {
         ZipStage::Resting => {
             if zip.wait_timer > 0.0 {
                 room.zip_movers[index].wait_timer -= DELTA_TIME;
-            } else if is_riding(state, room, index) {
+            } else if is_ridden(room, index, state) {
                 let zip = &mut room.zip_movers[index];
                 zip.wait_timer = ZIP_START_DELAY;
                 zip.stage = ZipStage::Starting;
@@ -205,82 +179,17 @@ fn update_zip_mover(room: &mut Room, index: usize, state: &mut PlayerState) {
     }
 }
 
-fn move_to(room: &mut Room, index: usize, state: &mut PlayerState, x: f32, y: f32) {
-    let zip = &mut room.zip_movers[index];
-    let amount_x = x - (zip.position.x as f32 + zip.remainder.x);
-    zip.lift_speed.x = amount_x / DELTA_TIME;
-    zip.remainder.x += amount_x;
-    let pixels_x = zip.remainder.x.round_ties_even() as i32;
-    zip.remainder.x -= pixels_x as f32;
-    if pixels_x != 0 {
-        move_pixels(room, index, state, pixels_x, 0);
-    }
-
-    let zip = &mut room.zip_movers[index];
-    let amount_y = y - (zip.position.y as f32 + zip.remainder.y);
-    zip.lift_speed.y = amount_y / DELTA_TIME;
-    zip.remainder.y += amount_y;
-    let pixels_y = zip.remainder.y.round_ties_even() as i32;
-    zip.remainder.y -= pixels_y as f32;
-    if pixels_y != 0 {
-        move_pixels(room, index, state, 0, pixels_y);
-    }
-}
-
-fn move_pixels(room: &mut Room, index: usize, state: &mut PlayerState, dx: i32, dy: i32) {
-    let riding = is_riding(state, room, index);
-    let before = room.zip_movers[index].rect();
-
-    let zip = &mut room.zip_movers[index];
-    zip.position.x += dx;
-    zip.position.y += dy;
-    let lift_speed = zip.lift_speed;
-
-    if state.dead {
-        return;
-    }
-
-    let her = hitbox(state, 0, 0);
-    let pushed = zip.rect().overlaps(&her);
-    if !pushed && !riding {
-        return;
-    }
-
-    let (her_dx, her_dy) = if !pushed {
-        (dx, dy)
-    } else if dx < 0 {
-        (dx - (her.right() - before.left), 0)
-    } else if dx > 0 {
-        (dx - (her.left - before.right()), 0)
-    } else if dy < 0 {
-        (0, dy - (her.bottom() - before.top))
-    } else {
-        (0, dy - (her.top - before.bottom()))
-    };
-
-    // the block moving her doesn't block her
-    room.zip_movers[index].collidable = false;
-    if her_dx != 0 {
-        move_exact_h(state, room, her_dx);
-    }
-    if her_dy != 0 {
-        move_exact_v(state, room, her_dy);
-    }
-    room.zip_movers[index].collidable = true;
-
-    set_lift_speed(state, lift_speed);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Vec2;
     use crate::player::{Input, LIFT_Y_CAP, lift_boost};
     use crate::sim::step_room;
 
     // an empty room with one block at (40, 120), 32 x 16, that travels 80 px up
     fn zip_room() -> Room {
         let mut room = Room::from_tiles(IVec2 { x: 0, y: 0 }, &"00000000000\n".repeat(23));
-        room.zip_movers.push(ZipMover::new(40, 120, 32, 16, 40, 40));
+        room.add_zip_mover(40, 120, 32, 16, 40, 40);
         room
     }
 
@@ -299,16 +208,19 @@ mod tests {
     #[test]
     fn riding_means_standing_on_top() {
         let room = zip_room();
-        assert!(is_riding(&at(56, 120), &room, 0));
-        assert!(!is_riding(&at(56, 119), &room, 0));
-        assert!(!is_riding(&at(30, 120), &room, 0));
+        assert!(is_ridden(&room, 0, &at(56, 120)));
+        assert!(!is_ridden(&room, 0, &at(56, 119)));
+        assert!(!is_ridden(&room, 0, &at(30, 120)));
     }
 
     #[test]
     fn stays_put_with_nobody_on_it() {
         let mut room = zip_room();
         idle(&mut room, at(10, 50), 60);
-        assert_eq!(room.zip_movers[0].position, IVec2 { x: 40, y: 120 });
+        assert_eq!(
+            room.solids[room.zip_movers[0].solid].position(),
+            IVec2 { x: 40, y: 120 }
+        );
         assert_eq!(room.zip_movers[0].stage, ZipStage::Idle);
     }
 
@@ -329,7 +241,7 @@ mod tests {
 
         idle(&mut room, s, 1);
         assert!(room.zip_movers[0].at > 0.0);
-        assert!(room.zip_movers[0].lift_speed.y < 0.0);
+        assert!(room.solids[room.zip_movers[0].solid].lift_speed.y < 0.0);
     }
 
     #[test]
@@ -339,11 +251,12 @@ mod tests {
         for _ in 0..25 {
             s = step_room(s, Input::default(), &mut room);
             assert_eq!(
-                s.position.y, room.zip_movers[0].position.y,
+                s.position.y,
+                room.solids[room.zip_movers[0].solid].position().y,
                 "she stays on top"
             );
         }
-        assert!(room.zip_movers[0].position.y < 110);
+        assert!(room.solids[room.zip_movers[0].solid].position().y < 110);
         assert!(lift_boost(&s).y < -60.0);
     }
 
@@ -352,8 +265,14 @@ mod tests {
         let mut room = zip_room();
         let mut s = idle(&mut room, at(56, 120), 39);
         assert_eq!(room.zip_movers[0].stage, ZipStage::AtTarget);
-        assert_eq!(room.zip_movers[0].position, IVec2 { x: 40, y: 40 });
-        assert_eq!(room.zip_movers[0].remainder, Vec2 { x: 0.0, y: 0.0 });
+        assert_eq!(
+            room.solids[room.zip_movers[0].solid].position(),
+            IVec2 { x: 40, y: 40 }
+        );
+        assert_eq!(
+            room.solids[room.zip_movers[0].solid].remainder,
+            Vec2 { x: 0.0, y: 0.0 }
+        );
         assert_eq!(s.position.y, 40);
 
         s = idle(&mut room, s, 31);
@@ -362,7 +281,10 @@ mod tests {
         // nobody is on it by the time it is home again, so it goes back to idle
         s.dead = true;
         idle(&mut room, s, 160);
-        assert_eq!(room.zip_movers[0].position, IVec2 { x: 40, y: 120 });
+        assert_eq!(
+            room.solids[room.zip_movers[0].solid].position(),
+            IVec2 { x: 40, y: 120 }
+        );
         assert_eq!(room.zip_movers[0].stage, ZipStage::Idle);
     }
 
@@ -370,7 +292,7 @@ mod tests {
     fn lift_speed_is_capped_when_it_is_fast() {
         let mut room = zip_room();
         let s = idle(&mut room, at(56, 120), 35);
-        assert!(room.zip_movers[0].lift_speed.y < LIFT_Y_CAP);
+        assert!(room.solids[room.zip_movers[0].solid].lift_speed.y < LIFT_Y_CAP);
         assert_eq!(lift_boost(&s).y, LIFT_Y_CAP);
     }
 
@@ -383,7 +305,7 @@ mod tests {
         // hanging 1 px above it, so not riding
         let mut s = at(56, 119);
         update_zip_movers(&mut room, &mut s);
-        let top = room.zip_movers[0].position.y;
+        let top = room.solids[room.zip_movers[0].solid].position().y;
         assert!(top < 118, "it moved more than the gap");
         assert_eq!(s.position.y, top);
         assert!(lift_boost(&s).y < 0.0);
@@ -404,9 +326,9 @@ mod tests {
     #[test]
     fn carries_her_sideways() {
         let mut room = Room::from_tiles(IVec2 { x: 0, y: 0 }, &"00000000000\n".repeat(23));
-        room.zip_movers.push(ZipMover::new(8, 120, 24, 16, 56, 120));
+        room.add_zip_mover(8, 120, 24, 16, 56, 120);
         let s = idle(&mut room, at(20, 120), 30);
-        let moved = room.zip_movers[0].position.x - 8;
+        let moved = room.solids[room.zip_movers[0].solid].position().x - 8;
         assert!(moved > 10);
         assert_eq!(
             s.position,
@@ -423,11 +345,11 @@ mod tests {
         let mut room = zip_room();
         room.zip_movers[0].stage = ZipStage::Going;
         room.zip_movers[0].at = 0.5;
-        let before = room.zip_movers[0].clone();
+        let before = room.clone();
 
         let mut s = at(10, 50);
         s.freeze_timer = 0.05;
         step_room(s, Input::default(), &mut room);
-        assert_eq!(room.zip_movers[0], before);
+        assert_eq!(room, before);
     }
 }

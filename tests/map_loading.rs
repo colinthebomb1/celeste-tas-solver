@@ -1,4 +1,4 @@
-use celeste_tas_solver::entities::{DashBlock, JumpThru, Spikes, Spring};
+use celeste_tas_solver::entities::{JumpThru, Spikes, Spring};
 use celeste_tas_solver::level::map::load_room;
 use celeste_tas_solver::level::room::{Direction, Rect};
 use celeste_tas_solver::player::IVec2;
@@ -88,7 +88,10 @@ fn rooms_load_their_dash_blocks() {
 
     assert_eq!(with_dash_blocks, ["lvl_5", "lvl_6", "lvl_6c", "lvl_7z"]);
     let lvl_6 = &chapter.rooms[chapter.room_named("lvl_6").unwrap()];
-    assert_eq!(lvl_6.dash_blocks, vec![DashBlock::new(1544, -1096, 16, 24)]);
+    assert_eq!(
+        lvl_6.solids[lvl_6.dash_blocks[0].solid].rect,
+        Rect::new(1544, -1096, 16, 24)
+    );
 }
 
 #[test]
@@ -124,7 +127,7 @@ fn rooms_load_their_zip_movers() {
         (zip.start, zip.target),
         (IVec2 { x: 1128, y: -760 }, IVec2 { x: 1128, y: -840 })
     );
-    assert_eq!((zip.width, zip.height), (32, 16));
+    assert_eq!(lvl_5.solids[zip.solid].rect, Rect::new(1128, -760, 32, 16));
 }
 
 #[test]

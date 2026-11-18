@@ -2734,9 +2734,8 @@ fn step_remembers_whether_she_was_on_the_ground() {
 #[test]
 fn wall_jump_takes_lift_from_a_moving_wall_on_her_right() {
     let mut room = room();
-    room.zip_movers
-        .push(crate::entities::ZipMover::new(60, 80, 16, 40, 60, 0));
-    room.zip_movers[0].lift_speed = Vec2 { x: 0.0, y: -90.0 };
+    room.add_zip_mover(60, 80, 16, 40, 60, 0);
+    room.solids[room.zip_movers[0].solid].lift_speed = Vec2 { x: 0.0, y: -90.0 };
 
     let mut s = player_at(54, 100, 0.0, 0.0);
     wall_jump(&mut s, &room, -1, 0);
@@ -3176,8 +3175,7 @@ fn holding_still_costs_a_little_stamina() {
 #[test]
 fn a_ceiling_stops_her_climbing_up() {
     let mut room = room();
-    room.dash_blocks
-        .push(crate::entities::DashBlock::new(64, 80, 16, 9));
+    room.add_dash_block(64, 80, 16, 9);
     let s = step(climbing(100), GRAB_UP, &room);
 
     assert_eq!(s.speed.y, 0.0);
@@ -3360,14 +3358,12 @@ fn dashing_cancels_the_wait_for_the_sideways_push() {
 #[test]
 fn a_hop_follows_the_moving_block_she_is_hopping_onto() {
     let mut room = room();
-    room.zip_movers
-        .push(crate::entities::ZipMover::new(40, 60, 16, 16, 40, 20));
+    room.add_zip_mover(40, 60, 16, 16, 40, 20);
 
     // the block was 2 px lower when she last looked
     let mut s = player_at(20, 100, 0.0, 0.0);
     s.climb_hop_solid = Some(HopSolid {
-        kind: MovingSolid::ZipMover,
-        index: 0,
+        id: 0,
         position: IVec2 { x: 40, y: 62 },
     });
     s.force_move_x_timer = CLIMB_HOP_FORCE_TIME;
@@ -3380,13 +3376,11 @@ fn a_hop_follows_the_moving_block_she_is_hopping_onto() {
 #[test]
 fn she_stops_following_the_block_when_the_hop_lock_ends() {
     let mut room = room();
-    room.zip_movers
-        .push(crate::entities::ZipMover::new(40, 60, 16, 16, 40, 20));
+    room.add_zip_mover(40, 60, 16, 16, 40, 20);
 
     let mut s = player_at(20, 100, 0.0, 0.0);
     s.climb_hop_solid = Some(HopSolid {
-        kind: MovingSolid::ZipMover,
-        index: 0,
+        id: 0,
         position: IVec2 { x: 40, y: 62 },
     });
     s = step(s, Input::default(), &room);

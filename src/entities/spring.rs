@@ -1,5 +1,5 @@
-use crate::level::map::{Element, MapError};
-use crate::level::room::Rect;
+use crate::level::map::{Element, MapError, entities};
+use crate::level::room::{Rect, Room};
 use crate::player::IVec2;
 
 pub const SPRING_WIDTH: i32 = 16;
@@ -26,25 +26,15 @@ impl Spring {
 }
 
 // only floor springs. the ones on walls are other entities
-pub fn load_springs(level: &Element, origin: IVec2) -> Result<Vec<Spring>, MapError> {
-    let Some(entities) = level.child("entities") else {
-        return Ok(Vec::new());
-    };
-
-    let mut springs = Vec::new();
-
-    for entity in entities
-        .children
-        .iter()
-        .filter(|entity| entity.name == "spring")
-    {
-        let x = entity.int("x").ok_or(MapError::MissingField("x"))?;
-        let y = entity.int("y").ok_or(MapError::MissingField("y"))?;
-
-        springs.push(Spring::new(origin.x + x, origin.y + y));
+pub fn load_springs(level: &Element, origin: IVec2, room: &mut Room) -> Result<(), MapError> {
+    for entity in entities(level, "spring") {
+        room.springs.push(Spring::new(
+            origin.x + entity.require("x")?,
+            origin.y + entity.require("y")?,
+        ));
     }
 
-    Ok(springs)
+    Ok(())
 }
 
 #[cfg(test)]

@@ -1,54 +1,34 @@
-use crate::level::map::{Element, MapError};
-use crate::level::room::Rect;
+use crate::level::map::{Element, MapError, entities};
+use crate::level::room::{Rect, Room};
 use crate::player::IVec2;
 
 // the game freezes this long when it breaks,
 // also when she leaves a room that still has one
 pub const DASH_BLOCK_FREEZE_TIME: f32 = 0.05;
 
-// a solid block that a dash breaks
+// a solid block that a dash breaks. broken means its solid is no longer collidable
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DashBlock {
-    pub hitbox: Rect,
-    pub broken: bool,
+    pub solid: usize,
 }
 
-impl DashBlock {
+impl Room {
     // (x, y) is its top-left corner
-    pub fn new(x: i32, y: i32, width: i32, height: i32) -> DashBlock {
-        DashBlock {
-            hitbox: Rect {
-                left: x,
-                top: y,
-                width,
-                height,
-            },
-            broken: false,
-        }
+    pub fn add_dash_block(&mut self, x: i32, y: i32, width: i32, height: i32) {
+        let solid = self.add_solid(Rect::new(x, y, width, height));
+        self.dash_blocks.push(DashBlock { solid });
     }
 }
 
-pub fn load_dash_blocks(level: &Element, origin: IVec2) -> Result<Vec<DashBlock>, MapError> {
-    let Some(entities) = level.child("entities") else {
-        return Ok(Vec::new());
-    };
-
-    let mut dash_blocks = Vec::new();
-
-    for entity in entities
-        .children
-        .iter()
-        .filter(|entity| entity.name == "dashBlock")
-    {
-        let int = |key: &'static str| entity.int(key).ok_or(MapError::MissingField(key));
-
-        dash_blocks.push(DashBlock::new(
-            origin.x + int("x")?,
-            origin.y + int("y")?,
-            int("width")?,
-            int("height")?,
-        ));
+pub fn load_dash_blocks(level: &Element, origin: IVec2, room: &mut Room) -> Result<(), MapError> {
+    for entity in entities(level, "dashBlock") {
+        room.add_dash_block(
+            origin.x + entity.require("x")?,
+            origin.y + entity.require("y")?,
+            entity.require("width")?,
+            entity.require("height")?,
+        );
     }
 
-    Ok(dash_blocks)
+    Ok(())
 }

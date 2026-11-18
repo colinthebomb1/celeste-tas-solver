@@ -110,10 +110,11 @@ pub fn finish_transition(state: &mut PlayerState, chapter: &Chapter, transition:
     state.stamina = CLIMB_MAX_STAMINA;
 
     // the room she left is unloaded now, and every dash block still in it freezes the game
-    let left_a_dash_block = chapter.rooms[transition.from]
+    let left = &chapter.rooms[transition.from];
+    let left_a_dash_block = left
         .dash_blocks
         .iter()
-        .any(|block| !block.broken);
+        .any(|block| left.solids[block.solid].collidable);
     if left_a_dash_block {
         state.freeze_timer = state.freeze_timer.max(DASH_BLOCK_FREEZE_TIME);
     }
@@ -388,9 +389,7 @@ mod tests {
     #[test]
     fn leaving_a_room_with_a_dash_block_freezes_the_game() {
         let mut chapter = cross();
-        chapter.rooms[CENTRE]
-            .dash_blocks
-            .push(crate::entities::DashBlock::new(100, 100, 8, 8));
+        chapter.rooms[CENTRE].add_dash_block(100, 100, 8, 8);
         let up = Transition {
             from: CENTRE,
             to: UP,
@@ -402,10 +401,8 @@ mod tests {
         assert_eq!(s.freeze_timer, DASH_BLOCK_FREEZE_TIME);
 
         // not if it was broken first, and not for a dash block in the room she enters
-        chapter.rooms[CENTRE].dash_blocks[0].broken = true;
-        chapter.rooms[UP]
-            .dash_blocks
-            .push(crate::entities::DashBlock::new(100, 68, 8, 8));
+        chapter.rooms[CENTRE].solids[0].collidable = false;
+        chapter.rooms[UP].add_dash_block(100, 68, 8, 8);
         let mut s = at(116, 105);
         finish_transition(&mut s, &chapter, up);
         assert_eq!(s.freeze_timer, 0.0);

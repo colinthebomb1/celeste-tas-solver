@@ -1,7 +1,7 @@
 use crate::entities::solid::{advance_v, move_solid};
 use crate::level::map::{Element, MapError, entities};
 use crate::level::room::{Rect, Room};
-use crate::player::{DELTA_TIME, IVec2, PlayerState, approach, hitbox, is_riding};
+use crate::player::{DELTA_TIME, IVec2, Player, approach, hitbox, is_riding};
 
 pub const FALL_SHAKE_TIME: f32 = 0.2;
 pub const FALL_WAIT_TIME: f32 = 0.4;
@@ -68,9 +68,9 @@ pub fn load_falling_blocks(
     Ok(())
 }
 
-pub fn update_falling_blocks(room: &mut Room, state: &mut PlayerState) {
+pub fn update_falling_blocks(room: &mut Room, player: &mut Player) {
     for index in 0..room.falling_blocks.len() {
-        update_falling_block(room, index, state);
+        update_falling_block(room, index, player);
     }
 }
 
@@ -78,21 +78,21 @@ fn rect(room: &Room, index: usize) -> Rect {
     room.solids[room.falling_blocks[index].solid].rect
 }
 
-fn sets_it_off(room: &Room, index: usize, state: &PlayerState) -> bool {
+fn sets_it_off(room: &Room, index: usize, player: &Player) -> bool {
     if room.falling_blocks[index].climb_fall {
-        is_riding(state, &rect(room, index))
+        is_riding(player, &rect(room, index))
     } else {
-        !state.dead && hitbox(state, 0, 1).overlaps(&rect(room, index))
+        !player.dead && hitbox(player, 0, 1).overlaps(&rect(room, index))
     }
 }
 
 // once it's shaking, standing beside it also holds it up
-fn holds_it_up(room: &Room, index: usize, state: &PlayerState) -> bool {
+fn holds_it_up(room: &Room, index: usize, player: &Player) -> bool {
     let block = rect(room, index);
-    let beside = !state.dead
-        && (hitbox(state, 1, 0).overlaps(&block) || hitbox(state, -1, 0).overlaps(&block));
+    let beside = !player.dead
+        && (hitbox(player, 1, 0).overlaps(&block) || hitbox(player, -1, 0).overlaps(&block));
 
-    sets_it_off(room, index, state) || (room.falling_blocks[index].climb_fall && beside)
+    sets_it_off(room, index, player) || (room.falling_blocks[index].climb_fall && beside)
 }
 
 // whether something solid other than itself is right under it, counting from this far down
@@ -123,12 +123,12 @@ fn jump_thru_below(room: &Room, index: usize, down: i32) -> bool {
         .any(|thru| thru.hitbox.overlaps(&below) && !thru.hitbox.overlaps(&here))
 }
 
-fn update_falling_block(room: &mut Room, index: usize, state: &mut PlayerState) {
+fn update_falling_block(room: &mut Room, index: usize, player: &mut Player) {
     let block = &room.falling_blocks[index];
 
     match block.stage {
         FallStage::Idle => {
-            if sets_it_off(room, index, state) {
+            if sets_it_off(room, index, player) {
                 start_shaking(&mut room.falling_blocks[index]);
             }
         }
@@ -138,16 +138,16 @@ fn update_falling_block(room: &mut Room, index: usize, state: &mut PlayerState) 
                 room.falling_blocks[index].timer -= DELTA_TIME;
             } else {
                 room.falling_blocks[index].timer = FALL_WAIT_TIME;
-                wait_or_fall(room, index, state);
+                wait_or_fall(room, index, player);
             }
         }
 
         FallStage::Waiting => {
             room.falling_blocks[index].timer -= DELTA_TIME;
-            wait_or_fall(room, index, state);
+            wait_or_fall(room, index, player);
         }
 
-        FallStage::Falling => fall(room, index, state),
+        FallStage::Falling => fall(room, index, player),
 
         FallStage::Landed => {
             if block.timer > 0.0 {
@@ -176,14 +176,14 @@ fn start_shaking(block: &mut FallingBlock) {
     block.stage = FallStage::Shaking;
 }
 
-fn wait_or_fall(room: &mut Room, index: usize, state: &mut PlayerState) {
-    if room.falling_blocks[index].timer > 0.0 && holds_it_up(room, index, state) {
+fn wait_or_fall(room: &mut Room, index: usize, player: &mut Player) {
+    if room.falling_blocks[index].timer > 0.0 && holds_it_up(room, index, player) {
         room.falling_blocks[index].stage = FallStage::Waiting;
     } else {
         let block = &mut room.falling_blocks[index];
         block.speed = 0.0;
         block.stage = FallStage::Falling;
-        fall(room, index, state);
+        fall(room, index, player);
     }
 }
 
@@ -203,14 +203,14 @@ fn wait_while_propped(room: &mut Room, index: usize) {
     }
 }
 
-fn fall(room: &mut Room, index: usize, state: &mut PlayerState) {
+fn fall(room: &mut Room, index: usize, player: &mut Player) {
     let block = &mut room.falling_blocks[index];
     block.speed = approach(block.speed, FALL_MAX_SPEED, FALL_ACCEL * DELTA_TIME);
     let (id, amount) = (block.solid, block.speed * DELTA_TIME);
 
     let pixels = advance_v(&mut room.solids[id], amount);
 
-    if pixels != 0 && move_down(room, index, state, pixels) {
+    if pixels != 0 && move_down(room, index, player, pixels) {
         let block = &mut room.falling_blocks[index];
         block.timer = FALL_LAND_TIME;
         block.stage = FallStage::Landed;
@@ -227,7 +227,7 @@ fn fall(room: &mut Room, index: usize, state: &mut PlayerState) {
 }
 
 // true if something stopped it. it breaks dash blocks on the way
-fn move_down(room: &mut Room, index: usize, state: &mut PlayerState, pixels: i32) -> bool {
+fn move_down(room: &mut Room, index: usize, player: &mut Player, pixels: i32) -> bool {
     let id = room.falling_blocks[index].solid;
     let mut moved = 0;
     let mut stopped = false;
@@ -249,7 +249,7 @@ fn move_down(room: &mut Room, index: usize, state: &mut PlayerState, pixels: i32
     }
 
     if moved != 0 {
-        move_solid(room, id, state, 0, moved);
+        move_solid(room, id, player, 0, moved);
     }
 
     stopped
@@ -276,21 +276,23 @@ mod tests {
         room
     }
 
-    fn at(x: i32, y: i32) -> PlayerState {
-        PlayerState::new(
+    fn at(x: i32, y: i32) -> Player {
+        Player::new(
             IVec2 { x, y },
             Vec2 { x: 0.0, y: 0.0 },
             Vec2 { x: 0.0, y: 0.0 },
         )
     }
 
-    fn idle(room: &mut Room, state: PlayerState, frames: usize) -> PlayerState {
-        (0..frames).fold(state, |state, _| step_room(state, Input::default(), room))
+    fn idle(room: &mut Room, player: Player, frames: usize) -> Player {
+        (0..frames).fold(player, |player, _| {
+            step_room(player, Input::default(), room)
+        })
     }
 
-    fn update(room: &mut Room, state: &mut PlayerState, frames: usize) {
+    fn update(room: &mut Room, player: &mut Player, frames: usize) {
         for _ in 0..frames {
-            update_falling_blocks(room, state);
+            update_falling_blocks(room, player);
         }
     }
 
@@ -332,10 +334,8 @@ mod tests {
     #[test]
     fn grabbing_its_side_sets_it_off() {
         let mut room = block_room();
-        let mut s = PlayerState {
-            climb_trigger_dir: -1,
-            ..at(60, 96)
-        };
+        let mut s = at(60, 96);
+        s.climb.trigger_dir = -1;
         update(&mut room, &mut s, 1);
         assert_eq!(room.falling_blocks[0].stage, FallStage::Shaking);
     }
@@ -344,10 +344,8 @@ mod tests {
     fn grabbing_its_side_does_nothing_when_climbing_does_not_count() {
         let mut room = floor_room();
         room.add_falling_block(40, 80, 16, 16, false);
-        let mut s = PlayerState {
-            climb_trigger_dir: -1,
-            ..at(60, 96)
-        };
+        let mut s = at(60, 96);
+        s.climb.trigger_dir = -1;
         update(&mut room, &mut s, 1);
         assert_eq!(room.falling_blocks[0].stage, FallStage::Idle);
     }
@@ -436,7 +434,7 @@ mod tests {
 
         assert_eq!(room.solids[room.falling_blocks[0].solid].position().y, 83);
         assert_eq!(s.position.y, 83);
-        assert_eq!(s.lift_speed.y, FALL_MAX_SPEED * DELTA_TIME / DELTA_TIME);
+        assert_eq!(s.lift.speed.y, FALL_MAX_SPEED * DELTA_TIME / DELTA_TIME);
     }
 
     #[test]

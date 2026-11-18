@@ -1,27 +1,27 @@
 use super::*;
 
-pub fn wall_slide_max_fall(state: &mut PlayerState, room: &Room, input: Input) -> f32 {
-    let mut max = state.max_fall;
-    let into_wall = input.move_x == state.facing || (input.move_x == 0 && input.grab);
+pub fn wall_slide_max_fall(player: &mut Player, room: &Room, input: Input) -> f32 {
+    let mut max = player.max_fall;
+    let into_wall = input.move_x == player.facing || (input.move_x == 0 && input.grab);
 
     if into_wall && input.move_y != 1 {
-        if state.speed.y >= 0.0
-            && state.wall_slide_timer > 0.0
-            && collides(state, room, state.facing as i32, 0)
-            && can_unduck(state, room)
+        if player.speed.y >= 0.0
+            && player.wall.slide_timer > 0.0
+            && collides(player, room, player.facing as i32, 0)
+            && can_stand(player, room)
         {
-            state.ducking = false;
-            state.wall_slide_dir = state.facing;
+            player.crouching = false;
+            player.wall.slide_dir = player.facing;
         }
 
-        if state.wall_slide_dir != 0 {
+        if player.wall.slide_dir != 0 {
             if input.grab {
-                state.climb_trigger_dir = state.wall_slide_dir;
+                player.climb.trigger_dir = player.wall.slide_dir;
             }
             max = lerp(
                 MAX_FALL,
                 WALL_SLIDE_START_MAX,
-                state.wall_slide_timer / WALL_SLIDE_TIME,
+                player.wall.slide_timer / WALL_SLIDE_TIME,
             )
         }
     }
@@ -29,67 +29,64 @@ pub fn wall_slide_max_fall(state: &mut PlayerState, room: &Room, input: Input) -
     max
 }
 
-pub fn jump(state: &mut PlayerState, input: Input) {
-    state.jump_grace_timer = 0.0;
-    state.wall_slide_timer = WALL_SLIDE_TIME;
-    state.var_jump_timer = VAR_JUMP_TIME;
-    state.speed.x += JUMP_H_BOOST * input.move_x as f32;
-    state.speed.y = JUMP_SPEED;
-    add_lift_boost(state);
-    state.var_jump_speed = state.speed.y;
-    state.auto_jump = false;
-    state.wall_boost_timer = 0.0;
-    state.dash_attack_timer = 0.0;
+pub fn jump(player: &mut Player, input: Input) {
+    player.coyote_timer = 0.0;
+    player.wall.slide_timer = WALL_SLIDE_TIME;
+    player.jump_timer = JUMP_HOLD_TIME;
+    player.speed.x += JUMP_H_BOOST * input.move_x as f32;
+    player.speed.y = JUMP_SPEED;
+    add_liftboost(player);
+    player.jump_speed = player.speed.y;
+    player.auto_jump = false;
+    player.wall.boost_timer = 0.0;
+    player.dash.attack_timer = 0.0;
 }
 
-pub fn can_super_jump(state: &PlayerState, room: &Room, jump_pressed: bool) -> bool {
-    jump_pressed
-        && state.jump_grace_timer > 0.0
-        && state.dash_dir.y == 0.0
-        && can_unduck(state, room)
+pub fn can_super_dash(player: &Player, room: &Room, jump_pressed: bool) -> bool {
+    jump_pressed && player.coyote_timer > 0.0 && player.dash.dir.y == 0.0 && can_stand(player, room)
 }
 
-pub fn super_jump(state: &mut PlayerState) {
-    state.jump_grace_timer = 0.0;
-    state.var_jump_timer = VAR_JUMP_TIME;
-    state.auto_jump = false;
-    state.wall_slide_timer = WALL_SLIDE_TIME;
-    state.wall_boost_timer = 0.0;
-    state.dash_attack_timer = 0.0;
-    state.speed.x = SUPER_JUMP_H * state.facing as f32;
-    state.speed.y = JUMP_SPEED;
-    add_lift_boost(state);
+pub fn super_dash(player: &mut Player) {
+    player.coyote_timer = 0.0;
+    player.jump_timer = JUMP_HOLD_TIME;
+    player.auto_jump = false;
+    player.wall.slide_timer = WALL_SLIDE_TIME;
+    player.wall.boost_timer = 0.0;
+    player.dash.attack_timer = 0.0;
+    player.speed.x = SUPER_SPEED * player.facing as f32;
+    player.speed.y = JUMP_SPEED;
+    add_liftboost(player);
 
     // hyper
-    if state.ducking {
-        state.ducking = false;
-        state.speed.x *= DUCK_SUPER_JUMP_X_MULT;
-        state.speed.y *= DUCK_SUPER_JUMP_Y_MULT;
+    if player.crouching {
+        player.crouching = false;
+        player.speed.x *= HYPER_X_MULT;
+        player.speed.y *= HYPER_Y_MULT;
     }
 
-    state.var_jump_speed = state.speed.y;
-    set_normal(state);
+    player.jump_speed = player.speed.y;
+    set_normal(player);
 }
 
-pub fn wall_bounce_ready(state: &PlayerState) -> bool {
-    state.dash_attack_timer > 0.0 && state.dash_dir.x == 0.0 && state.dash_dir.y == -1.0
+pub fn wallbounce_ready(player: &Player) -> bool {
+    player.dash.attack_timer > 0.0 && player.dash.dir.x == 0.0 && player.dash.dir.y == -1.0
 }
 
-pub fn wall_jump_check(state: &PlayerState, room: &Room, dir: i8) -> bool {
+pub fn wall_kick_check(player: &Player, room: &Room, dir: i8) -> bool {
     let dir = dir as i32;
-    let mut dist = WALL_JUMP_CHECK_DIST;
+    let mut dist = WALL_KICK_REACH;
 
-    if wall_bounce_ready(state) {
+    if wallbounce_ready(player) {
         let facing_her = if dir > 0 {
             Direction::Left
         } else {
             Direction::Right
         };
         let reach = Rect {
-            left: state.position.x + dir * SUPER_WALL_JUMP_CHECK_DIST - HITBOX_WIDTH / 2,
-            top: state.position.y - hitbox_height(state),
+            left: player.position.x + dir * WALLBOUNCE_REACH - HITBOX_WIDTH / 2,
+            top: player.position.y - hitbox_height(player),
             width: HITBOX_WIDTH,
-            height: hitbox_height(state),
+            height: hitbox_height(player),
         };
         let spiked = room
             .spikes
@@ -97,143 +94,143 @@ pub fn wall_jump_check(state: &PlayerState, room: &Room, dir: i8) -> bool {
             .any(|s| s.direction == facing_her && s.hitbox.overlaps(&reach));
 
         if !spiked {
-            dist = SUPER_WALL_JUMP_CHECK_DIST;
+            dist = WALLBOUNCE_REACH;
         }
     }
 
-    collides(state, room, dir * dist, 0)
+    collides(player, room, dir * dist, 0)
 }
 
-pub fn wall_jump(state: &mut PlayerState, room: &Room, dir: i8, move_x: i8) {
-    state.ducking = false;
-    state.jump_grace_timer = 0.0;
-    state.var_jump_timer = VAR_JUMP_TIME;
-    state.auto_jump = false;
-    state.dash_attack_timer = 0.0;
-    state.wall_slide_timer = WALL_SLIDE_TIME;
-    state.wall_boost_timer = 0.0;
+pub fn wall_kick(player: &mut Player, room: &Room, dir: i8, move_x: i8) {
+    player.crouching = false;
+    player.coyote_timer = 0.0;
+    player.jump_timer = JUMP_HOLD_TIME;
+    player.auto_jump = false;
+    player.dash.attack_timer = 0.0;
+    player.wall.slide_timer = WALL_SLIDE_TIME;
+    player.wall.boost_timer = 0.0;
 
     if move_x != 0 {
-        state.force_move_x = dir;
-        state.force_move_x_timer = WALL_JUMP_FORCE_TIME;
+        player.forced_move = dir;
+        player.forced_move_timer = WALL_KICK_FORCE_TIME;
     }
 
-    if state.lift_speed == NO_LIFT && state.last_lift_speed == NO_LIFT {
-        let reach = hitbox(state, WALL_JUMP_CHECK_DIST, 0);
+    if player.lift.speed == NO_LIFT && player.lift.last_speed == NO_LIFT {
+        let reach = hitbox(player, WALL_KICK_REACH, 0);
         if let Some(wall) = room
             .solids
             .iter()
             .find(|solid| solid.collidable && solid.rect.overlaps(&reach))
         {
-            set_lift_speed(state, wall.lift_speed);
+            set_lift_speed(player, wall.lift_speed);
         }
     }
 
-    state.speed.x = WALL_JUMP_H_SPEED * dir as f32;
-    state.speed.y = JUMP_SPEED;
-    add_lift_boost(state);
-    state.var_jump_speed = state.speed.y;
-    set_normal(state);
+    player.speed.x = WALL_KICK_SPEED * dir as f32;
+    player.speed.y = JUMP_SPEED;
+    add_liftboost(player);
+    player.jump_speed = player.speed.y;
+    set_normal(player);
 }
 
-pub fn super_wall_jump(state: &mut PlayerState, dir: i8) {
-    state.ducking = false;
-    state.jump_grace_timer = 0.0;
-    state.var_jump_timer = SUPER_WALL_JUMP_VAR_TIME;
-    state.auto_jump = false;
-    state.dash_attack_timer = 0.0;
-    state.wall_slide_timer = WALL_SLIDE_TIME;
-    state.wall_boost_timer = 0.0;
+pub fn wallbounce(player: &mut Player, dir: i8) {
+    player.crouching = false;
+    player.coyote_timer = 0.0;
+    player.jump_timer = WALLBOUNCE_JUMP_TIME;
+    player.auto_jump = false;
+    player.dash.attack_timer = 0.0;
+    player.wall.slide_timer = WALL_SLIDE_TIME;
+    player.wall.boost_timer = 0.0;
 
-    state.speed.x = SUPER_WALL_JUMP_H * dir as f32;
-    state.speed.y = SUPER_WALL_JUMP_SPEED;
-    add_lift_boost(state);
-    state.var_jump_speed = state.speed.y;
-    set_normal(state);
+    player.speed.x = WALLBOUNCE_SPEED_X * dir as f32;
+    player.speed.y = WALLBOUNCE_SPEED_Y;
+    add_liftboost(player);
+    player.jump_speed = player.speed.y;
+    set_normal(player);
 }
 
-pub fn jump_off_wall(state: &mut PlayerState, room: &Room, frame: Frame) -> bool {
+pub fn jump_off_wall(player: &mut Player, room: &Room, frame: Frame) -> bool {
     let input = frame.input;
 
-    if !can_unduck(state, room) {
+    if !can_stand(player, room) {
         return false;
     }
 
-    let wall = if wall_jump_check(state, room, 1) {
+    let wall = if wall_kick_check(player, room, 1) {
         1
-    } else if wall_jump_check(state, room, -1) {
+    } else if wall_kick_check(player, room, -1) {
         -1
     } else {
         return false;
     };
 
-    let dashing_up = dashing(state) && state.dash_dir.x == 0.0 && state.dash_dir.y == -1.0;
+    let dashing_up = dashing(player) && player.dash.dir.x == 0.0 && player.dash.dir.y == -1.0;
 
     if dashing_up {
-        super_wall_jump(state, -wall);
-    } else if can_climb_jump(state, room, input) {
-        climb_jump(state, frame);
-    } else if wall_bounce_ready(state) {
-        super_wall_jump(state, -wall);
+        wallbounce(player, -wall);
+    } else if can_climb_jump(player, room, input) {
+        climb_jump(player, frame);
+    } else if wallbounce_ready(player) {
+        wallbounce(player, -wall);
     } else {
-        wall_jump(state, room, -wall, input.move_x);
+        wall_kick(player, room, -wall, input.move_x);
     }
 
     true
 }
 
-pub fn can_climb_jump(state: &PlayerState, room: &Room, input: Input) -> bool {
-    let able = input.grab && state.stamina > 0.0;
+pub fn can_climb_jump(player: &Player, room: &Room, input: Input) -> bool {
+    let able = input.grab && player.stamina > 0.0;
 
-    if wall_jump_check(state, room, 1) {
-        state.facing == 1 && able
-    } else if wall_jump_check(state, room, -1) {
-        state.facing == -1 && able
+    if wall_kick_check(player, room, 1) {
+        player.facing == 1 && able
+    } else if wall_kick_check(player, room, -1) {
+        player.facing == -1 && able
     } else {
         false
     }
 }
 
-pub fn climb_jump(state: &mut PlayerState, frame: Frame) {
+pub fn climb_jump(player: &mut Player, frame: Frame) {
     let Frame { input, ground, .. } = frame;
 
     if !ground {
-        state.stamina -= CLIMB_JUMP_COST;
+        player.stamina -= CLIMB_JUMP_COST;
     }
 
-    jump(state, input);
+    jump(player, input);
 
     if input.move_x == 0 {
-        state.wall_boost_dir = -state.facing;
-        state.wall_boost_timer = CLIMB_JUMP_BOOST_TIME;
+        player.wall.boost_dir = -player.facing;
+        player.wall.boost_timer = WALLBOOST_TIME;
     }
 
-    set_normal(state);
+    set_normal(player);
 }
 
-pub fn super_bounce(state: &mut PlayerState, room: &Room, from_y: i32) {
-    nudge_v(state, room, (from_y - state.position.y) as f32);
+pub fn spring_bounce(player: &mut Player, room: &Room, from_y: i32) {
+    nudge_v(player, room, (from_y - player.position.y) as f32);
 
-    state.dashes = MAX_DASHES;
-    state.stamina = CLIMB_MAX_STAMINA;
-    set_normal(state);
+    player.dashes = MAX_DASHES;
+    player.stamina = CLIMB_MAX_STAMINA;
+    set_normal(player);
 
-    state.jump_grace_timer = 0.0;
-    state.var_jump_timer = SUPER_BOUNCE_VAR_JUMP_TIME;
-    state.auto_jump = true;
-    state.dash_attack_timer = 0.0;
-    state.wall_slide_timer = WALL_SLIDE_TIME;
-    state.wall_boost_timer = 0.0;
+    player.coyote_timer = 0.0;
+    player.jump_timer = SPRING_JUMP_TIME;
+    player.auto_jump = true;
+    player.dash.attack_timer = 0.0;
+    player.wall.slide_timer = WALL_SLIDE_TIME;
+    player.wall.boost_timer = 0.0;
 
-    state.speed.x = 0.0;
-    state.speed.y = SUPER_BOUNCE_SPEED;
-    state.var_jump_speed = SUPER_BOUNCE_SPEED;
+    player.speed.x = 0.0;
+    player.speed.y = SPRING_SPEED;
+    player.jump_speed = SPRING_SPEED;
 }
 
-pub fn bounce_on_springs(state: &mut PlayerState, room: &Room) {
+pub fn bounce_on_springs(player: &mut Player, room: &Room) {
     for spring in &room.springs {
-        if state.speed.y >= 0.0 && spring.hitbox.overlaps(&hurtbox(state)) {
-            super_bounce(state, room, spring.hitbox.top);
+        if player.speed.y >= 0.0 && spring.hitbox.overlaps(&hurtbox(player)) {
+            spring_bounce(player, room, spring.hitbox.top);
         }
     }
 }

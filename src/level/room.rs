@@ -1,5 +1,5 @@
 use crate::entities::{
-    CrumbleBlock, DashBlock, FallingBlock, JumpThru, Refill, Solid, Spikes, Spring, ZipMover,
+    CrumbleBlock, Crystal, DashBlock, FallingBlock, JumpThru, Solid, Spikes, Spring, Zipper,
 };
 use crate::player::IVec2;
 
@@ -80,12 +80,12 @@ pub struct Room {
     // platforms she can jump up through and stand on
     pub jump_thrus: Vec<JumpThru>,
     pub springs: Vec<Spring>,
-    pub refills: Vec<Refill>,
+    pub crystals: Vec<Crystal>,
     pub solids: Vec<Solid>,
     pub dash_blocks: Vec<DashBlock>,
     pub crumble_blocks: Vec<CrumbleBlock>,
     pub falling_blocks: Vec<FallingBlock>,
-    pub zip_movers: Vec<ZipMover>,
+    pub zippers: Vec<Zipper>,
 }
 
 impl Room {
@@ -121,12 +121,12 @@ impl Room {
             spikes: Vec::new(),
             jump_thrus: Vec::new(),
             springs: Vec::new(),
-            refills: Vec::new(),
+            crystals: Vec::new(),
             solids: Vec::new(),
             dash_blocks: Vec::new(),
             crumble_blocks: Vec::new(),
             falling_blocks: Vec::new(),
-            zip_movers: Vec::new(),
+            zippers: Vec::new(),
         };
         room.set_size(width as i32 * TILE_SIZE, height as i32 * TILE_SIZE);
         room
@@ -211,9 +211,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn collide_rect_hits_a_zip_mover_where_it_is_now() {
+    fn collide_rect_hits_a_zipper_where_it_is_now() {
         let mut room = at_origin("0000\n0000\n0000\n0000");
-        room.add_zip_mover(8, 8, 16, 8, 8, 0);
+        room.add_zipper(8, 8, 16, 8, 8, 0);
         assert!(room.solid(&Rect::new(10, 10, 2, 2)));
         assert!(!room.solid(&Rect::new(10, 2, 2, 2)));
 
@@ -223,10 +223,10 @@ mod tests {
     }
 
     #[test]
-    fn collide_rect_skips_a_zip_mover_that_is_not_collidable() {
+    fn collide_rect_skips_a_zipper_that_is_not_collidable() {
         let mut room = at_origin("0000\n0000\n0000\n0000");
-        room.add_zip_mover(8, 8, 16, 8, 8, 0);
-        room.solids[room.zip_movers[0].solid].collidable = false;
+        room.add_zipper(8, 8, 16, 8, 8, 0);
+        room.solids[room.zippers[0].solid].collidable = false;
         assert!(!room.solid(&Rect::new(10, 10, 2, 2)));
     }
 

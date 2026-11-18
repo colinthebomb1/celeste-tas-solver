@@ -2,7 +2,7 @@ use celeste_tas_solver::Vec2;
 use celeste_tas_solver::level::transition::{
     TRANSITION_FRAMES, before_transition, find_transition, finish_transition,
 };
-use celeste_tas_solver::player::{IVec2, Input, Mode, PlayerState, step, track_buttons};
+use celeste_tas_solver::player::{IVec2, Input, Player, State, step, track_buttons};
 use celeste_tas_solver::sim::step_room;
 use celeste_tas_solver::trace::parse_trace;
 
@@ -15,7 +15,7 @@ const NONE: Input = Input {
     jump2: false,
     dash: false,
     grab: false,
-    crouch_dash: false,
+    demodash: false,
 };
 const RIGHT: Input = Input { move_x: 1, ..NONE };
 const JUMP: Input = Input { jump: true, ..NONE };
@@ -67,28 +67,28 @@ fn fmt(v: f64) -> String {
 struct Observed {
     position: String,
     speed: String,
-    mode: String,
+    state: String,
     dead: bool,
 }
 
-fn observe(s: &PlayerState) -> Observed {
-    let px = s.position.x as f64 + s.remainder.x as f64;
-    let py = s.position.y as f64 + s.remainder.y as f64;
-    let mode = match s.mode {
-        Mode::Normal => "StNormal",
-        Mode::Climb => "StClimb",
-        Mode::DashStart | Mode::Dashing { .. } => "StDash",
+fn observe(s: &Player) -> Observed {
+    let px = s.position.x as f64 + s.subpixel.x as f64;
+    let py = s.position.y as f64 + s.subpixel.y as f64;
+    let state = match s.state {
+        State::Normal => "StNormal",
+        State::Climb => "StClimb",
+        State::DashStart | State::Dash { .. } => "StDash",
     };
     Observed {
         position: format!("{}, {}", fmt(px), fmt(py)),
         speed: format!("{}, {}", fmt(s.speed.x as f64), fmt(s.speed.y as f64)),
-        mode: mode.to_string(),
+        state: state.to_string(),
         dead: s.dead,
     }
 }
 
-// position is read as f64 so the remainder keeps all its bits away from the origin
-fn start_state(text: &str) -> PlayerState {
+// position is read as f64 so the subpixel keeps all its bits away from the origin
+fn start_state(text: &str) -> Player {
     let first = parse_trace(text)[0];
     let row = text.lines().nth(1).expect("empty trace");
     let (x, y) = column(row, 4).split_once(", ").expect("bad position");
@@ -97,18 +97,18 @@ fn start_state(text: &str) -> PlayerState {
         x: x.round() as i32,
         y: y.round() as i32,
     };
-    let remainder = Vec2 {
+    let subpixel = Vec2 {
         x: (x - x.round()) as f32,
         y: (y - y.round()) as f32,
     };
-    PlayerState::new(position, remainder, first.speed)
+    Player::new(position, subpixel, first.speed)
 }
 
 fn game_row(row: &str) -> Observed {
     Observed {
         position: column(row, 4).to_string(),
         speed: column(row, 5).to_string(),
-        mode: column(row, 6).to_string(),
+        state: column(row, 6).to_string(),
         dead: is_dead(row),
     }
 }
@@ -134,18 +134,18 @@ fn assert_matches_trace_in(room_name: &str, name: &str, text: &str, inputs: &[In
         eprintln!("{name}: skipped. Celeste install could not be found, try setting CELESTE_DIR");
         return;
     };
-    let mut state = start_state(text);
+    let mut player = start_state(text);
     for (i, &input) in inputs.iter().enumerate() {
         let frame = i + 1;
         if frame >= rows.len() {
             break;
         }
-        state = step(state, input, &room);
+        player = step(player, input, &room);
         assert_eq!(
-            observe(&state),
+            observe(&player),
             game_row(rows[frame]),
             "\n{name}: desync on frame {frame} (input {input:?})\n  \
-             (left = simulator, right = the game)\n  state: {state:?}\n"
+             (left = simulator, right = the game)\n  player: {player:?}\n"
         );
     }
 }
@@ -266,7 +266,7 @@ fn input_from_row(row: &str) -> Input {
             "J" => input.jump = true,
             "K" => input.jump2 = true,
             "X" | "C" => input.dash = true,
-            "Z" | "V" => input.crouch_dash = true,
+            "Z" | "V" => input.demodash = true,
             "G" => input.grab = true,
             _ => {}
         }
@@ -312,37 +312,41 @@ fn chapter_1a() {
         .map(|line| format!("{line}\n"))
         .collect();
 
-    let mut state = start_state(&first_two_lines);
+    let mut player = start_state(&first_two_lines);
     let mut room = chapter.room_named("lvl_1").expect("no lvl_1");
     let mut matched = 0;
     let mut frame = 1;
 
-    let desync = |frame: usize, room: &str, state: &PlayerState| {
+    let desync = |frame: usize, room: &str, player: &Player| {
         eprintln!(
             "chapter 1A: desync on frame {frame} in {} (tas line {}, inputs {}, time {})\n  simulator: {:?}\n  game:      {:?}",
             room,
             column(rows[frame], 0).trim(),
             column(rows[frame], 1).trim(),
             column(rows[frame], 3).trim(),
-            observe(state),
+            observe(player),
             game_row(rows[frame]),
         );
     };
 
     while frame < rows.len() {
-        state = step_room(state, input_from_row(rows[frame]), &mut chapter.rooms[room]);
+        player = step_room(
+            player,
+            input_from_row(rows[frame]),
+            &mut chapter.rooms[room],
+        );
 
-        let transition = if state.dead {
+        let transition = if player.dead {
             None
         } else {
-            find_transition(&state, &chapter, room)
+            find_transition(&player, &chapter, room)
         };
         if let Some(transition) = transition {
-            before_transition(&mut state, transition.direction);
+            before_transition(&mut player, transition.direction);
         }
 
-        if observe(&state) != game_row(rows[frame]) {
-            desync(frame, &chapter.rooms[room].name, &state);
+        if observe(&player) != game_row(rows[frame]) {
+            desync(frame, &chapter.rooms[room].name, &player);
             break;
         }
         matched = frame;
@@ -350,21 +354,21 @@ fn chapter_1a() {
 
         // nothing is simulated during a transition. the next row compared is the one where it ends
         if let Some(transition) = transition {
-            finish_transition(&mut state, &chapter, transition);
+            finish_transition(&mut player, &chapter, transition);
             room = transition.to;
 
             // buttons let go of during the transition count as presses afterwards
             let end = (frame + TRANSITION_FRAMES - 1).min(rows.len() - 1);
             for &row in &rows[frame..=end] {
-                track_buttons(&mut state, input_from_row(row));
+                track_buttons(&mut player, input_from_row(row));
             }
             frame += TRANSITION_FRAMES - 1;
 
             if frame >= rows.len() {
                 break;
             }
-            if observe(&state) != game_row(rows[frame]) {
-                desync(frame, &chapter.rooms[room].name, &state);
+            if observe(&player) != game_row(rows[frame]) {
+                desync(frame, &chapter.rooms[room].name, &player);
                 break;
             }
             matched = frame;

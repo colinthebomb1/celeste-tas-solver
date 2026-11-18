@@ -1,8 +1,8 @@
 use crate::entities::dash_block::DASH_BLOCK_FREEZE_TIME;
 use crate::level::room::{Chapter, Direction};
 use crate::player::{
-    CLIMB_MAX_STAMINA, DASH_COOLDOWN, HITBOX_WIDTH, JUMP_SPEED, MAX_DASHES, PlayerState,
-    VAR_JUMP_TIME, WALL_SLIDE_TIME, collides, hitbox_height, set_normal,
+    CLIMB_MAX_STAMINA, DASH_COOLDOWN, HITBOX_WIDTH, JUMP_HOLD_TIME, JUMP_SPEED, MAX_DASHES, Player,
+    WALL_SLIDE_TIME, collides, hitbox_height, set_normal,
 };
 
 pub const TRANSITION_FRAMES: usize = 40;
@@ -21,16 +21,16 @@ pub struct Transition {
     pub direction: Direction,
 }
 
-pub fn find_transition(state: &PlayerState, chapter: &Chapter, room: usize) -> Option<Transition> {
+pub fn find_transition(player: &Player, chapter: &Chapter, room: usize) -> Option<Transition> {
     let bounds = chapter.rooms[room].bounds;
-    let height = hitbox_height(state);
+    let height = hitbox_height(player);
 
-    let left = state.position.x - HITBOX_WIDTH / 2;
-    let right = state.position.x + HITBOX_WIDTH / 2;
-    let top = state.position.y - height;
-    let bottom = state.position.y;
-    let center_x = state.position.x as f32;
-    let center_y = state.position.y as f32 - height as f32 / 2.0;
+    let left = player.position.x - HITBOX_WIDTH / 2;
+    let right = player.position.x + HITBOX_WIDTH / 2;
+    let top = player.position.y - height;
+    let bottom = player.position.y;
+    let center_x = player.position.x as f32;
+    let center_y = player.position.y as f32 - height as f32 / 2.0;
 
     let to = |x: f32, y: f32, direction: Direction| {
         chapter
@@ -56,39 +56,39 @@ pub fn find_transition(state: &PlayerState, chapter: &Chapter, room: usize) -> O
         return to(center_x, center_y - VERTICAL_REACH, Direction::Up);
     }
 
-    if bottom > bounds.bottom() && !collides(state, &chapter.rooms[room], 0, 4) {
+    if bottom > bounds.bottom() && !collides(player, &chapter.rooms[room], 0, 4) {
         return to(center_x, center_y + VERTICAL_REACH, Direction::Down);
     }
 
     None
 }
 
-pub fn before_transition(state: &mut PlayerState, direction: Direction) {
+pub fn before_transition(player: &mut Player, direction: Direction) {
     match direction {
         Direction::Up => {
-            state.speed.x = 0.0;
-            state.speed.y = JUMP_SPEED;
-            state.var_jump_speed = JUMP_SPEED;
-            state.var_jump_timer = VAR_JUMP_TIME;
-            state.auto_jump = true;
-            set_normal(state);
-            state.dash_cooldown_timer = DASH_COOLDOWN;
+            player.speed.x = 0.0;
+            player.speed.y = JUMP_SPEED;
+            player.jump_speed = JUMP_SPEED;
+            player.jump_timer = JUMP_HOLD_TIME;
+            player.auto_jump = true;
+            set_normal(player);
+            player.dash.cooldown = DASH_COOLDOWN;
         }
         Direction::Down => {
-            state.speed.y = state.speed.y.max(0.0);
-            state.var_jump_timer = 0.0;
-            state.auto_jump = false;
-            set_normal(state);
+            player.speed.y = player.speed.y.max(0.0);
+            player.jump_timer = 0.0;
+            player.auto_jump = false;
+            set_normal(player);
         }
         Direction::Left | Direction::Right => {}
     }
 }
 
-pub fn finish_transition(state: &mut PlayerState, chapter: &Chapter, transition: Transition) {
+pub fn finish_transition(player: &mut Player, chapter: &Chapter, transition: Transition) {
     let bounds = chapter.rooms[transition.to].bounds;
 
     // she only moves if she isn't far enough in already
-    let position = &mut state.position;
+    let position = &mut player.position;
     match transition.direction {
         Direction::Up => position.y = position.y.min(bounds.bottom() - ENTRY_PAD - 1),
         Direction::Down => position.y = position.y.max(bounds.top + DOWN_ENTRY_PAD),
@@ -99,15 +99,15 @@ pub fn finish_transition(state: &mut PlayerState, chapter: &Chapter, transition:
         position.y = position.y.min(bounds.bottom() - 1);
     }
 
-    state.remainder.x = 0.0;
-    state.remainder.y = 0.0;
-    state.speed.x = state.speed.x.round_ties_even();
-    state.speed.y = state.speed.y.round_ties_even();
+    player.subpixel.x = 0.0;
+    player.subpixel.y = 0.0;
+    player.speed.x = player.speed.x.round_ties_even();
+    player.speed.y = player.speed.y.round_ties_even();
 
-    state.wall_slide_timer = WALL_SLIDE_TIME;
-    state.jump_grace_timer = 0.0;
-    state.dashes = MAX_DASHES;
-    state.stamina = CLIMB_MAX_STAMINA;
+    player.wall.slide_timer = WALL_SLIDE_TIME;
+    player.coyote_timer = 0.0;
+    player.dashes = MAX_DASHES;
+    player.stamina = CLIMB_MAX_STAMINA;
 
     // the room she left is unloaded now, and every dash block still in it freezes the game
     let left = &chapter.rooms[transition.from];
@@ -116,7 +116,7 @@ pub fn finish_transition(state: &mut PlayerState, chapter: &Chapter, transition:
         .iter()
         .any(|block| left.solids[block.solid].collidable);
     if left_a_dash_block {
-        state.freeze_timer = state.freeze_timer.max(DASH_BLOCK_FREEZE_TIME);
+        player.freeze_timer = player.freeze_timer.max(DASH_BLOCK_FREEZE_TIME);
     }
 }
 
@@ -125,7 +125,7 @@ mod tests {
     use super::*;
     use crate::Vec2;
     use crate::level::room::Room;
-    use crate::player::{IVec2, Mode};
+    use crate::player::{IVec2, State};
 
     const OPEN: &str = "0000\n0000\n0000\n0000";
 
@@ -156,8 +156,8 @@ mod tests {
     const DOWN: usize = 3;
     const LEFT: usize = 4;
 
-    fn at(x: i32, y: i32) -> PlayerState {
-        PlayerState::new(
+    fn at(x: i32, y: i32) -> Player {
+        Player::new(
             IVec2 { x, y },
             Vec2 { x: 0.0, y: 0.0 },
             Vec2 { x: 0.0, y: 0.0 },
@@ -215,10 +215,10 @@ mod tests {
     }
 
     #[test]
-    fn up_is_later_when_ducking() {
+    fn up_is_later_when_crouching() {
         let chapter = cross();
         let mut s = at(116, 103);
-        s.ducking = true;
+        s.crouching = true;
         assert_eq!(find_transition(&s, &chapter, CENTRE), None);
         s.position.y = 102;
         assert_eq!(
@@ -255,7 +255,7 @@ mod tests {
             x: 200.0,
             y: -240.0,
         };
-        s.mode = Mode::Dashing { timer: 0.1 };
+        s.state = State::Dash { timer: 0.1 };
         before_transition(&mut s, Direction::Up);
         assert_eq!(
             s.speed,
@@ -264,11 +264,11 @@ mod tests {
                 y: JUMP_SPEED
             }
         );
-        assert_eq!(s.var_jump_speed, JUMP_SPEED);
-        assert_eq!(s.var_jump_timer, VAR_JUMP_TIME);
+        assert_eq!(s.jump_speed, JUMP_SPEED);
+        assert_eq!(s.jump_timer, JUMP_HOLD_TIME);
         assert!(s.auto_jump);
-        assert_eq!(s.mode, Mode::Normal);
-        assert_eq!(s.dash_cooldown_timer, DASH_COOLDOWN);
+        assert_eq!(s.state, State::Normal);
+        assert_eq!(s.dash.cooldown, DASH_COOLDOWN);
     }
 
     #[test]
@@ -278,7 +278,7 @@ mod tests {
             x: 200.0,
             y: -170.0,
         };
-        s.mode = Mode::Dashing { timer: 0.1 };
+        s.state = State::Dash { timer: 0.1 };
         let before = s;
         before_transition(&mut s, Direction::Right);
         assert_eq!(s, before);
@@ -288,11 +288,11 @@ mod tests {
     fn before_down_stops_her_rising() {
         let mut s = at(116, 133);
         s.speed = Vec2 { x: 50.0, y: -20.0 };
-        s.var_jump_timer = 0.1;
+        s.jump_timer = 0.1;
         s.auto_jump = true;
         before_transition(&mut s, Direction::Down);
         assert_eq!(s.speed, Vec2 { x: 50.0, y: 0.0 });
-        assert_eq!(s.var_jump_timer, 0.0);
+        assert_eq!(s.jump_timer, 0.0);
         assert!(!s.auto_jump);
     }
 
@@ -300,7 +300,7 @@ mod tests {
     fn finish_up_places_her_five_pixels_above_the_new_rooms_bottom() {
         let chapter = cross();
         let mut s = at(116, 105);
-        s.remainder = Vec2 { x: 0.25, y: -0.25 };
+        s.subpixel = Vec2 { x: 0.25, y: -0.25 };
         finish_transition(
             &mut s,
             &chapter,
@@ -311,7 +311,7 @@ mod tests {
             },
         );
         assert_eq!(s.position, IVec2 { x: 116, y: 95 });
-        assert_eq!(s.remainder, Vec2 { x: 0.0, y: 0.0 });
+        assert_eq!(s.subpixel, Vec2 { x: 0.0, y: 0.0 });
     }
 
     #[test]
@@ -418,8 +418,8 @@ mod tests {
         };
         s.dashes = 0;
         s.stamina = 20.0;
-        s.jump_grace_timer = 0.05;
-        s.wall_slide_timer = 0.3;
+        s.coyote_timer = 0.05;
+        s.wall.slide_timer = 0.3;
         finish_transition(
             &mut s,
             &chapter,
@@ -432,7 +432,7 @@ mod tests {
         assert_eq!(s.speed, Vec2 { x: 233.0, y: -25.0 });
         assert_eq!(s.dashes, MAX_DASHES);
         assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
-        assert_eq!(s.jump_grace_timer, 0.0);
-        assert_eq!(s.wall_slide_timer, WALL_SLIDE_TIME);
+        assert_eq!(s.coyote_timer, 0.0);
+        assert_eq!(s.wall.slide_timer, WALL_SLIDE_TIME);
     }
 }

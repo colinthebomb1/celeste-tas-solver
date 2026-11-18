@@ -2,7 +2,7 @@ use celeste_tas_solver::Vec2;
 use celeste_tas_solver::level::transition::{
     TRANSITION_FRAMES, before_transition, find_transition, finish_transition,
 };
-use celeste_tas_solver::player::{IVec2, PlayerState};
+use celeste_tas_solver::player::{IVec2, Player};
 
 mod common;
 
@@ -39,18 +39,18 @@ fn parse(line: &str) -> Row {
     }
 }
 
-fn player(row: &Row) -> PlayerState {
+fn player(row: &Row) -> Player {
     let position = IVec2 {
         x: row.x.round_ties_even() as i32,
         y: row.y.round_ties_even() as i32,
     };
-    let remainder = Vec2 {
+    let subpixel = Vec2 {
         x: (row.x - position.x as f64) as f32,
         y: (row.y - position.y as f64) as f32,
     };
-    PlayerState::new(
+    Player::new(
         position,
-        remainder,
+        subpixel,
         Vec2 {
             x: row.speed_x as f32,
             y: row.speed_y as f32,
@@ -85,15 +85,15 @@ fn transitions_match_the_trace() {
         let room = chapter
             .room_named(&row.room)
             .expect("unknown room in the trace");
-        let mut state = player(row);
-        let found = find_transition(&state, &chapter, room);
+        let mut player = player(row);
+        let found = find_transition(&player, &chapter, room);
 
         if !row.no_control {
-            // the trace doesn't say whether she is ducking, and a ducking player leaves later
-            let mut ducking = state;
-            ducking.ducking = true;
+            // the trace doesn't say whether she is crouching, and a crouching player leaves later
+            let mut crouching = player;
+            crouching.crouching = true;
             assert!(
-                found.is_none() || find_transition(&ducking, &chapter, room).is_none(),
+                found.is_none() || find_transition(&crouching, &chapter, room).is_none(),
                 "row {i}: a transition out of {} that the game didn't make",
                 row.room
             );
@@ -108,20 +108,20 @@ fn transitions_match_the_trace() {
             "row {i}: wrong room"
         );
 
-        before_transition(&mut state, transition.direction);
-        finish_transition(&mut state, &chapter, transition);
+        before_transition(&mut player, transition.direction);
+        finish_transition(&mut player, &chapter, transition);
 
         assert_eq!(
-            (state.position.x as f64, state.position.y as f64),
+            (player.position.x as f64, player.position.y as f64),
             (end.x, end.y),
             "row {i}: wrong position"
         );
         assert_eq!(
-            (state.speed.x as f64, state.speed.y as f64),
+            (player.speed.x as f64, player.speed.y as f64),
             (end.speed_x, end.speed_y),
             "row {i}: wrong speed"
         );
-        assert_eq!(state.remainder, Vec2 { x: 0.0, y: 0.0 });
+        assert_eq!(player.subpixel, Vec2 { x: 0.0, y: 0.0 });
         transitions += 1;
     }
 

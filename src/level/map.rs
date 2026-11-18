@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::entities::crumble_block::load_crumble_blocks;
+use crate::entities::crystal::load_crystals;
 use crate::entities::dash_block::load_dash_blocks;
 use crate::entities::falling_block::load_falling_blocks;
 use crate::entities::jump_thru::load_jump_thrus;
-use crate::entities::refill::load_refills;
 use crate::entities::spikes::load_spikes;
 use crate::entities::spring::load_springs;
-use crate::entities::zip_mover::load_zip_movers;
+use crate::entities::zipper::load_zippers;
 use crate::level::room::{Chapter, Room};
 use crate::player::IVec2;
 
@@ -19,11 +19,11 @@ const LOADERS: [Loader; 8] = [
     load_spikes,
     load_jump_thrus,
     load_springs,
-    load_refills,
+    load_crystals,
     load_dash_blocks,
     load_crumble_blocks,
     load_falling_blocks,
-    load_zip_movers,
+    load_zippers,
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -336,7 +336,7 @@ pub fn find_celeste_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::{JumpThru, Refill, Spikes, Spring};
+    use crate::entities::{Crystal, JumpThru, Spikes, Spring};
     use crate::level::room::Direction;
     use crate::level::room::Rect;
 
@@ -777,7 +777,7 @@ mod tests {
         );
     }
 
-    fn zip_mover_entity(node: Option<(i16, i16)>) -> Vec<u8> {
+    fn zipper_entity(node: Option<(i16, i16)>) -> Vec<u8> {
         let attributes = [
             ("x", v_i16(104)),
             ("y", v_i16(264)),
@@ -808,7 +808,7 @@ mod tests {
     }
 
     #[test]
-    fn load_room_reads_refills_in_world_coordinates() {
+    fn load_room_reads_crystals_in_world_coordinates() {
         let plain = entity("refill", 152, 72, None);
         let attributes = [
             ("x", v_i16(8)),
@@ -819,10 +819,10 @@ mod tests {
         let map = map_with_entities(&[plain, element("refill", &attributes, &[])]);
         let room = load_room(&map, "room_b").unwrap();
         assert_eq!(
-            room.refills,
+            room.crystals,
             vec![
-                Refill::new(472, -112, false, false),
-                Refill::new(328, -168, true, true)
+                Crystal::new(472, -112, false, false),
+                Crystal::new(328, -168, true, true)
             ]
         );
     }
@@ -875,20 +875,20 @@ mod tests {
     }
 
     #[test]
-    fn load_room_reads_zip_movers_in_world_coordinates() {
-        let map = map_with_entities(&[zip_mover_entity(Some((104, 184)))]);
+    fn load_room_reads_zippers_in_world_coordinates() {
+        let map = map_with_entities(&[zipper_entity(Some((104, 184)))]);
         let room = load_room(&map, "room_b").unwrap();
         assert_eq!(
-            room.solids[room.zip_movers[0].solid].rect,
+            room.solids[room.zippers[0].solid].rect,
             Rect::new(424, 80, 32, 16)
         );
-        assert_eq!(room.zip_movers[0].start, IVec2 { x: 424, y: 80 });
-        assert_eq!(room.zip_movers[0].target, IVec2 { x: 424, y: 0 });
+        assert_eq!(room.zippers[0].start, IVec2 { x: 424, y: 80 });
+        assert_eq!(room.zippers[0].target, IVec2 { x: 424, y: 0 });
     }
 
     #[test]
-    fn load_room_zip_mover_missing_its_target() {
-        let map = map_with_entities(&[zip_mover_entity(None)]);
+    fn load_room_zipper_missing_its_target() {
+        let map = map_with_entities(&[zipper_entity(None)]);
         assert_eq!(
             load_room(&map, "room_b"),
             Err(MapError::MissingField("node"))

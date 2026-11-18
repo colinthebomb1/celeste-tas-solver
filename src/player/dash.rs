@@ -1,7 +1,7 @@
 use super::*;
 
-pub(crate) fn dashing(state: &PlayerState) -> bool {
-    matches!(state.mode, Mode::DashStart | Mode::Dashing { .. })
+pub(crate) fn dashing(player: &Player) -> bool {
+    matches!(player.state, State::DashStart | State::Dash { .. })
 }
 
 pub fn aim_vector(input: Input, facing: i8) -> Vec2 {
@@ -25,94 +25,94 @@ pub fn aim_vector(input: Input, facing: i8) -> Vec2 {
     }
 }
 
-pub fn can_dash(state: &PlayerState, dash_pressed: bool) -> bool {
-    dash_pressed && state.dash_cooldown_timer <= 0.0 && state.dashes > 0
+pub fn can_dash(player: &Player, dash_pressed: bool) -> bool {
+    dash_pressed && player.dash.cooldown <= 0.0 && player.dashes > 0
 }
 
-pub fn dash_begin(state: &mut PlayerState, room: &Room, frame: Frame) {
+pub fn dash_begin(player: &mut Player, room: &Room, frame: Frame) {
     let Frame {
         input,
         ground,
-        crouch_dash_pressed,
+        demodash_pressed,
         ..
     } = frame;
 
-    state.dashes -= 1;
-    state.freeze_timer = DASH_FREEZE_TIME;
-    state.dash_cooldown_timer = DASH_COOLDOWN;
-    state.dash_refill_cooldown_timer = DASH_REFILL_COOLDOWN;
-    state.wall_slide_timer = WALL_SLIDE_TIME;
-    state.before_dash_speed = state.speed;
-    state.dash_attack_timer = DASH_ATTACK_TIME;
-    state.dash_started_on_ground = ground;
-    state.speed = Vec2 { x: 0.0, y: 0.0 };
-    state.dash_dir = Vec2 { x: 0.0, y: 0.0 };
+    player.dashes -= 1;
+    player.freeze_timer = DASH_FREEZE_TIME;
+    player.dash.cooldown = DASH_COOLDOWN;
+    player.dash.refill_cooldown = DASH_REFILL_COOLDOWN;
+    player.wall.slide_timer = WALL_SLIDE_TIME;
+    player.dash.speed_before = player.speed;
+    player.dash.attack_timer = DASH_ATTACK_TIME;
+    player.dash.started_on_ground = ground;
+    player.speed = Vec2 { x: 0.0, y: 0.0 };
+    player.dash.dir = Vec2 { x: 0.0, y: 0.0 };
 
-    // holding down at the start of a dash ducks
-    if !ground && state.ducking && can_unduck(state, room) {
-        state.ducking = false;
-    } else if !state.ducking && (crouch_dash_pressed || input.move_y == 1) {
-        state.ducking = true;
+    // holding down at the start of a dash crouchs
+    if !ground && player.crouching && can_stand(player, room) {
+        player.crouching = false;
+    } else if !player.crouching && (demodash_pressed || input.move_y == 1) {
+        player.crouching = true;
     }
 
-    state.mode = Mode::DashStart
+    player.state = State::DashStart
 }
 
-pub fn dash_launch(state: &mut PlayerState, aim: Vec2, ground: bool) {
+pub fn dash_launch(player: &mut Player, aim: Vec2, ground: bool) {
     let mut new_speed_x = aim.x * DASH_SPEED;
     let new_speed_y = aim.y * DASH_SPEED;
 
-    if sign(state.before_dash_speed.x) == sign(new_speed_x)
-        && state.before_dash_speed.x.abs() > new_speed_x.abs()
+    if sign(player.dash.speed_before.x) == sign(new_speed_x)
+        && player.dash.speed_before.x.abs() > new_speed_x.abs()
     {
-        new_speed_x = state.before_dash_speed.x;
+        new_speed_x = player.dash.speed_before.x;
     }
 
-    state.speed = Vec2 {
+    player.speed = Vec2 {
         x: new_speed_x,
         y: new_speed_y,
     };
-    state.dash_dir = aim;
+    player.dash.dir = aim;
 
     if aim.x != 0.0 {
-        state.facing = sign(aim.x) as i8;
+        player.facing = sign(aim.x) as i8;
     }
 
-    // dash slide - a down diagonal dash on the ground becomes a ducked horizontal one
-    if ground && state.dash_dir.x != 0.0 && state.dash_dir.y > 0.0 && state.speed.y > 0.0 {
-        state.dash_dir = Vec2 {
-            x: sign(state.dash_dir.x),
+    // ultra: a down diagonal dash on the ground becomes a crouched horizontal one, a bit faster
+    if ground && player.dash.dir.x != 0.0 && player.dash.dir.y > 0.0 && player.speed.y > 0.0 {
+        player.dash.dir = Vec2 {
+            x: sign(player.dash.dir.x),
             y: 0.0,
         };
-        state.speed.y = 0.0;
-        state.speed.x *= DODGE_SLIDE_SPEED_MULT;
-        state.ducking = true;
+        player.speed.y = 0.0;
+        player.speed.x *= ULTRA_SPEED_MULT;
+        player.crouching = true;
     }
 
-    state.mode = Mode::Dashing { timer: DASH_TIME };
+    player.state = State::Dash { timer: DASH_TIME };
 }
 
-pub fn dash_end(state: &mut PlayerState) {
-    state.auto_jump = true;
+pub fn dash_end(player: &mut Player) {
+    player.auto_jump = true;
 
-    if state.dash_dir.y <= 0.0 {
-        state.speed.x = state.dash_dir.x * END_DASH_SPEED;
-        state.speed.y = state.dash_dir.y * END_DASH_SPEED;
+    if player.dash.dir.y <= 0.0 {
+        player.speed.x = player.dash.dir.x * END_DASH_SPEED;
+        player.speed.y = player.dash.dir.y * END_DASH_SPEED;
     }
 
-    if state.speed.y < 0.0 {
-        state.speed.y *= END_DASH_UP_MULT;
+    if player.speed.y < 0.0 {
+        player.speed.y *= END_DASH_UP_MULT;
     }
 
-    set_normal(state);
+    set_normal(player);
 }
 
-pub fn use_refill(state: &mut PlayerState, two_dashes: bool) -> bool {
+pub fn use_crystal(player: &mut Player, two_dashes: bool) -> bool {
     let dashes = if two_dashes { TWO_DASHES } else { MAX_DASHES };
 
-    if state.dashes < dashes || state.stamina < CLIMB_TIRED_THRESHOLD {
-        state.dashes = dashes;
-        state.stamina = CLIMB_MAX_STAMINA;
+    if player.dashes < dashes || player.stamina < CLIMB_TIRED_THRESHOLD {
+        player.dashes = dashes;
+        player.stamina = CLIMB_MAX_STAMINA;
         true
     } else {
         false

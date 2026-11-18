@@ -1,7 +1,7 @@
 use crate::entities::Solid;
 use crate::level::map::{Element, MapError, entities};
 use crate::level::room::{Rect, Room};
-use crate::player::{DELTA_TIME, IVec2, Mode, PlayerState, hitbox};
+use crate::player::{DELTA_TIME, IVec2, Player, State, hitbox};
 
 pub const CRUMBLE_HEIGHT: i32 = 8;
 pub const CRUMBLE_SHAKE_TIME: f32 = 0.2;
@@ -59,7 +59,7 @@ pub fn load_crumble_blocks(
     Ok(())
 }
 
-pub fn update_crumble_blocks(room: &mut Room, state: &PlayerState) {
+pub fn update_crumble_blocks(room: &mut Room, player: &Player) {
     let Room {
         crumble_blocks,
         solids,
@@ -67,23 +67,23 @@ pub fn update_crumble_blocks(room: &mut Room, state: &PlayerState) {
     } = room;
 
     for block in crumble_blocks {
-        update_crumble_block(block, &mut solids[block.solid], state);
+        update_crumble_block(block, &mut solids[block.solid], player);
     }
 }
 
-fn standing_on(state: &PlayerState, solid: &Solid) -> bool {
-    !state.dead && hitbox(state, 0, 1).overlaps(&solid.rect)
+fn standing_on(player: &Player, solid: &Solid) -> bool {
+    !player.dead && hitbox(player, 0, 1).overlaps(&solid.rect)
 }
 
-fn climbing(state: &PlayerState, solid: &Solid) -> bool {
-    !state.dead
-        && state.mode == Mode::Climb
-        && hitbox(state, state.facing as i32, 0).overlaps(&solid.rect)
+fn climbing(player: &Player, solid: &Solid) -> bool {
+    !player.dead
+        && player.state == State::Climb
+        && hitbox(player, player.facing as i32, 0).overlaps(&solid.rect)
 }
 
-fn update_crumble_block(block: &mut CrumbleBlock, solid: &mut Solid, state: &PlayerState) {
+fn update_crumble_block(block: &mut CrumbleBlock, solid: &mut Solid, player: &Player) {
     match block.stage {
-        CrumbleStage::Idle => set_off(block, solid, state),
+        CrumbleStage::Idle => set_off(block, solid, player),
 
         CrumbleStage::Shaking => {
             if block.timer > 0.0 {
@@ -93,32 +93,32 @@ fn update_crumble_block(block: &mut CrumbleBlock, solid: &mut Solid, state: &Pla
                 block.timer = CRUMBLE_SHAKE_TIME;
             } else {
                 block.timer = CRUMBLE_HOLD_TIME;
-                hold_or_crumble(block, solid, state);
+                hold_or_crumble(block, solid, player);
             }
         }
 
         CrumbleStage::Holding => {
             block.timer -= DELTA_TIME;
-            hold_or_crumble(block, solid, state);
+            hold_or_crumble(block, solid, player);
         }
 
         CrumbleStage::Gone => {
             if block.timer > 0.0 {
                 block.timer -= DELTA_TIME;
-            } else if state.dead || !hitbox(state, 0, 0).overlaps(&solid.rect) {
+            } else if player.dead || !hitbox(player, 0, 0).overlaps(&solid.rect) {
                 solid.collidable = true;
                 block.stage = CrumbleStage::Idle;
-                set_off(block, solid, state);
+                set_off(block, solid, player);
             }
         }
     }
 }
 
-fn set_off(block: &mut CrumbleBlock, solid: &Solid, state: &PlayerState) {
-    if standing_on(state, solid) {
+fn set_off(block: &mut CrumbleBlock, solid: &Solid, player: &Player) {
+    if standing_on(player, solid) {
         block.on_top = true;
         block.shakes_left = CRUMBLE_SHAKES_ON_TOP - 1;
-    } else if climbing(state, solid) {
+    } else if climbing(player, solid) {
         block.on_top = false;
         block.shakes_left = CRUMBLE_SHAKES_CLIMBING - 1;
     } else {
@@ -130,8 +130,8 @@ fn set_off(block: &mut CrumbleBlock, solid: &Solid, state: &PlayerState) {
 }
 
 // stood on, it goes early if she steps off. climbed, it always waits the full time
-fn hold_or_crumble(block: &mut CrumbleBlock, solid: &mut Solid, state: &PlayerState) {
-    let holding = block.timer > 0.0 && (!block.on_top || standing_on(state, solid));
+fn hold_or_crumble(block: &mut CrumbleBlock, solid: &mut Solid, player: &Player) {
+    let holding = block.timer > 0.0 && (!block.on_top || standing_on(player, solid));
 
     if holding {
         block.stage = CrumbleStage::Holding;
@@ -158,35 +158,35 @@ mod tests {
         room.solids[room.crumble_blocks[0].solid].collidable
     }
 
-    fn at(x: i32, y: i32) -> PlayerState {
-        PlayerState::new(
+    fn at(x: i32, y: i32) -> Player {
+        Player::new(
             IVec2 { x, y },
             Vec2 { x: 0.0, y: 0.0 },
             Vec2 { x: 0.0, y: 0.0 },
         )
     }
 
-    fn on_top() -> PlayerState {
+    fn on_top() -> Player {
         at(320, 64)
     }
 
-    fn away() -> PlayerState {
+    fn away() -> Player {
         at(100, 100)
     }
 
     // holding its right side
-    fn climbing_it() -> PlayerState {
+    fn climbing_it() -> Player {
         let mut s = at(348, 72);
         s.facing = -1;
-        s.mode = Mode::Climb;
+        s.state = State::Climb;
         s
     }
 
     // frames until it is no longer solid
-    fn frames_to_crumble(block: &mut Room, state: &PlayerState) -> usize {
+    fn frames_to_crumble(block: &mut Room, player: &Player) -> usize {
         let mut frames = 0;
         while solid(block) {
-            update_crumble_blocks(block, state);
+            update_crumble_blocks(block, player);
             frames += 1;
             assert!(frames < 1000);
         }
@@ -220,7 +220,7 @@ mod tests {
     fn standing_beside_it_does_not_set_it_off() {
         let mut block = block();
         let mut beside = climbing_it();
-        beside.mode = Mode::Normal;
+        beside.state = State::Normal;
         update_crumble_blocks(&mut block, &beside);
         assert_eq!(block.crumble_blocks[0].stage, CrumbleStage::Idle);
     }

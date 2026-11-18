@@ -114,15 +114,15 @@ fn rooms_load_their_springs() {
 }
 
 #[test]
-fn rooms_load_their_zip_movers() {
+fn rooms_load_their_zippers() {
     let Some(chapter) = common::chapter_1a() else {
         eprintln!("skipped. Celeste install could not be found, try setting CELESTE_DIR");
         return;
     };
     let lvl_5 = &chapter.rooms[chapter.room_named("lvl_5").unwrap()];
 
-    assert_eq!(lvl_5.zip_movers.len(), 1);
-    let zip = &lvl_5.zip_movers[0];
+    assert_eq!(lvl_5.zippers.len(), 1);
+    let zip = &lvl_5.zippers[0];
     assert_eq!(
         (zip.start, zip.target),
         (IVec2 { x: 1128, y: -760 }, IVec2 { x: 1128, y: -840 })

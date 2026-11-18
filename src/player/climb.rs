@@ -1,7 +1,11 @@
 use super::*;
 
 pub fn is_tired(state: &PlayerState) -> bool {
-    let stamina = if state.wall_boost_timer > 0.0 { state.stamina + CLIMB_JUMP_COST } else { state.stamina };
+    let stamina = if state.wall_boost_timer > 0.0 {
+        state.stamina + CLIMB_JUMP_COST
+    } else {
+        state.stamina
+    };
 
     stamina < CLIMB_TIRED_THRESHOLD
 }
@@ -62,20 +66,40 @@ pub fn climb_begin(state: &mut PlayerState, room: &Room) {
 }
 
 pub(crate) fn moving_solid_at(room: &Room, rect: &Rect) -> Option<HopSolid> {
-    let zip = room.zip_movers.iter().position(|zip| zip.collidable && zip.rect().overlaps(rect));
-    let falling = room.falling_blocks.iter().position(|block| block.collidable && block.rect().overlaps(rect));
+    let zip = room
+        .zip_movers
+        .iter()
+        .position(|zip| zip.collidable && zip.rect().overlaps(rect));
+    let falling = room
+        .falling_blocks
+        .iter()
+        .position(|block| block.collidable && block.rect().overlaps(rect));
 
     if let Some(index) = zip {
-        Some(HopSolid { kind: MovingSolid::ZipMover, index, position: room.zip_movers[index].position })
+        Some(HopSolid {
+            kind: MovingSolid::ZipMover,
+            index,
+            position: room.zip_movers[index].position,
+        })
     } else {
-        falling.map(|index| HopSolid { kind: MovingSolid::FallingBlock, index, position: room.falling_blocks[index].position })
+        falling.map(|index| HopSolid {
+            kind: MovingSolid::FallingBlock,
+            index,
+            position: room.falling_blocks[index].position,
+        })
     }
 }
 
 pub(crate) fn moving_solid_position(room: &Room, solid: HopSolid) -> Option<IVec2> {
     let (position, collidable) = match solid.kind {
-        MovingSolid::ZipMover => (room.zip_movers[solid.index].position, room.zip_movers[solid.index].collidable),
-        MovingSolid::FallingBlock => (room.falling_blocks[solid.index].position, room.falling_blocks[solid.index].collidable),
+        MovingSolid::ZipMover => (
+            room.zip_movers[solid.index].position,
+            room.zip_movers[solid.index].collidable,
+        ),
+        MovingSolid::FallingBlock => (
+            room.falling_blocks[solid.index].position,
+            room.falling_blocks[solid.index].collidable,
+        ),
     };
 
     collidable.then_some(position)
@@ -132,13 +156,25 @@ pub(crate) fn update_hop_wait(state: &mut PlayerState, room: &Room) {
 // her hands are above the top of the wall
 pub fn slip_check(state: &PlayerState, room: &Room, add_y: i32) -> bool {
     let her = hitbox(state, 0, 0);
-    let x = if state.facing == 1 { her.right() } else { her.left - 1 };
+    let x = if state.facing == 1 {
+        her.right()
+    } else {
+        her.left - 1
+    };
     let y = her.top + 4 + add_y;
 
     !room.solid_at(x, y) && !room.solid_at(x, y - 4 + add_y)
 }
 
-pub(crate) fn climb_update(state: &mut PlayerState, room: &Room, input: Input, ground: bool, jump_pressed: bool, dash_pressed: bool, crouch: bool) {
+pub(crate) fn climb_update(
+    state: &mut PlayerState,
+    room: &Room,
+    input: Input,
+    ground: bool,
+    jump_pressed: bool,
+    dash_pressed: bool,
+    crouch: bool,
+) {
     state.climb_no_move_timer -= DELTA_TIME;
 
     if ground {

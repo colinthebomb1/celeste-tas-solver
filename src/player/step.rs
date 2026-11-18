@@ -64,7 +64,10 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
     let aim_input = input;
     let input = if state.force_move_x_timer > 0.0 {
         state.force_move_x_timer -= DELTA_TIME;
-        Input { move_x: state.force_move_x, ..input }
+        Input {
+            move_x: state.force_move_x,
+            ..input
+        }
     } else {
         state.climb_hop_solid = None;
         input
@@ -77,7 +80,7 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
     if input.move_x != 0 && state.mode != Mode::Climb {
         state.facing = input.move_x;
     }
-    
+
     let aim = aim_vector(aim_input, state.facing);
 
     update_wall_speed_retention(&mut state, room);
@@ -106,7 +109,15 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
         }
 
         Mode::Climb => {
-            climb_update(&mut state, room, input, ground, jump_pressed, dash_pressed || crouch_dash_pressed, crouch_dash_pressed);
+            climb_update(
+                &mut state,
+                room,
+                input,
+                ground,
+                jump_pressed,
+                dash_pressed || crouch_dash_pressed,
+                crouch_dash_pressed,
+            );
 
             if state.mode != Mode::Climb {
                 state.wall_speed_retention_timer = 0.0;
@@ -122,14 +133,16 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
                 dash_launch(&mut state, aim, ground);
             }
         }
-        
+
         Mode::Dashing { timer } => {
             if can_super_jump(&state, room, jump_pressed) {
                 super_jump(&mut state);
             } else if jump_pressed && jump_off_wall(&mut state, room, input, ground) {
                 // jumped out of the dash
             } else if timer > 0.0 {
-                state.mode = Mode::Dashing { timer: timer - DELTA_TIME };
+                state.mode = Mode::Dashing {
+                    timer: timer - DELTA_TIME,
+                };
             } else {
                 dash_end(&mut state);
             }
@@ -186,7 +199,13 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
     state
 }
 
-pub(crate) fn normal_update(state: &mut PlayerState, room: &Room, input: Input, ground: bool, jump_pressed: bool) {
+pub(crate) fn normal_update(
+    state: &mut PlayerState,
+    room: &Room,
+    input: Input,
+    ground: bool,
+    jump_pressed: bool,
+) {
     // walking off a rising block keeps its upward speed
     let boost = lift_boost(state);
     if boost.y < 0.0 && state.was_on_ground && !ground && state.speed.y >= 0.0 {
@@ -201,19 +220,16 @@ pub(crate) fn normal_update(state: &mut PlayerState, room: &Room, input: Input, 
         state.ducking = true;
     }
 
-    let mult = if ground {
-        GROUND_MULT
-    } else {
-        AIR_MULT
-    };
+    let mult = if ground { GROUND_MULT } else { AIR_MULT };
     let move_x = input.move_x as f32;
     let target = MAX_RUN * move_x;
 
-    let max_move_x = if state.speed.x.abs() > MAX_RUN && (state.speed.x.signum() as i8) == input.move_x {
-        RUN_REDUCE * DELTA_TIME * mult
-    } else {
-        RUN_ACCEL * DELTA_TIME * mult
-    };
+    let max_move_x =
+        if state.speed.x.abs() > MAX_RUN && (state.speed.x.signum() as i8) == input.move_x {
+            RUN_REDUCE * DELTA_TIME * mult
+        } else {
+            RUN_ACCEL * DELTA_TIME * mult
+        };
     if state.ducking && ground {
         state.speed.x = approach(state.speed.x, 0.0, DUCK_FRICTION * DELTA_TIME);
     } else {
@@ -226,7 +242,9 @@ pub(crate) fn normal_update(state: &mut PlayerState, room: &Room, input: Input, 
 
     if !ground {
         let max_fall = wall_slide_max_fall(state, room, input);
-        let grav_mult = if state.speed.y.abs() < HALF_GRAV_THRESHOLD && (input.jump_down() || state.auto_jump) {
+        let grav_mult = if state.speed.y.abs() < HALF_GRAV_THRESHOLD
+            && (input.jump_down() || state.auto_jump)
+        {
             0.5
         } else {
             1.0

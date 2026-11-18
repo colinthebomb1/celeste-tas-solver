@@ -10,7 +10,11 @@ pub fn set_lift_speed(state: &mut PlayerState, lift_speed: Vec2) {
 }
 
 pub fn lift_boost(state: &PlayerState) -> Vec2 {
-    let lift = if state.lift_speed == NO_LIFT { state.last_lift_speed } else { state.lift_speed };
+    let lift = if state.lift_speed == NO_LIFT {
+        state.last_lift_speed
+    } else {
+        state.lift_speed
+    };
 
     Vec2 {
         x: lift.x.clamp(-LIFT_X_CAP, LIFT_X_CAP),
@@ -139,7 +143,10 @@ pub fn move_v(state: &mut PlayerState, room: &Room, amount: f32) {
 
                 // dash slide
                 if state.dash_dir.x != 0.0 && state.dash_dir.y > 0.0 {
-                    state.dash_dir = Vec2 { x: sign(state.dash_dir.x), y: 0.0 };
+                    state.dash_dir = Vec2 {
+                        x: sign(state.dash_dir.x),
+                        y: 0.0,
+                    };
                     state.speed.x *= DODGE_SLIDE_SPEED_MULT;
                     state.ducking = true;
                 }

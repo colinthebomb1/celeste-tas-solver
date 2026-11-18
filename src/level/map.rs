@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::player::IVec2;
 use crate::entities::crumble_block::load_crumble_blocks;
 use crate::entities::dash_block::load_dash_blocks;
 use crate::entities::falling_block::load_falling_blocks;
@@ -11,6 +10,7 @@ use crate::entities::spikes::load_spikes;
 use crate::entities::spring::load_springs;
 use crate::entities::zip_mover::load_zip_movers;
 use crate::level::room::{Chapter, Room};
+use crate::player::IVec2;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MapError {
@@ -91,7 +91,7 @@ impl<'file> MapReader<'file> {
         if end > self.bytes.len() {
             return Err(MapError::UnexpectedEnd);
         }
-        
+
         let taken_bytes = &self.bytes[self.pos..end];
         self.pos = end;
         Ok(taken_bytes)
@@ -99,7 +99,7 @@ impl<'file> MapReader<'file> {
 
     pub fn read_u8(&mut self) -> Result<u8, MapError> {
         let bytes = self.take(1)?;
-        
+
         Ok(bytes[0])
     }
 
@@ -174,22 +174,22 @@ pub fn read_value(reader: &mut MapReader, lookup: &[String], kind: u8) -> Result
         5 => Ok(Value::Text(read_lookup(reader, lookup)?)),
         6 => Ok(Value::Text(reader.read_string()?)),
         7 => Ok(Value::Text(decode_rle_string(reader)?)),
-        other => Err(MapError::BadValueType(other))
+        other => Err(MapError::BadValueType(other)),
     }
 }
 
 fn decode_rle_string(reader: &mut MapReader) -> Result<String, MapError> {
-        let count = reader.read_i16()? as usize;
-        let bytes = reader.take(count)?;
-        let decoded_string = decode_rle(bytes);
+    let count = reader.read_i16()? as usize;
+    let bytes = reader.take(count)?;
+    let decoded_string = decode_rle(bytes);
 
-        Ok(decoded_string)
+    Ok(decoded_string)
 }
 
 fn read_lookup(reader: &mut MapReader, lookup: &[String]) -> Result<String, MapError> {
     let i = reader.read_i16()?;
     let word = lookup.get(i as usize).ok_or(MapError::BadLookup(i))?;
-    
+
     Ok(word.clone())
 }
 
@@ -214,14 +214,18 @@ pub fn read_element(reader: &mut MapReader, lookup: &[String]) -> Result<Element
         children.push(read_element(reader, lookup)?);
     }
 
-    Ok(Element { name, attributes, children })
+    Ok(Element {
+        name,
+        attributes,
+        children,
+    })
 }
 
 // read the root element of the map
 pub fn parse_map(bytes: &[u8]) -> Result<Element, MapError> {
     let mut reader = MapReader::new(bytes);
     let mut lookup = Vec::new();
-    
+
     if reader.read_string()? != "CELESTE MAP" {
         return Err(MapError::BadHeader);
     }
@@ -239,7 +243,9 @@ pub fn parse_map(bytes: &[u8]) -> Result<Element, MapError> {
 
 // find a room by name and build its tile grid
 pub fn load_room(map: &Element, name: &str) -> Result<Room, MapError> {
-    let levels = map.child("levels").ok_or(MapError::MissingField("levels"))?;
+    let levels = map
+        .child("levels")
+        .ok_or(MapError::MissingField("levels"))?;
     let level = levels
         .children
         .iter()
@@ -250,8 +256,14 @@ pub fn load_room(map: &Element, name: &str) -> Result<Room, MapError> {
 }
 
 pub fn load_chapter(map: &Element) -> Result<Chapter, MapError> {
-    let levels = map.child("levels").ok_or(MapError::MissingField("levels"))?;
-    let rooms = levels.children.iter().map(room_from_level).collect::<Result<_, _>>()?;
+    let levels = map
+        .child("levels")
+        .ok_or(MapError::MissingField("levels"))?;
+    let rooms = levels
+        .children
+        .iter()
+        .map(room_from_level)
+        .collect::<Result<_, _>>()?;
 
     Ok(Chapter { rooms })
 }
@@ -261,8 +273,12 @@ fn room_from_level(level: &Element) -> Result<Room, MapError> {
     let y = level.int("y").ok_or(MapError::MissingField("y"))?;
     let origin = IVec2 { x, y };
 
-    let solids = level.child("solids").ok_or(MapError::MissingField("solids"))?;
-    let tiles = solids.text("innerText").ok_or(MapError::MissingField("innerText"))?;
+    let solids = level
+        .child("solids")
+        .ok_or(MapError::MissingField("solids"))?;
+    let tiles = solids
+        .text("innerText")
+        .ok_or(MapError::MissingField("innerText"))?;
 
     let mut room = Room::from_tiles(origin, tiles);
     room.name = level.text("name").unwrap_or_default().to_string();
@@ -277,7 +293,7 @@ fn room_from_level(level: &Element) -> Result<Room, MapError> {
     room.crumble_blocks = load_crumble_blocks(level, origin)?;
     room.falling_blocks = load_falling_blocks(level, origin)?;
     room.zip_movers = load_zip_movers(level, origin)?;
-    
+
     Ok(room)
 }
 
@@ -297,14 +313,45 @@ pub fn find_celeste_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::{CrumbleBlock, DashBlock, FallingBlock, JumpThru, Refill, Spikes, Spring, ZipMover};
+    use crate::entities::{
+        CrumbleBlock, DashBlock, FallingBlock, JumpThru, Refill, Spikes, Spring, ZipMover,
+    };
     use crate::level::room::Direction;
 
     const LOOKUP: [&str; 33] = [
-        "Map", "levels", "level", "name", "x", "y", "solids", "innerText", "room_a", "room_b",
-        "flag", "big", "ratio", "note", "entities", "spikesUp", "spikesDown", "spikesLeft",
-        "spikesRight", "width", "height", "strawberry", "jumpThru", "zipMover", "node", "spring", "dashBlock",
-        "refill", "twoDash", "oneUse", "fallingBlock", "climbFall", "crumbleBlock",
+        "Map",
+        "levels",
+        "level",
+        "name",
+        "x",
+        "y",
+        "solids",
+        "innerText",
+        "room_a",
+        "room_b",
+        "flag",
+        "big",
+        "ratio",
+        "note",
+        "entities",
+        "spikesUp",
+        "spikesDown",
+        "spikesLeft",
+        "spikesRight",
+        "width",
+        "height",
+        "strawberry",
+        "jumpThru",
+        "zipMover",
+        "node",
+        "spring",
+        "dashBlock",
+        "refill",
+        "twoDash",
+        "oneUse",
+        "fallingBlock",
+        "climbFall",
+        "crumbleBlock",
     ];
 
     fn string(s: &str) -> Vec<u8> {
@@ -348,7 +395,10 @@ mod tests {
     }
 
     fn v_rle(pairs: &[(u8, char)]) -> Vec<u8> {
-        let body: Vec<u8> = pairs.iter().flat_map(|&(count, c)| [count, c as u8]).collect();
+        let body: Vec<u8> = pairs
+            .iter()
+            .flat_map(|&(count, c)| [count, c as u8])
+            .collect();
         [vec![7], (body.len() as i16).to_le_bytes().to_vec(), body].concat()
     }
 
@@ -389,7 +439,11 @@ mod tests {
     fn tiny_map() -> Vec<u8> {
         let room_a = level("room_a", 0, 0, &[(2, '0'), (1, '1'), (1, '\n'), (3, '1')]);
         let room_b = level("room_b", 320, -184, &[(1, '1')]);
-        file(element("Map", &[], &[element("levels", &[], &[room_a, room_b])]))
+        file(element(
+            "Map",
+            &[],
+            &[element("levels", &[], &[room_a, room_b])],
+        ))
     }
 
     fn text(s: &str) -> Value {
@@ -455,8 +509,14 @@ mod tests {
 
     #[test]
     fn read_string_errors() {
-        assert_eq!(MapReader::new(&[5, b'h', b'i']).read_string(), Err(MapError::UnexpectedEnd));
-        assert_eq!(MapReader::new(&[1, 0xFF]).read_string(), Err(MapError::BadText));
+        assert_eq!(
+            MapReader::new(&[5, b'h', b'i']).read_string(),
+            Err(MapError::UnexpectedEnd)
+        );
+        assert_eq!(
+            MapReader::new(&[1, 0xFF]).read_string(),
+            Err(MapError::BadText)
+        );
     }
 
     #[test]
@@ -521,7 +581,10 @@ mod tests {
     #[test]
     fn parse_map_truncated_file() {
         let bytes = tiny_map();
-        assert_eq!(parse_map(&bytes[..bytes.len() - 3]), Err(MapError::UnexpectedEnd));
+        assert_eq!(
+            parse_map(&bytes[..bytes.len() - 3]),
+            Err(MapError::UnexpectedEnd)
+        );
     }
 
     #[test]
@@ -580,7 +643,11 @@ mod tests {
     fn load_chapter_loads_every_room_in_order() {
         let map = parse_map(&tiny_map()).unwrap();
         let chapter = load_chapter(&map).unwrap();
-        let names: Vec<&str> = chapter.rooms.iter().map(|room| room.name.as_str()).collect();
+        let names: Vec<&str> = chapter
+            .rooms
+            .iter()
+            .map(|room| room.name.as_str())
+            .collect();
         assert_eq!(names, ["room_a", "room_b"]);
         assert_eq!(chapter.rooms[1], load_room(&map, "room_b").unwrap());
     }
@@ -588,15 +655,29 @@ mod tests {
     #[test]
     fn load_room_unknown_name() {
         let map = parse_map(&tiny_map()).unwrap();
-        assert_eq!(load_room(&map, "nope"), Err(MapError::RoomNotFound("nope".to_string())));
+        assert_eq!(
+            load_room(&map, "nope"),
+            Err(MapError::RoomNotFound("nope".to_string()))
+        );
     }
 
     #[test]
     fn load_room_without_solids() {
-        let bare = element("level", &[("name", v_lookup("room_a")), ("x", v_i16(0)), ("y", v_i16(0))], &[]);
+        let bare = element(
+            "level",
+            &[
+                ("name", v_lookup("room_a")),
+                ("x", v_i16(0)),
+                ("y", v_i16(0)),
+            ],
+            &[],
+        );
         let bytes = file(element("Map", &[], &[element("levels", &[], &[bare])]));
         let map = parse_map(&bytes).unwrap();
-        assert_eq!(load_room(&map, "room_a"), Err(MapError::MissingField("solids")));
+        assert_eq!(
+            load_room(&map, "room_a"),
+            Err(MapError::MissingField("solids"))
+        );
     }
     fn entity(name: &str, x: i16, y: i16, size: Option<(&str, u8)>) -> Vec<u8> {
         let mut attributes = vec![("x", v_i16(x)), ("y", v_i16(y))];
@@ -609,13 +690,22 @@ mod tests {
     fn map_with_entities(entities: &[Vec<u8>]) -> Element {
         let room = element(
             "level",
-            &[("name", v_lookup("room_b")), ("x", v_i16(320)), ("y", v_i16(-184))],
+            &[
+                ("name", v_lookup("room_b")),
+                ("x", v_i16(320)),
+                ("y", v_i16(-184)),
+            ],
             &[
                 element("solids", &[("innerText", v_rle(&[(1, '1')]))], &[]),
                 element("entities", &[], entities),
             ],
         );
-        parse_map(&file(element("Map", &[], &[element("levels", &[], &[room])]))).unwrap()
+        parse_map(&file(element(
+            "Map",
+            &[],
+            &[element("levels", &[], &[room])],
+        )))
+        .unwrap()
     }
 
     #[test]
@@ -647,18 +737,29 @@ mod tests {
             entity("jumpThru", 0, 16, Some(("width", 8))),
         ]);
         let room = load_room(&map, "room_b").unwrap();
-        assert_eq!(room.jump_thrus, vec![JumpThru::new(328, -24, 40), JumpThru::new(320, -168, 8)]);
+        assert_eq!(
+            room.jump_thrus,
+            vec![JumpThru::new(328, -24, 40), JumpThru::new(320, -168, 8)]
+        );
         assert!(room.spikes.is_empty());
     }
 
     #[test]
     fn load_room_jump_thru_missing_its_width() {
         let map = map_with_entities(&[entity("jumpThru", 8, 160, None)]);
-        assert_eq!(load_room(&map, "room_b"), Err(MapError::MissingField("width")));
+        assert_eq!(
+            load_room(&map, "room_b"),
+            Err(MapError::MissingField("width"))
+        );
     }
 
     fn zip_mover_entity(node: Option<(i16, i16)>) -> Vec<u8> {
-        let attributes = [("x", v_i16(104)), ("y", v_i16(264)), ("width", v_u8(32)), ("height", v_u8(16))];
+        let attributes = [
+            ("x", v_i16(104)),
+            ("y", v_i16(264)),
+            ("width", v_u8(32)),
+            ("height", v_u8(16)),
+        ];
         let nodes: Vec<Vec<u8>> = node
             .map(|(x, y)| element("node", &[("x", v_i16(x)), ("y", v_i16(y))], &[]))
             .into_iter()
@@ -668,7 +769,12 @@ mod tests {
 
     #[test]
     fn load_room_reads_dash_blocks_in_world_coordinates() {
-        let attributes = [("x", v_i16(248)), ("y", v_i16(112)), ("width", v_u8(16)), ("height", v_u8(24))];
+        let attributes = [
+            ("x", v_i16(248)),
+            ("y", v_i16(112)),
+            ("width", v_u8(16)),
+            ("height", v_u8(24)),
+        ];
         let map = map_with_entities(&[element("dashBlock", &attributes, &[])]);
         let room = load_room(&map, "room_b").unwrap();
         assert_eq!(room.dash_blocks, vec![DashBlock::new(568, -72, 16, 24)]);
@@ -677,20 +783,45 @@ mod tests {
     #[test]
     fn load_room_reads_refills_in_world_coordinates() {
         let plain = entity("refill", 152, 72, None);
-        let attributes = [("x", v_i16(8)), ("y", v_i16(16)), ("twoDash", v_bool(true)), ("oneUse", v_bool(true))];
+        let attributes = [
+            ("x", v_i16(8)),
+            ("y", v_i16(16)),
+            ("twoDash", v_bool(true)),
+            ("oneUse", v_bool(true)),
+        ];
         let map = map_with_entities(&[plain, element("refill", &attributes, &[])]);
         let room = load_room(&map, "room_b").unwrap();
-        assert_eq!(room.refills, vec![Refill::new(472, -112, false, false), Refill::new(328, -168, true, true)]);
+        assert_eq!(
+            room.refills,
+            vec![
+                Refill::new(472, -112, false, false),
+                Refill::new(328, -168, true, true)
+            ]
+        );
     }
 
     #[test]
     fn load_room_reads_falling_blocks_in_world_coordinates() {
-        let size = [("x", v_i16(152)), ("y", v_i16(160)), ("width", v_u8(32)), ("height", v_u8(24))];
+        let size = [
+            ("x", v_i16(152)),
+            ("y", v_i16(160)),
+            ("width", v_u8(32)),
+            ("height", v_u8(24)),
+        ];
         let mut no_climb = size.to_vec();
         no_climb.push(("climbFall", v_bool(false)));
-        let map = map_with_entities(&[element("fallingBlock", &size, &[]), element("fallingBlock", &no_climb, &[])]);
+        let map = map_with_entities(&[
+            element("fallingBlock", &size, &[]),
+            element("fallingBlock", &no_climb, &[]),
+        ]);
         let room = load_room(&map, "room_b").unwrap();
-        assert_eq!(room.falling_blocks, vec![FallingBlock::new(472, -24, 32, 24, true), FallingBlock::new(472, -24, 32, 24, false)]);
+        assert_eq!(
+            room.falling_blocks,
+            vec![
+                FallingBlock::new(472, -24, 32, 24, true),
+                FallingBlock::new(472, -24, 32, 24, false)
+            ]
+        );
     }
 
     #[test]
@@ -702,7 +833,10 @@ mod tests {
 
     #[test]
     fn load_room_reads_springs_in_world_coordinates() {
-        let map = map_with_entities(&[entity("spring", 40, 128, None), entity("strawberry", 1, 1, None)]);
+        let map = map_with_entities(&[
+            entity("spring", 40, 128, None),
+            entity("strawberry", 1, 1, None),
+        ]);
         let room = load_room(&map, "room_b").unwrap();
         assert_eq!(room.springs, vec![Spring::new(360, -56)]);
     }
@@ -711,13 +845,19 @@ mod tests {
     fn load_room_reads_zip_movers_in_world_coordinates() {
         let map = map_with_entities(&[zip_mover_entity(Some((104, 184)))]);
         let room = load_room(&map, "room_b").unwrap();
-        assert_eq!(room.zip_movers, vec![ZipMover::new(424, 80, 32, 16, 424, 0)]);
+        assert_eq!(
+            room.zip_movers,
+            vec![ZipMover::new(424, 80, 32, 16, 424, 0)]
+        );
     }
 
     #[test]
     fn load_room_zip_mover_missing_its_target() {
         let map = map_with_entities(&[zip_mover_entity(None)]);
-        assert_eq!(load_room(&map, "room_b"), Err(MapError::MissingField("node")));
+        assert_eq!(
+            load_room(&map, "room_b"),
+            Err(MapError::MissingField("node"))
+        );
     }
 
     #[test]
@@ -729,9 +869,15 @@ mod tests {
     #[test]
     fn load_room_spikes_missing_their_length() {
         let map = map_with_entities(&[entity("spikesUp", 8, 16, None)]);
-        assert_eq!(load_room(&map, "room_b"), Err(MapError::MissingField("width")));
+        assert_eq!(
+            load_room(&map, "room_b"),
+            Err(MapError::MissingField("width"))
+        );
 
         let map = map_with_entities(&[entity("spikesRight", 8, 16, Some(("width", 8)))]);
-        assert_eq!(load_room(&map, "room_b"), Err(MapError::MissingField("height")));
+        assert_eq!(
+            load_room(&map, "room_b"),
+            Err(MapError::MissingField("height"))
+        );
     }
 }

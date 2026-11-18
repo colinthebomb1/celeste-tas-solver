@@ -1,7 +1,7 @@
-use celeste_tas_solver::level::map::load_room;
-use celeste_tas_solver::player::IVec2;
 use celeste_tas_solver::entities::{DashBlock, JumpThru, Spikes, Spring};
+use celeste_tas_solver::level::map::load_room;
 use celeste_tas_solver::level::room::{Direction, Rect};
+use celeste_tas_solver::player::IVec2;
 
 mod common;
 
@@ -18,11 +18,25 @@ fn first_room_matches_the_game() {
     assert!(room.tile_solid(10, 16));
     assert!(!room.tile_solid(10, 15));
     assert_eq!(room.name, "lvl_1");
-    assert_eq!(room.bounds, Rect { left: 0, top: 0, width: 320, height: 180 });
+    assert_eq!(
+        room.bounds,
+        Rect {
+            left: 0,
+            top: 0,
+            width: 320,
+            height: 180
+        }
+    );
     assert_eq!(room.bottom(), 180);
     assert_eq!(room.spikes.len(), 5);
-    assert!(room.spikes.contains(&Spikes::new(Direction::Up, 40, 168, 40)));
-    assert!(room.spikes.contains(&Spikes::new(Direction::Left, 272, 80, 16)));
+    assert!(
+        room.spikes
+            .contains(&Spikes::new(Direction::Up, 40, 168, 40))
+    );
+    assert!(
+        room.spikes
+            .contains(&Spikes::new(Direction::Left, 272, 80, 16))
+    );
 }
 
 #[test]
@@ -49,7 +63,14 @@ fn rooms_load_their_jump_thrus() {
 
     assert!(room("lvl_1").jump_thrus.is_empty());
     assert_eq!(room("lvl_3").jump_thrus, vec![JumpThru::new(512, -200, 32)]);
-    assert_eq!(chapter.rooms.iter().map(|room| room.jump_thrus.len()).sum::<usize>(), 77);
+    assert_eq!(
+        chapter
+            .rooms
+            .iter()
+            .map(|room| room.jump_thrus.len())
+            .sum::<usize>(),
+        77
+    );
 }
 
 #[test]
@@ -79,7 +100,14 @@ fn rooms_load_their_springs() {
     let lvl_5 = &chapter.rooms[chapter.room_named("lvl_5").unwrap()];
 
     assert_eq!(lvl_5.springs, vec![Spring::new(1320, -896)]);
-    assert_eq!(chapter.rooms.iter().map(|room| room.springs.len()).sum::<usize>(), 13);
+    assert_eq!(
+        chapter
+            .rooms
+            .iter()
+            .map(|room| room.springs.len())
+            .sum::<usize>(),
+        13
+    );
 }
 
 #[test]
@@ -92,7 +120,10 @@ fn rooms_load_their_zip_movers() {
 
     assert_eq!(lvl_5.zip_movers.len(), 1);
     let zip = &lvl_5.zip_movers[0];
-    assert_eq!((zip.start, zip.target), (IVec2 { x: 1128, y: -760 }, IVec2 { x: 1128, y: -840 }));
+    assert_eq!(
+        (zip.start, zip.target),
+        (IVec2 { x: 1128, y: -760 }, IVec2 { x: 1128, y: -840 })
+    );
     assert_eq!((zip.width, zip.height), (32, 16));
 }
 
@@ -105,10 +136,21 @@ fn chapter_1a_rooms_tile_the_route() {
     assert_eq!(chapter.rooms.len(), 38);
 
     let lvl_6a = &chapter.rooms[chapter.room_named("lvl_6a").unwrap()];
-    assert_eq!(lvl_6a.bounds, Rect { left: 1616, top: -1216, width: 392, height: 192 });
+    assert_eq!(
+        lvl_6a.bounds,
+        Rect {
+            left: 1616,
+            top: -1216,
+            width: 392,
+            height: 192
+        }
+    );
 
     // just above the first room is the second, just right of lvl_6 is lvl_6a
     assert_eq!(chapter.room_at(254.0, -10.0), chapter.room_named("lvl_2"));
-    assert_eq!(chapter.room_at(1620.0, -1176.0), chapter.room_named("lvl_6a"));
+    assert_eq!(
+        chapter.room_at(1620.0, -1176.0),
+        chapter.room_named("lvl_6a")
+    );
     assert_eq!(chapter.room_at(-50.0, 50.0), None);
 }

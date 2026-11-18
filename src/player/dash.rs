@@ -6,12 +6,22 @@ pub(crate) fn dashing(state: &PlayerState) -> bool {
 
 pub fn aim_vector(input: Input, facing: i8) -> Vec2 {
     if input.move_x == 0 && input.move_y == 0 {
-        Vec2 { x: facing as f32, y: 0.0 }
-    } else if input.move_x != 0 && input.move_y != 0 { // diagonal
+        Vec2 {
+            x: facing as f32,
+            y: 0.0,
+        }
+    } else if input.move_x != 0 && input.move_y != 0 {
+        // diagonal
         let d = 1.0 / 2f32.sqrt();
-        Vec2 { x: input.move_x as f32 * d, y: input.move_y as f32 * d }
+        Vec2 {
+            x: input.move_x as f32 * d,
+            y: input.move_y as f32 * d,
+        }
     } else {
-        Vec2 { x: input.move_x as f32, y: input.move_y as f32 }
+        Vec2 {
+            x: input.move_x as f32,
+            y: input.move_y as f32,
+        }
     }
 }
 
@@ -45,11 +55,16 @@ pub fn dash_launch(state: &mut PlayerState, aim: Vec2, ground: bool) {
     let mut new_speed_x = aim.x * DASH_SPEED;
     let new_speed_y = aim.y * DASH_SPEED;
 
-    if sign(state.before_dash_speed.x) == sign(new_speed_x) && state.before_dash_speed.x.abs() > new_speed_x.abs() {
+    if sign(state.before_dash_speed.x) == sign(new_speed_x)
+        && state.before_dash_speed.x.abs() > new_speed_x.abs()
+    {
         new_speed_x = state.before_dash_speed.x;
     }
 
-    state.speed = Vec2 { x: new_speed_x, y: new_speed_y };
+    state.speed = Vec2 {
+        x: new_speed_x,
+        y: new_speed_y,
+    };
     state.dash_dir = aim;
 
     if aim.x != 0.0 {
@@ -58,7 +73,10 @@ pub fn dash_launch(state: &mut PlayerState, aim: Vec2, ground: bool) {
 
     // dash slide - a down diagonal dash on the ground becomes a ducked horizontal one
     if ground && state.dash_dir.x != 0.0 && state.dash_dir.y > 0.0 && state.speed.y > 0.0 {
-        state.dash_dir = Vec2 { x: sign(state.dash_dir.x), y: 0.0 };
+        state.dash_dir = Vec2 {
+            x: sign(state.dash_dir.x),
+            y: 0.0,
+        };
         state.speed.y = 0.0;
         state.speed.x *= DODGE_SLIDE_SPEED_MULT;
         state.ducking = true;
@@ -69,7 +87,7 @@ pub fn dash_launch(state: &mut PlayerState, aim: Vec2, ground: bool) {
 
 pub fn dash_end(state: &mut PlayerState) {
     state.auto_jump = true;
-    
+
     if state.dash_dir.y <= 0.0 {
         state.speed.x = state.dash_dir.x * END_DASH_SPEED;
         state.speed.y = state.dash_dir.y * END_DASH_SPEED;

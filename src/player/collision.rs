@@ -1,12 +1,21 @@
 use super::*;
 
 pub fn hitbox_height(state: &PlayerState) -> i32 {
-    if state.ducking { DUCK_HITBOX_HEIGHT } else { HITBOX_HEIGHT }
+    if state.ducking {
+        DUCK_HITBOX_HEIGHT
+    } else {
+        HITBOX_HEIGHT
+    }
 }
 
 // her feet are at her position, in the middle of the box
 fn box_at_feet(state: &PlayerState, height: i32) -> Rect {
-    Rect::new(state.position.x - HITBOX_WIDTH / 2, state.position.y - height, HITBOX_WIDTH, height)
+    Rect::new(
+        state.position.x - HITBOX_WIDTH / 2,
+        state.position.y - height,
+        HITBOX_WIDTH,
+        height,
+    )
 }
 
 pub fn hitbox(state: &PlayerState, dx: i32, dy: i32) -> Rect {
@@ -15,8 +24,15 @@ pub fn hitbox(state: &PlayerState, dx: i32, dy: i32) -> Rect {
 
 // same top as the hitbox, but it stops short of her feet
 pub fn hurtbox(state: &PlayerState) -> Rect {
-    let height = if state.ducking { DUCK_HURTBOX_HEIGHT } else { HURTBOX_HEIGHT };
-    Rect { height, ..hitbox(state, 0, 0) }
+    let height = if state.ducking {
+        DUCK_HURTBOX_HEIGHT
+    } else {
+        HURTBOX_HEIGHT
+    };
+    Rect {
+        height,
+        ..hitbox(state, 0, 0)
+    }
 }
 
 // whether her hitbox would be inside something solid if she moved this far
@@ -50,10 +66,14 @@ pub fn spikes_kill(state: &PlayerState, spikes: &Spikes) -> bool {
     }
 
     match spikes.direction {
-        Direction::Up => state.speed.y >= 0.0 && madeline_hurtbox.top + madeline_hurtbox.height <= spikes.hitbox.top + spikes.hitbox.height,
+        Direction::Up => {
+            state.speed.y >= 0.0
+                && madeline_hurtbox.top + madeline_hurtbox.height
+                    <= spikes.hitbox.top + spikes.hitbox.height
+        }
         Direction::Down => state.speed.y <= 0.0,
         Direction::Left => state.speed.x >= 0.0,
-        Direction::Right => state.speed.x <= 0.0
+        Direction::Right => state.speed.x <= 0.0,
     }
 }
 
@@ -64,7 +84,9 @@ pub fn fell_out(state: &PlayerState, room: &Room) -> bool {
 
 pub fn touches_jump_thru(state: &PlayerState, room: &Room, dx: i32, dy: i32) -> bool {
     let moved = hitbox(state, dx, dy);
-    room.jump_thrus.iter().any(|jump_thru| jump_thru.hitbox.overlaps(&moved))
+    room.jump_thrus
+        .iter()
+        .any(|jump_thru| jump_thru.hitbox.overlaps(&moved))
 }
 
 pub fn enters_jump_thru(state: &PlayerState, room: &Room, dx: i32, dy: i32) -> bool {
@@ -87,4 +109,3 @@ pub fn is_riding(state: &PlayerState, solid: &Rect) -> bool {
         hitbox(state, 0, 1).overlaps(solid)
     }
 }
-

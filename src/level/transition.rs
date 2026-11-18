@@ -1,9 +1,9 @@
 use crate::entities::dash_block::DASH_BLOCK_FREEZE_TIME;
-use crate::player::{
-    collides, hitbox_height, set_normal, PlayerState, CLIMB_MAX_STAMINA, DASH_COOLDOWN, HITBOX_WIDTH, JUMP_SPEED,
-    MAX_DASHES, VAR_JUMP_TIME, WALL_SLIDE_TIME,
-};
 use crate::level::room::{Chapter, Direction};
+use crate::player::{
+    CLIMB_MAX_STAMINA, DASH_COOLDOWN, HITBOX_WIDTH, JUMP_SPEED, MAX_DASHES, PlayerState,
+    VAR_JUMP_TIME, WALL_SLIDE_TIME, collides, hitbox_height, set_normal,
+};
 
 pub const TRANSITION_FRAMES: usize = 40;
 // how far the game looks past her center for the next room
@@ -36,7 +36,11 @@ pub fn find_transition(state: &PlayerState, chapter: &Chapter, room: usize) -> O
         chapter
             .room_at(x, y)
             .filter(|&to| to != room)
-            .map(|to| Transition { from: room, to, direction })
+            .map(|to| Transition {
+                from: room,
+                to,
+                direction,
+            })
     };
     let beside = top >= bounds.top && bottom < bounds.bottom();
 
@@ -106,7 +110,10 @@ pub fn finish_transition(state: &mut PlayerState, chapter: &Chapter, transition:
     state.stamina = CLIMB_MAX_STAMINA;
 
     // the room she left is unloaded now, and every dash block still in it freezes the game
-    let left_a_dash_block = chapter.rooms[transition.from].dash_blocks.iter().any(|block| !block.broken);
+    let left_a_dash_block = chapter.rooms[transition.from]
+        .dash_blocks
+        .iter()
+        .any(|block| !block.broken);
     if left_a_dash_block {
         state.freeze_timer = state.freeze_timer.max(DASH_BLOCK_FREEZE_TIME);
     }
@@ -115,9 +122,9 @@ pub fn finish_transition(state: &mut PlayerState, chapter: &Chapter, transition:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::player::{IVec2, Mode};
-    use crate::level::room::Room;
     use crate::Vec2;
+    use crate::level::room::Room;
+    use crate::player::{IVec2, Mode};
 
     const OPEN: &str = "0000\n0000\n0000\n0000";
 
@@ -149,7 +156,11 @@ mod tests {
     const LEFT: usize = 4;
 
     fn at(x: i32, y: i32) -> PlayerState {
-        PlayerState::new(IVec2 { x, y }, Vec2 { x: 0.0, y: 0.0 }, Vec2 { x: 0.0, y: 0.0 })
+        PlayerState::new(
+            IVec2 { x, y },
+            Vec2 { x: 0.0, y: 0.0 },
+            Vec2 { x: 0.0, y: 0.0 },
+        )
     }
 
     #[test]
@@ -162,7 +173,14 @@ mod tests {
         let chapter = cross();
         assert_eq!(find_transition(&at(128, 120), &chapter, CENTRE), None);
         let found = find_transition(&at(129, 120), &chapter, CENTRE);
-        assert_eq!(found, Some(Transition { from: CENTRE, to: RIGHT, direction: Direction::Right }));
+        assert_eq!(
+            found,
+            Some(Transition {
+                from: CENTRE,
+                to: RIGHT,
+                direction: Direction::Right
+            })
+        );
     }
 
     #[test]
@@ -170,7 +188,14 @@ mod tests {
         let chapter = cross();
         assert_eq!(find_transition(&at(104, 120), &chapter, CENTRE), None);
         let found = find_transition(&at(103, 120), &chapter, CENTRE);
-        assert_eq!(found, Some(Transition { from: CENTRE, to: LEFT, direction: Direction::Left }));
+        assert_eq!(
+            found,
+            Some(Transition {
+                from: CENTRE,
+                to: LEFT,
+                direction: Direction::Left
+            })
+        );
     }
 
     #[test]
@@ -178,7 +203,14 @@ mod tests {
         let chapter = cross();
         assert_eq!(find_transition(&at(116, 106), &chapter, CENTRE), None);
         let found = find_transition(&at(116, 105), &chapter, CENTRE);
-        assert_eq!(found, Some(Transition { from: CENTRE, to: UP, direction: Direction::Up }));
+        assert_eq!(
+            found,
+            Some(Transition {
+                from: CENTRE,
+                to: UP,
+                direction: Direction::Up
+            })
+        );
     }
 
     #[test]
@@ -188,7 +220,10 @@ mod tests {
         s.ducking = true;
         assert_eq!(find_transition(&s, &chapter, CENTRE), None);
         s.position.y = 102;
-        assert_eq!(find_transition(&s, &chapter, CENTRE).map(|t| t.to), Some(UP));
+        assert_eq!(
+            find_transition(&s, &chapter, CENTRE).map(|t| t.to),
+            Some(UP)
+        );
     }
 
     #[test]
@@ -215,10 +250,19 @@ mod tests {
     #[test]
     fn before_up_gives_her_a_jump() {
         let mut s = at(116, 105);
-        s.speed = Vec2 { x: 200.0, y: -240.0 };
+        s.speed = Vec2 {
+            x: 200.0,
+            y: -240.0,
+        };
         s.mode = Mode::Dashing { timer: 0.1 };
         before_transition(&mut s, Direction::Up);
-        assert_eq!(s.speed, Vec2 { x: 0.0, y: JUMP_SPEED });
+        assert_eq!(
+            s.speed,
+            Vec2 {
+                x: 0.0,
+                y: JUMP_SPEED
+            }
+        );
         assert_eq!(s.var_jump_speed, JUMP_SPEED);
         assert_eq!(s.var_jump_timer, VAR_JUMP_TIME);
         assert!(s.auto_jump);
@@ -229,7 +273,10 @@ mod tests {
     #[test]
     fn before_sideways_changes_nothing() {
         let mut s = at(129, 120);
-        s.speed = Vec2 { x: 200.0, y: -170.0 };
+        s.speed = Vec2 {
+            x: 200.0,
+            y: -170.0,
+        };
         s.mode = Mode::Dashing { timer: 0.1 };
         let before = s;
         before_transition(&mut s, Direction::Right);
@@ -253,7 +300,15 @@ mod tests {
         let chapter = cross();
         let mut s = at(116, 105);
         s.remainder = Vec2 { x: 0.25, y: -0.25 };
-        finish_transition(&mut s, &chapter, Transition { from: CENTRE, to: UP, direction: Direction::Up });
+        finish_transition(
+            &mut s,
+            &chapter,
+            Transition {
+                from: CENTRE,
+                to: UP,
+                direction: Direction::Up,
+            },
+        );
         assert_eq!(s.position, IVec2 { x: 116, y: 95 });
         assert_eq!(s.remainder, Vec2 { x: 0.0, y: 0.0 });
     }
@@ -262,7 +317,15 @@ mod tests {
     fn finish_right_places_her_against_the_new_rooms_left_edge() {
         let chapter = cross();
         let mut s = at(129, 120);
-        finish_transition(&mut s, &chapter, Transition { from: CENTRE, to: RIGHT, direction: Direction::Right });
+        finish_transition(
+            &mut s,
+            &chapter,
+            Transition {
+                from: CENTRE,
+                to: RIGHT,
+                direction: Direction::Right,
+            },
+        );
         assert_eq!(s.position, IVec2 { x: 136, y: 120 });
     }
 
@@ -270,11 +333,27 @@ mod tests {
     fn finish_left_and_down_use_their_own_distances() {
         let chapter = cross();
         let mut s = at(103, 120);
-        finish_transition(&mut s, &chapter, Transition { from: CENTRE, to: LEFT, direction: Direction::Left });
+        finish_transition(
+            &mut s,
+            &chapter,
+            Transition {
+                from: CENTRE,
+                to: LEFT,
+                direction: Direction::Left,
+            },
+        );
         assert_eq!(s.position, IVec2 { x: 95, y: 120 });
 
         let mut s = at(116, 133);
-        finish_transition(&mut s, &chapter, Transition { from: CENTRE, to: DOWN, direction: Direction::Down });
+        finish_transition(
+            &mut s,
+            &chapter,
+            Transition {
+                from: CENTRE,
+                to: DOWN,
+                direction: Direction::Down,
+            },
+        );
         assert_eq!(s.position, IVec2 { x: 116, y: 144 });
     }
 
@@ -282,19 +361,41 @@ mod tests {
     fn finish_leaves_her_where_she_is_if_she_is_already_far_enough_in() {
         let chapter = cross();
         let mut s = at(116, 90);
-        finish_transition(&mut s, &chapter, Transition { from: CENTRE, to: UP, direction: Direction::Up });
+        finish_transition(
+            &mut s,
+            &chapter,
+            Transition {
+                from: CENTRE,
+                to: UP,
+                direction: Direction::Up,
+            },
+        );
         assert_eq!(s.position, IVec2 { x: 116, y: 90 });
 
         let mut s = at(140, 120);
-        finish_transition(&mut s, &chapter, Transition { from: CENTRE, to: RIGHT, direction: Direction::Right });
+        finish_transition(
+            &mut s,
+            &chapter,
+            Transition {
+                from: CENTRE,
+                to: RIGHT,
+                direction: Direction::Right,
+            },
+        );
         assert_eq!(s.position, IVec2 { x: 140, y: 120 });
     }
 
     #[test]
     fn leaving_a_room_with_a_dash_block_freezes_the_game() {
         let mut chapter = cross();
-        chapter.rooms[CENTRE].dash_blocks.push(crate::entities::DashBlock::new(100, 100, 8, 8));
-        let up = Transition { from: CENTRE, to: UP, direction: Direction::Up };
+        chapter.rooms[CENTRE]
+            .dash_blocks
+            .push(crate::entities::DashBlock::new(100, 100, 8, 8));
+        let up = Transition {
+            from: CENTRE,
+            to: UP,
+            direction: Direction::Up,
+        };
 
         let mut s = at(116, 105);
         finish_transition(&mut s, &chapter, up);
@@ -302,7 +403,9 @@ mod tests {
 
         // not if it was broken first, and not for a dash block in the room she enters
         chapter.rooms[CENTRE].dash_blocks[0].broken = true;
-        chapter.rooms[UP].dash_blocks.push(crate::entities::DashBlock::new(100, 68, 8, 8));
+        chapter.rooms[UP]
+            .dash_blocks
+            .push(crate::entities::DashBlock::new(100, 68, 8, 8));
         let mut s = at(116, 105);
         finish_transition(&mut s, &chapter, up);
         assert_eq!(s.freeze_timer, 0.0);
@@ -312,12 +415,23 @@ mod tests {
     fn finish_rounds_her_speed_and_refills() {
         let chapter = cross();
         let mut s = at(129, 120);
-        s.speed = Vec2 { x: 232.66, y: -24.85 };
+        s.speed = Vec2 {
+            x: 232.66,
+            y: -24.85,
+        };
         s.dashes = 0;
         s.stamina = 20.0;
         s.jump_grace_timer = 0.05;
         s.wall_slide_timer = 0.3;
-        finish_transition(&mut s, &chapter, Transition { from: CENTRE, to: RIGHT, direction: Direction::Right });
+        finish_transition(
+            &mut s,
+            &chapter,
+            Transition {
+                from: CENTRE,
+                to: RIGHT,
+                direction: Direction::Right,
+            },
+        );
         assert_eq!(s.speed, Vec2 { x: 233.0, y: -25.0 });
         assert_eq!(s.dashes, MAX_DASHES);
         assert_eq!(s.stamina, CLIMB_MAX_STAMINA);

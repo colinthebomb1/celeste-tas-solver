@@ -1,4 +1,6 @@
-use crate::entities::{CrumbleBlock, DashBlock, FallingBlock, JumpThru, Refill, Spikes, Spring, ZipMover};
+use crate::entities::{
+    CrumbleBlock, DashBlock, FallingBlock, JumpThru, Refill, Spikes, Spring, ZipMover,
+};
 use crate::player::IVec2;
 
 pub const TILE_SIZE: i32 = 8;
@@ -14,11 +16,20 @@ pub struct Rect {
 
 impl Rect {
     pub const fn new(left: i32, top: i32, width: i32, height: i32) -> Rect {
-        Rect { left, top, width, height }
+        Rect {
+            left,
+            top,
+            width,
+            height,
+        }
     }
 
     pub fn shifted(&self, dx: i32, dy: i32) -> Rect {
-        Rect { left: self.left + dx, top: self.top + dy, ..*self }
+        Rect {
+            left: self.left + dx,
+            top: self.top + dy,
+            ..*self
+        }
     }
 
     pub fn right(&self) -> i32 {
@@ -30,12 +41,18 @@ impl Rect {
     }
 
     pub fn contains(&self, x: f32, y: f32) -> bool {
-        x >= self.left as f32 && x < self.right() as f32 && y >= self.top as f32 && y < self.bottom() as f32
+        x >= self.left as f32
+            && x < self.right() as f32
+            && y >= self.top as f32
+            && y < self.bottom() as f32
     }
 
     // touching edges don't count
     pub fn overlaps(&self, other: &Rect) -> bool {
-        self.left < other.left + other.width && other.left < self.left + self.width && self.top < other.top + other.height && other.top < self.top + self.height
+        self.left < other.left + other.width
+            && other.left < self.left + self.width
+            && self.top < other.top + other.height
+            && other.top < self.top + self.height
     }
 }
 
@@ -79,7 +96,7 @@ impl Room {
             .max()
             .unwrap_or(0);
         let mut solid = vec![false; width * height];
-        
+
         for (y, line) in text.lines().enumerate() {
             for (x, ch) in line.chars().enumerate() {
                 if ch != '0' {
@@ -90,7 +107,12 @@ impl Room {
 
         let mut room = Room {
             name: String::new(),
-            bounds: Rect { left: origin.x, top: origin.y, width: 0, height: 0 },
+            bounds: Rect {
+                left: origin.x,
+                top: origin.y,
+                width: 0,
+                height: 0,
+            },
             origin,
             width,
             height,
@@ -108,7 +130,7 @@ impl Room {
         room
     }
 
-    // size in pixels 
+    // size in pixels
     pub fn set_size(&mut self, width: i32, height: i32) {
         self.bounds.width = width;
         // the game treats a 184 px tall room as 180
@@ -121,7 +143,11 @@ impl Room {
     }
 
     pub fn tile_solid(&self, tile_x: i32, tile_y: i32) -> bool {
-        if tile_x as usize >= self.width || tile_x < 0 || tile_y as usize >= self.height || tile_y < 0 {
+        if tile_x as usize >= self.width
+            || tile_x < 0
+            || tile_y as usize >= self.height
+            || tile_y < 0
+        {
             return false;
         }
 
@@ -136,16 +162,29 @@ impl Room {
         let tile_top = (rect.top - self.origin.y).div_euclid(TILE_SIZE);
         let tile_bottom = (rect.bottom() - 1 - self.origin.y).div_euclid(TILE_SIZE);
 
-        (tile_top..=tile_bottom).any(|tile_y| (tile_left..=tile_right).any(|tile_x| self.tile_solid(tile_x, tile_y)))
+        (tile_top..=tile_bottom)
+            .any(|tile_y| (tile_left..=tile_right).any(|tile_x| self.tile_solid(tile_x, tile_y)))
     }
 
     // anything she can't pass through: tiles and whichever blocks are solid right now
     pub fn solid(&self, rect: &Rect) -> bool {
         self.tiles_solid(rect)
-            || self.zip_movers.iter().any(|zip| zip.collidable && zip.rect().overlaps(rect))
-            || self.dash_blocks.iter().any(|block| !block.broken && block.hitbox.overlaps(rect))
-            || self.falling_blocks.iter().any(|block| block.collidable && block.rect().overlaps(rect))
-            || self.crumble_blocks.iter().any(|block| block.collidable && block.hitbox.overlaps(rect))
+            || self
+                .zip_movers
+                .iter()
+                .any(|zip| zip.collidable && zip.rect().overlaps(rect))
+            || self
+                .dash_blocks
+                .iter()
+                .any(|block| !block.broken && block.hitbox.overlaps(rect))
+            || self
+                .falling_blocks
+                .iter()
+                .any(|block| block.collidable && block.rect().overlaps(rect))
+            || self
+                .crumble_blocks
+                .iter()
+                .any(|block| block.collidable && block.hitbox.overlaps(rect))
     }
 
     // one pixel
@@ -161,7 +200,9 @@ pub struct Chapter {
 
 impl Chapter {
     pub fn room_at(&self, x: f32, y: f32) -> Option<usize> {
-        self.rooms.iter().position(|room| room.bounds.contains(x, y))
+        self.rooms
+            .iter()
+            .position(|room| room.bounds.contains(x, y))
     }
 
     pub fn room_named(&self, name: &str) -> Option<usize> {
@@ -248,7 +289,12 @@ mod tests {
     }
 
     fn rect(left: i32, top: i32, width: i32, height: i32) -> Rect {
-        Rect { left, top, width, height }
+        Rect {
+            left,
+            top,
+            width,
+            height,
+        }
     }
 
     #[test]

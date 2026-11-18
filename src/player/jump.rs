@@ -18,7 +18,11 @@ pub fn wall_slide_max_fall(state: &mut PlayerState, room: &Room, input: Input) -
             if input.grab {
                 state.climb_trigger_dir = state.wall_slide_dir;
             }
-            max = lerp(MAX_FALL, WALL_SLIDE_START_MAX, state.wall_slide_timer / WALL_SLIDE_TIME)
+            max = lerp(
+                MAX_FALL,
+                WALL_SLIDE_START_MAX,
+                state.wall_slide_timer / WALL_SLIDE_TIME,
+            )
         }
     }
 
@@ -39,7 +43,10 @@ pub fn jump(state: &mut PlayerState, input: Input) {
 }
 
 pub fn can_super_jump(state: &PlayerState, room: &Room, jump_pressed: bool) -> bool {
-    jump_pressed && state.jump_grace_timer > 0.0 && state.dash_dir.y == 0.0 && can_unduck(state, room)
+    jump_pressed
+        && state.jump_grace_timer > 0.0
+        && state.dash_dir.y == 0.0
+        && can_unduck(state, room)
 }
 
 pub fn super_jump(state: &mut PlayerState) {
@@ -73,14 +80,21 @@ pub fn wall_jump_check(state: &PlayerState, room: &Room, dir: i8) -> bool {
     let mut dist = WALL_JUMP_CHECK_DIST;
 
     if wall_bounce_ready(state) {
-        let facing_her = if dir > 0 { Direction::Left } else { Direction::Right };
+        let facing_her = if dir > 0 {
+            Direction::Left
+        } else {
+            Direction::Right
+        };
         let reach = Rect {
             left: state.position.x + dir * SUPER_WALL_JUMP_CHECK_DIST - HITBOX_WIDTH / 2,
             top: state.position.y - hitbox_height(state),
             width: HITBOX_WIDTH,
             height: hitbox_height(state),
         };
-        let spiked = room.spikes.iter().any(|s| s.direction == facing_her && s.hitbox.overlaps(&reach));
+        let spiked = room
+            .spikes
+            .iter()
+            .any(|s| s.direction == facing_her && s.hitbox.overlaps(&reach));
 
         if !spiked {
             dist = SUPER_WALL_JUMP_CHECK_DIST;
@@ -106,7 +120,11 @@ pub fn wall_jump(state: &mut PlayerState, room: &Room, dir: i8, move_x: i8) {
 
     if state.lift_speed == NO_LIFT && state.last_lift_speed == NO_LIFT {
         let reach = hitbox(state, WALL_JUMP_CHECK_DIST, 0);
-        if let Some(zip) = room.zip_movers.iter().find(|zip| zip.rect().overlaps(&reach)) {
+        if let Some(zip) = room
+            .zip_movers
+            .iter()
+            .find(|zip| zip.rect().overlaps(&reach))
+        {
             set_lift_speed(state, zip.lift_speed);
         }
     }

@@ -1,6 +1,8 @@
-use celeste_tas_solver::player::{IVec2, PlayerState};
-use celeste_tas_solver::level::transition::{before_transition, find_transition, finish_transition, TRANSITION_FRAMES};
 use celeste_tas_solver::Vec2;
+use celeste_tas_solver::level::transition::{
+    TRANSITION_FRAMES, before_transition, find_transition, finish_transition,
+};
+use celeste_tas_solver::player::{IVec2, PlayerState};
 
 mod common;
 
@@ -38,9 +40,22 @@ fn parse(line: &str) -> Row {
 }
 
 fn player(row: &Row) -> PlayerState {
-    let position = IVec2 { x: row.x.round_ties_even() as i32, y: row.y.round_ties_even() as i32 };
-    let remainder = Vec2 { x: (row.x - position.x as f64) as f32, y: (row.y - position.y as f64) as f32 };
-    PlayerState::new(position, remainder, Vec2 { x: row.speed_x as f32, y: row.speed_y as f32 })
+    let position = IVec2 {
+        x: row.x.round_ties_even() as i32,
+        y: row.y.round_ties_even() as i32,
+    };
+    let remainder = Vec2 {
+        x: (row.x - position.x as f64) as f32,
+        y: (row.y - position.y as f64) as f32,
+    };
+    PlayerState::new(
+        position,
+        remainder,
+        Vec2 {
+            x: row.speed_x as f32,
+            y: row.speed_y as f32,
+        },
+    )
 }
 
 // every room change in the community TAS: it starts on the frame the game starts it, goes to the
@@ -67,7 +82,9 @@ fn transitions_match_the_trace() {
             continue;
         }
 
-        let room = chapter.room_named(&row.room).expect("unknown room in the trace");
+        let room = chapter
+            .room_named(&row.room)
+            .expect("unknown room in the trace");
         let mut state = player(row);
         let found = find_transition(&state, &chapter, room);
 
@@ -84,14 +101,26 @@ fn transitions_match_the_trace() {
         }
 
         let end = &rows[i + TRANSITION_FRAMES];
-        let transition = found.unwrap_or_else(|| panic!("row {i}: no transition out of {}", row.room));
-        assert_eq!(chapter.rooms[transition.to].name, end.room, "row {i}: wrong room");
+        let transition =
+            found.unwrap_or_else(|| panic!("row {i}: no transition out of {}", row.room));
+        assert_eq!(
+            chapter.rooms[transition.to].name, end.room,
+            "row {i}: wrong room"
+        );
 
         before_transition(&mut state, transition.direction);
         finish_transition(&mut state, &chapter, transition);
 
-        assert_eq!((state.position.x as f64, state.position.y as f64), (end.x, end.y), "row {i}: wrong position");
-        assert_eq!((state.speed.x as f64, state.speed.y as f64), (end.speed_x, end.speed_y), "row {i}: wrong speed");
+        assert_eq!(
+            (state.position.x as f64, state.position.y as f64),
+            (end.x, end.y),
+            "row {i}: wrong position"
+        );
+        assert_eq!(
+            (state.speed.x as f64, state.speed.y as f64),
+            (end.speed_x, end.speed_y),
+            "row {i}: wrong speed"
+        );
         assert_eq!(state.remainder, Vec2 { x: 0.0, y: 0.0 });
         transitions += 1;
     }

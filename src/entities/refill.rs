@@ -1,6 +1,6 @@
 use crate::level::map::{Element, MapError};
-use crate::player::{hurtbox, use_refill, IVec2, PlayerState, DELTA_TIME};
 use crate::level::room::{Rect, Room};
+use crate::player::{DELTA_TIME, IVec2, PlayerState, hurtbox, use_refill};
 
 pub const REFILL_SIZE: i32 = 16;
 pub const REFILL_RESPAWN_TIME: f32 = 2.5;
@@ -28,7 +28,13 @@ impl Refill {
             height: REFILL_SIZE,
         };
 
-        Refill { hitbox, two_dashes, one_use, active: true, respawn_timer: 0.0 }
+        Refill {
+            hitbox,
+            two_dashes,
+            one_use,
+            active: true,
+            respawn_timer: 0.0,
+        }
     }
 }
 
@@ -39,7 +45,11 @@ pub fn load_refills(level: &Element, origin: IVec2) -> Result<Vec<Refill>, MapEr
 
     let mut refills = Vec::new();
 
-    for entity in entities.children.iter().filter(|entity| entity.name == "refill") {
+    for entity in entities
+        .children
+        .iter()
+        .filter(|entity| entity.name == "refill")
+    {
         let x = entity.int("x").ok_or(MapError::MissingField("x"))?;
         let y = entity.int("y").ok_or(MapError::MissingField("y"))?;
         let two_dashes = entity.bool("twoDash").unwrap_or(false);
@@ -73,8 +83,8 @@ pub fn update_refills(room: &mut Room, state: &mut PlayerState) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::player::{CLIMB_MAX_STAMINA, CLIMB_TIRED_THRESHOLD};
     use crate::Vec2;
+    use crate::player::{CLIMB_MAX_STAMINA, CLIMB_TIRED_THRESHOLD};
 
     fn room_with_refill(refill: Refill) -> Room {
         let mut room = Room::from_tiles(IVec2 { x: 0, y: 0 }, "0000\n0000\n0000\n0000");
@@ -83,22 +93,40 @@ mod tests {
     }
 
     fn player_at(x: i32, y: i32) -> PlayerState {
-        PlayerState::new(IVec2 { x, y }, Vec2 { x: 0.0, y: 0.0 }, Vec2 { x: 0.0, y: 0.0 })
+        PlayerState::new(
+            IVec2 { x, y },
+            Vec2 { x: 0.0, y: 0.0 },
+            Vec2 { x: 0.0, y: 0.0 },
+        )
     }
 
     fn spent(x: i32, y: i32) -> PlayerState {
-        PlayerState { dashes: 0, ..player_at(x, y) }
+        PlayerState {
+            dashes: 0,
+            ..player_at(x, y)
+        }
     }
 
     #[test]
     fn refill_hitbox_is_centred() {
-        assert_eq!(Refill::new(100, 50, false, false).hitbox, Rect { left: 92, top: 42, width: 16, height: 16 });
+        assert_eq!(
+            Refill::new(100, 50, false, false).hitbox,
+            Rect {
+                left: 92,
+                top: 42,
+                width: 16,
+                height: 16
+            }
+        );
     }
 
     #[test]
     fn touching_a_refill_restores_her_dash_and_stamina_and_freezes() {
         let mut room = room_with_refill(Refill::new(16, 16, false, false));
-        let mut s = PlayerState { stamina: 50.0, ..spent(16, 20) };
+        let mut s = PlayerState {
+            stamina: 50.0,
+            ..spent(16, 20)
+        };
 
         update_refills(&mut room, &mut s);
 
@@ -122,7 +150,10 @@ mod tests {
     #[test]
     fn low_stamina_alone_uses_a_refill() {
         let mut room = room_with_refill(Refill::new(16, 16, false, false));
-        let mut s = PlayerState { stamina: CLIMB_TIRED_THRESHOLD - 1.0, ..player_at(16, 20) };
+        let mut s = PlayerState {
+            stamina: CLIMB_TIRED_THRESHOLD - 1.0,
+            ..player_at(16, 20)
+        };
 
         update_refills(&mut room, &mut s);
 
@@ -130,7 +161,10 @@ mod tests {
         assert!(!room.refills[0].active);
 
         let mut room = room_with_refill(Refill::new(16, 16, false, false));
-        let mut s = PlayerState { stamina: CLIMB_TIRED_THRESHOLD, ..player_at(16, 20) };
+        let mut s = PlayerState {
+            stamina: CLIMB_TIRED_THRESHOLD,
+            ..player_at(16, 20)
+        };
 
         update_refills(&mut room, &mut s);
 
@@ -207,7 +241,10 @@ mod tests {
     #[test]
     fn the_dead_do_not_use_refills() {
         let mut room = room_with_refill(Refill::new(16, 16, false, false));
-        let mut s = PlayerState { dead: true, ..spent(16, 20) };
+        let mut s = PlayerState {
+            dead: true,
+            ..spent(16, 20)
+        };
 
         update_refills(&mut room, &mut s);
 

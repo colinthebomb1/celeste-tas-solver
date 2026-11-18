@@ -1,18 +1,45 @@
-use celeste_tas_solver::player::{step, track_buttons, IVec2, Input, Mode, PlayerState};
+use celeste_tas_solver::Vec2;
+use celeste_tas_solver::level::transition::{
+    TRANSITION_FRAMES, before_transition, find_transition, finish_transition,
+};
+use celeste_tas_solver::player::{IVec2, Input, Mode, PlayerState, step, track_buttons};
 use celeste_tas_solver::sim::step_room;
 use celeste_tas_solver::trace::parse_trace;
-use celeste_tas_solver::level::transition::{before_transition, find_transition, finish_transition, TRANSITION_FRAMES};
-use celeste_tas_solver::Vec2;
 
 mod common;
 
-const NONE: Input = Input { move_x: 0, move_y: 0, jump: false, jump2: false, dash: false, grab: false, crouch_dash: false };
+const NONE: Input = Input {
+    move_x: 0,
+    move_y: 0,
+    jump: false,
+    jump2: false,
+    dash: false,
+    grab: false,
+    crouch_dash: false,
+};
 const RIGHT: Input = Input { move_x: 1, ..NONE };
 const JUMP: Input = Input { jump: true, ..NONE };
-const RIGHT_JUMP: Input = Input { move_x: 1, jump: true, ..NONE };
-const RIGHT_DASH: Input = Input { move_x: 1, dash: true, ..NONE };
-const UP_DASH: Input = Input { move_y: -1, dash: true, ..NONE };
-const UP_RIGHT_DASH: Input = Input { move_x: 1, move_y: -1, dash: true, ..NONE };
+const RIGHT_JUMP: Input = Input {
+    move_x: 1,
+    jump: true,
+    ..NONE
+};
+const RIGHT_DASH: Input = Input {
+    move_x: 1,
+    dash: true,
+    ..NONE
+};
+const UP_DASH: Input = Input {
+    move_y: -1,
+    dash: true,
+    ..NONE
+};
+const UP_RIGHT_DASH: Input = Input {
+    move_x: 1,
+    move_y: -1,
+    dash: true,
+    ..NONE
+};
 
 fn expand(lines: &[(usize, Input)]) -> Vec<Input> {
     lines
@@ -29,7 +56,11 @@ fn column(line: &str, index: usize) -> &str {
 fn fmt(v: f64) -> String {
     let scaled = (v.abs() * 1e12).round_ties_even() as u64;
     let sign = if v < 0.0 { "-" } else { "" };
-    format!("{sign}{}.{:012}", scaled / 1_000_000_000_000, scaled % 1_000_000_000_000)
+    format!(
+        "{sign}{}.{:012}",
+        scaled / 1_000_000_000_000,
+        scaled % 1_000_000_000_000
+    )
 }
 
 #[derive(Debug, PartialEq)]
@@ -62,8 +93,14 @@ fn start_state(text: &str) -> PlayerState {
     let row = text.lines().nth(1).expect("empty trace");
     let (x, y) = column(row, 4).split_once(", ").expect("bad position");
     let (x, y): (f64, f64) = (x.parse().unwrap(), y.parse().unwrap());
-    let position = IVec2 { x: x.round() as i32, y: y.round() as i32 };
-    let remainder = Vec2 { x: (x - x.round()) as f32, y: (y - y.round()) as f32 };
+    let position = IVec2 {
+        x: x.round() as i32,
+        y: y.round() as i32,
+    };
+    let remainder = Vec2 {
+        x: (x - x.round()) as f32,
+        y: (y - y.round()) as f32,
+    };
     PlayerState::new(position, remainder, first.speed)
 }
 
@@ -122,25 +159,41 @@ fn run_right_then_release() {
 #[test]
 fn full_jump() {
     let inputs = expand(&[(15, JUMP), (40, NONE)]);
-    assert_matches_trace("02_jump_full", include_str!("traces/02_jump_full.txt"), &inputs);
+    assert_matches_trace(
+        "02_jump_full",
+        include_str!("traces/02_jump_full.txt"),
+        &inputs,
+    );
 }
 
 #[test]
 fn short_jump() {
     let inputs = expand(&[(1, JUMP), (40, NONE)]);
-    assert_matches_trace("03_jump_short", include_str!("traces/03_jump_short.txt"), &inputs);
+    assert_matches_trace(
+        "03_jump_short",
+        include_str!("traces/03_jump_short.txt"),
+        &inputs,
+    );
 }
 
 #[test]
 fn run_jump() {
     let inputs = expand(&[(10, RIGHT), (12, RIGHT_JUMP), (25, RIGHT)]);
-    assert_matches_trace("04_run_jump", include_str!("traces/04_run_jump.txt"), &inputs);
+    assert_matches_trace(
+        "04_run_jump",
+        include_str!("traces/04_run_jump.txt"),
+        &inputs,
+    );
 }
 
 #[test]
 fn dash_right() {
     let inputs = expand(&[(5, RIGHT_DASH), (35, NONE)]);
-    assert_matches_trace("05_dash_right", include_str!("traces/05_dash_right.txt"), &inputs);
+    assert_matches_trace(
+        "05_dash_right",
+        include_str!("traces/05_dash_right.txt"),
+        &inputs,
+    );
 }
 
 #[test]
@@ -152,31 +205,52 @@ fn dash_up() {
 #[test]
 fn dash_up_right() {
     let inputs = expand(&[(5, UP_RIGHT_DASH), (45, NONE)]);
-    assert_matches_trace("07_dash_upright", include_str!("traces/07_dash_upright.txt"), &inputs);
+    assert_matches_trace(
+        "07_dash_upright",
+        include_str!("traces/07_dash_upright.txt"),
+        &inputs,
+    );
 }
 
 #[test]
 fn dash_held_right_into_wall() {
     let inputs = expand(&[(30, RIGHT_DASH)]);
-    assert_matches_trace("08_dash_held_right", include_str!("traces/08_dash_held_right.txt"), &inputs);
+    assert_matches_trace(
+        "08_dash_held_right",
+        include_str!("traces/08_dash_held_right.txt"),
+        &inputs,
+    );
 }
 
 #[test]
 fn dash_direction_read_late() {
     let inputs = expand(&[(1, UP_DASH), (40, NONE)]);
-    assert_matches_trace("09_dash_dir_read_late", include_str!("traces/09_dash_dir_read_late.txt"), &inputs);
+    assert_matches_trace(
+        "09_dash_dir_read_late",
+        include_str!("traces/09_dash_dir_read_late.txt"),
+        &inputs,
+    );
 }
 
 #[test]
 fn dash_up_held_one_frame_short() {
     let inputs = expand(&[(4, UP_DASH), (46, NONE)]);
-    assert_matches_trace("10_dash_up_4_frames", include_str!("traces/10_dash_up_4_frames.txt"), &inputs);
+    assert_matches_trace(
+        "10_dash_up_4_frames",
+        include_str!("traces/10_dash_up_4_frames.txt"),
+        &inputs,
+    );
 }
 
 #[test]
 fn fall_out_of_the_room() {
     let inputs = expand(&[(48, RIGHT)]);
-    assert_matches_trace_in("lvl_3", "11_fall_out", include_str!("traces/11_fall_out.txt"), &inputs);
+    assert_matches_trace_in(
+        "lvl_3",
+        "11_fall_out",
+        include_str!("traces/11_fall_out.txt"),
+        &inputs,
+    );
 }
 
 // the trace's Inputs column looks like "3/   5,R,X"
@@ -218,15 +292,25 @@ fn community_lvl_1() {
 fn chapter_1a() {
     let text = include_str!("traces/community/1A_full.txt");
     let Some(mut chapter) = common::chapter_1a() else {
-        eprintln!("chapter 1A: skipped. Celeste install could not be found, try setting CELESTE_DIR");
+        eprintln!(
+            "chapter 1A: skipped. Celeste install could not be found, try setting CELESTE_DIR"
+        );
         return;
     };
 
     // the run ends when the ending cutscene takes over
     let in_cutscene = |row: &str| column(row, 7).split(' ').any(|status| status == "Cutscene");
-    let rows: Vec<&str> = text.lines().skip(1).take_while(|row| !in_cutscene(row)).collect();
+    let rows: Vec<&str> = text
+        .lines()
+        .skip(1)
+        .take_while(|row| !in_cutscene(row))
+        .collect();
     let total = rows.len() - 1;
-    let first_two_lines: String = text.lines().take(2).map(|line| format!("{line}\n")).collect();
+    let first_two_lines: String = text
+        .lines()
+        .take(2)
+        .map(|line| format!("{line}\n"))
+        .collect();
 
     let mut state = start_state(&first_two_lines);
     let mut room = chapter.room_named("lvl_1").expect("no lvl_1");
@@ -248,7 +332,11 @@ fn chapter_1a() {
     while frame < rows.len() {
         state = step_room(state, input_from_row(rows[frame]), &mut chapter.rooms[room]);
 
-        let transition = if state.dead { None } else { find_transition(&state, &chapter, room) };
+        let transition = if state.dead {
+            None
+        } else {
+            find_transition(&state, &chapter, room)
+        };
         if let Some(transition) = transition {
             before_transition(&mut state, transition.direction);
         }

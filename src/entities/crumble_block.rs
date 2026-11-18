@@ -1,6 +1,6 @@
 use crate::level::map::{Element, MapError};
-use crate::player::{hitbox, IVec2, Mode, PlayerState, DELTA_TIME};
 use crate::level::room::{Rect, Room};
+use crate::player::{DELTA_TIME, IVec2, Mode, PlayerState, hitbox};
 
 pub const CRUMBLE_HEIGHT: i32 = 8;
 pub const CRUMBLE_SHAKE_TIME: f32 = 0.2;
@@ -32,7 +32,12 @@ pub struct CrumbleBlock {
 impl CrumbleBlock {
     pub fn new(x: i32, y: i32, width: i32) -> CrumbleBlock {
         CrumbleBlock {
-            hitbox: Rect { left: x, top: y, width, height: CRUMBLE_HEIGHT },
+            hitbox: Rect {
+                left: x,
+                top: y,
+                width,
+                height: CRUMBLE_HEIGHT,
+            },
             stage: CrumbleStage::Idle,
             timer: 0.0,
             shakes_left: 0,
@@ -49,10 +54,18 @@ pub fn load_crumble_blocks(level: &Element, origin: IVec2) -> Result<Vec<Crumble
 
     let mut crumble_blocks = Vec::new();
 
-    for entity in entities.children.iter().filter(|entity| entity.name == "crumbleBlock") {
+    for entity in entities
+        .children
+        .iter()
+        .filter(|entity| entity.name == "crumbleBlock")
+    {
         let int = |key: &'static str| entity.int(key).ok_or(MapError::MissingField(key));
 
-        crumble_blocks.push(CrumbleBlock::new(origin.x + int("x")?, origin.y + int("y")?, int("width")?));
+        crumble_blocks.push(CrumbleBlock::new(
+            origin.x + int("x")?,
+            origin.y + int("y")?,
+            int("width")?,
+        ));
     }
 
     Ok(crumble_blocks)
@@ -69,7 +82,9 @@ fn standing_on(state: &PlayerState, block: &CrumbleBlock) -> bool {
 }
 
 fn climbing(state: &PlayerState, block: &CrumbleBlock) -> bool {
-    !state.dead && state.mode == Mode::Climb && hitbox(state, state.facing as i32, 0).overlaps(&block.hitbox)
+    !state.dead
+        && state.mode == Mode::Climb
+        && hitbox(state, state.facing as i32, 0).overlaps(&block.hitbox)
 }
 
 fn update_crumble_block(block: &mut CrumbleBlock, state: &PlayerState) {
@@ -144,7 +159,11 @@ mod tests {
     }
 
     fn at(x: i32, y: i32) -> PlayerState {
-        PlayerState::new(IVec2 { x, y }, Vec2 { x: 0.0, y: 0.0 }, Vec2 { x: 0.0, y: 0.0 })
+        PlayerState::new(
+            IVec2 { x, y },
+            Vec2 { x: 0.0, y: 0.0 },
+            Vec2 { x: 0.0, y: 0.0 },
+        )
     }
 
     fn on_top() -> PlayerState {
@@ -176,7 +195,15 @@ mod tests {
 
     #[test]
     fn it_is_eight_pixels_tall() {
-        assert_eq!(block().hitbox, Rect { left: 304, top: 64, width: 40, height: 8 });
+        assert_eq!(
+            block().hitbox,
+            Rect {
+                left: 304,
+                top: 64,
+                width: 40,
+                height: 8
+            }
+        );
     }
 
     #[test]
@@ -241,7 +268,10 @@ mod tests {
         update_crumble_block(&mut other, &on_top());
         let left = 1 + frames_to_crumble(&mut other, &away());
 
-        assert!((36..=40).contains(&stayed), "crumbled after {stayed} frames");
+        assert!(
+            (36..=40).contains(&stayed),
+            "crumbled after {stayed} frames"
+        );
         assert!(stayed > left);
     }
 
@@ -252,7 +282,10 @@ mod tests {
 
         // letting go makes no difference
         let frames = 1 + frames_to_crumble(&mut block, &away());
-        assert!((62..=68).contains(&frames), "crumbled after {frames} frames");
+        assert!(
+            (62..=68).contains(&frames),
+            "crumbled after {frames} frames"
+        );
     }
 
     #[test]

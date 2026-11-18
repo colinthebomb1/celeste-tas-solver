@@ -1,6 +1,6 @@
 use crate::level::map::{Element, MapError};
-use crate::player::IVec2;
 use crate::level::room::Rect;
+use crate::player::IVec2;
 
 pub const SPRING_WIDTH: i32 = 16;
 pub const SPRING_HEIGHT: i32 = 6;
@@ -33,7 +33,11 @@ pub fn load_springs(level: &Element, origin: IVec2) -> Result<Vec<Spring>, MapEr
 
     let mut springs = Vec::new();
 
-    for entity in entities.children.iter().filter(|entity| entity.name == "spring") {
+    for entity in entities
+        .children
+        .iter()
+        .filter(|entity| entity.name == "spring")
+    {
         let x = entity.int("x").ok_or(MapError::MissingField("x"))?;
         let y = entity.int("y").ok_or(MapError::MissingField("y"))?;
 
@@ -49,6 +53,14 @@ mod tests {
 
     #[test]
     fn spring_hitbox_sits_on_its_base() {
-        assert_eq!(Spring::new(100, 50).hitbox, Rect { left: 92, top: 44, width: 16, height: 6 });
+        assert_eq!(
+            Spring::new(100, 50).hitbox,
+            Rect {
+                left: 92,
+                top: 44,
+                width: 16,
+                height: 6
+            }
+        );
     }
 }

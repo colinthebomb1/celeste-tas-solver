@@ -1,5 +1,5 @@
-use celeste_tas_solver::trace::{parse_trace, TraceFrame};
 use celeste_tas_solver::Vec2;
+use celeste_tas_solver::trace::{TraceFrame, parse_trace};
 
 fn f(s: &str) -> f32 {
     s.parse().unwrap()
@@ -41,7 +41,10 @@ fn run_trace_first_frames_of_acceleration() {
 #[test]
 fn run_trace_first_frame_after_releasing_right() {
     let frames = parse_trace(RUN);
-    assert_eq!(frames[11].position, v("31.888921856880", "144.000000000000"));
+    assert_eq!(
+        frames[11].position,
+        v("31.888921856880", "144.000000000000")
+    );
     assert_eq!(frames[11].speed, v("73.333297729492", "0.000000000000"));
 }
 

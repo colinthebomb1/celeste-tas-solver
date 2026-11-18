@@ -1,15 +1,14 @@
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Vec2 {
     pub x: f32,
-    pub y: f32
+    pub y: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TraceFrame {
     pub position: Vec2,
-    pub speed: Vec2
+    pub speed: Vec2,
 }
-
 
 pub fn parse_trace(text: &str) -> Vec<TraceFrame> {
     let mut frames: Vec<TraceFrame> = vec![];
@@ -27,8 +26,14 @@ pub fn parse_trace(text: &str) -> Vec<TraceFrame> {
             .collect();
 
         let frame = TraceFrame {
-            position: Vec2 { x: position_fields[0], y: position_fields[1] },
-            speed: Vec2 { x: speed_fields[0], y: speed_fields[1] }
+            position: Vec2 {
+                x: position_fields[0],
+                y: position_fields[1],
+            },
+            speed: Vec2 {
+                x: speed_fields[0],
+                y: speed_fields[1],
+            },
         };
 
         frames.push(frame);

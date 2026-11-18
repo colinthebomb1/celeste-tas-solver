@@ -18,6 +18,6 @@ pub use movement::*;
 pub use state::*;
 pub use step::*;
 
+use crate::Vec2;
 use crate::entities::Spikes;
 use crate::level::room::{Direction, Rect, Room};
-use crate::Vec2;

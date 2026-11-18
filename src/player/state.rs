@@ -155,7 +155,6 @@ pub struct Input {
 }
 
 impl Input {
-
     pub fn jump_down(self) -> bool {
         self.jump || self.jump2
     }

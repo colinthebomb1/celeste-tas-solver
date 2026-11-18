@@ -1,6 +1,6 @@
 use crate::level::map::{Element, MapError};
-use crate::player::IVec2;
 use crate::level::room::{Direction, Rect};
+use crate::player::IVec2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Spikes {
@@ -11,29 +11,29 @@ pub struct Spikes {
 impl Spikes {
     pub fn new(direction: Direction, x: i32, y: i32, size: i32) -> Spikes {
         let hitbox = match direction {
-            Direction::Up => Rect { 
+            Direction::Up => Rect {
                 left: x,
                 top: y - 3,
                 width: size,
-                height: 3
+                height: 3,
             },
-            Direction::Down => Rect { 
+            Direction::Down => Rect {
                 left: x,
                 top: y,
                 width: size,
-                height: 3
+                height: 3,
             },
-            Direction::Right => Rect { 
+            Direction::Right => Rect {
                 left: x,
                 top: y,
                 width: 3,
-                height: size
+                height: size,
             },
-            Direction::Left => Rect { 
+            Direction::Left => Rect {
                 left: x - 3,
                 top: y,
                 width: 3,
-                height: size
+                height: size,
             },
         };
 
@@ -63,7 +63,9 @@ pub fn load_spikes(level: &Element, origin: IVec2) -> Result<Vec<Spikes>, MapErr
 
         let x = entity.int("x").ok_or(MapError::MissingField("x"))?;
         let y = entity.int("y").ok_or(MapError::MissingField("y"))?;
-        let size = entity.int(length_attribute).ok_or(MapError::MissingField(length_attribute))?;
+        let size = entity
+            .int(length_attribute)
+            .ok_or(MapError::MissingField(length_attribute))?;
 
         spikes.push(Spikes::new(direction, origin.x + x, origin.y + y, size));
     }
@@ -76,19 +78,39 @@ mod tests {
     use super::*;
 
     fn rect(left: i32, top: i32, width: i32, height: i32) -> Rect {
-        Rect { left, top, width, height }
+        Rect {
+            left,
+            top,
+            width,
+            height,
+        }
     }
 
     #[test]
     fn spikes_hitbox_sits_on_the_side_the_points_face() {
-        assert_eq!(Spikes::new(Direction::Up, 40, 168, 24).hitbox, rect(40, 165, 24, 3));
-        assert_eq!(Spikes::new(Direction::Down, 40, 168, 24).hitbox, rect(40, 168, 24, 3));
-        assert_eq!(Spikes::new(Direction::Left, 40, 168, 24).hitbox, rect(37, 168, 3, 24));
-        assert_eq!(Spikes::new(Direction::Right, 40, 168, 24).hitbox, rect(40, 168, 3, 24));
+        assert_eq!(
+            Spikes::new(Direction::Up, 40, 168, 24).hitbox,
+            rect(40, 165, 24, 3)
+        );
+        assert_eq!(
+            Spikes::new(Direction::Down, 40, 168, 24).hitbox,
+            rect(40, 168, 24, 3)
+        );
+        assert_eq!(
+            Spikes::new(Direction::Left, 40, 168, 24).hitbox,
+            rect(37, 168, 3, 24)
+        );
+        assert_eq!(
+            Spikes::new(Direction::Right, 40, 168, 24).hitbox,
+            rect(40, 168, 3, 24)
+        );
     }
 
     #[test]
     fn spikes_remember_their_direction() {
-        assert_eq!(Spikes::new(Direction::Left, 0, 0, 8).direction, Direction::Left);
+        assert_eq!(
+            Spikes::new(Direction::Left, 0, 0, 8).direction,
+            Direction::Left
+        );
     }
 }

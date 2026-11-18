@@ -1,7 +1,10 @@
-use crate::level::map::{Element, MapError};
-use crate::player::{approach, hitbox, is_riding as rides, move_exact_h, move_exact_v, set_lift_speed, IVec2, PlayerState, DELTA_TIME};
-use crate::level::room::{Rect, Room};
 use crate::Vec2;
+use crate::level::map::{Element, MapError};
+use crate::level::room::{Rect, Room};
+use crate::player::{
+    DELTA_TIME, IVec2, PlayerState, approach, hitbox, is_riding as rides, move_exact_h,
+    move_exact_v, set_lift_speed,
+};
 
 pub const ZIP_START_DELAY: f32 = 0.1;
 pub const ZIP_PAUSE: f32 = 0.5;
@@ -43,7 +46,10 @@ impl ZipMover {
     pub fn new(x: i32, y: i32, width: i32, height: i32, target_x: i32, target_y: i32) -> ZipMover {
         ZipMover {
             start: IVec2 { x, y },
-            target: IVec2 { x: target_x, y: target_y },
+            target: IVec2 {
+                x: target_x,
+                y: target_y,
+            },
             width,
             height,
             position: IVec2 { x, y },
@@ -57,7 +63,12 @@ impl ZipMover {
     }
 
     pub fn rect(&self) -> Rect {
-        Rect { left: self.position.x, top: self.position.y, width: self.width, height: self.height }
+        Rect {
+            left: self.position.x,
+            top: self.position.y,
+            width: self.width,
+            height: self.height,
+        }
     }
 }
 
@@ -68,8 +79,14 @@ pub fn load_zip_movers(level: &Element, origin: IVec2) -> Result<Vec<ZipMover>, 
 
     let mut zip_movers = Vec::new();
 
-    for entity in entities.children.iter().filter(|entity| entity.name == "zipMover") {
-        let int = |element: &Element, key: &'static str| element.int(key).ok_or(MapError::MissingField(key));
+    for entity in entities
+        .children
+        .iter()
+        .filter(|entity| entity.name == "zipMover")
+    {
+        let int = |element: &Element, key: &'static str| {
+            element.int(key).ok_or(MapError::MissingField(key))
+        };
         let node = entity.child("node").ok_or(MapError::MissingField("node"))?;
 
         zip_movers.push(ZipMover::new(
@@ -130,7 +147,13 @@ fn update_zip_mover(room: &mut Room, index: usize, state: &mut PlayerState) {
             let at = approach(zip.at, 1.0, ZIP_GO_RATE * DELTA_TIME);
             let percent = sine_in(at);
             room.zip_movers[index].at = at;
-            move_to(room, index, state, lerp(start.x, target.x, percent), lerp(start.y, target.y, percent));
+            move_to(
+                room,
+                index,
+                state,
+                lerp(start.x, target.x, percent),
+                lerp(start.y, target.y, percent),
+            );
 
             if at >= 1.0 {
                 let zip = &mut room.zip_movers[index];
@@ -153,7 +176,13 @@ fn update_zip_mover(room: &mut Room, index: usize, state: &mut PlayerState) {
             let at = approach(zip.at, 1.0, ZIP_RETURN_RATE * DELTA_TIME);
             let percent = sine_in(at);
             room.zip_movers[index].at = at;
-            move_to(room, index, state, lerp(target.x, start.x, percent), lerp(target.y, start.y, percent));
+            move_to(
+                room,
+                index,
+                state,
+                lerp(target.x, start.x, percent),
+                lerp(target.y, start.y, percent),
+            );
 
             if at >= 1.0 {
                 let zip = &mut room.zip_movers[index];
@@ -245,7 +274,7 @@ fn move_pixels(room: &mut Room, index: usize, state: &mut PlayerState, dx: i32, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::player::{lift_boost, Input, LIFT_Y_CAP};
+    use crate::player::{Input, LIFT_Y_CAP, lift_boost};
     use crate::sim::step_room;
 
     // an empty room with one block at (40, 120), 32 x 16, that travels 80 px up
@@ -256,7 +285,11 @@ mod tests {
     }
 
     fn at(x: i32, y: i32) -> PlayerState {
-        PlayerState::new(IVec2 { x, y }, Vec2 { x: 0.0, y: 0.0 }, Vec2 { x: 0.0, y: 0.0 })
+        PlayerState::new(
+            IVec2 { x, y },
+            Vec2 { x: 0.0, y: 0.0 },
+            Vec2 { x: 0.0, y: 0.0 },
+        )
     }
 
     fn idle(room: &mut Room, state: PlayerState, frames: usize) -> PlayerState {
@@ -305,7 +338,10 @@ mod tests {
         let mut s = at(56, 120);
         for _ in 0..25 {
             s = step_room(s, Input::default(), &mut room);
-            assert_eq!(s.position.y, room.zip_movers[0].position.y, "she stays on top");
+            assert_eq!(
+                s.position.y, room.zip_movers[0].position.y,
+                "she stays on top"
+            );
         }
         assert!(room.zip_movers[0].position.y < 110);
         assert!(lift_boost(&s).y < -60.0);
@@ -372,7 +408,13 @@ mod tests {
         let s = idle(&mut room, at(20, 120), 30);
         let moved = room.zip_movers[0].position.x - 8;
         assert!(moved > 10);
-        assert_eq!(s.position, IVec2 { x: 20 + moved, y: 120 });
+        assert_eq!(
+            s.position,
+            IVec2 {
+                x: 20 + moved,
+                y: 120
+            }
+        );
         assert!(lift_boost(&s).x > 0.0);
     }
 

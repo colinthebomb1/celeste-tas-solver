@@ -11,11 +11,19 @@ fn room() -> Room {
 }
 
 fn at_rest() -> PlayerState {
-    PlayerState::new(IVec2 { x: 0, y: 64 }, Vec2 { x: 0.0, y: 0.0 }, Vec2 { x: 0.0, y: 0.0 })
+    PlayerState::new(
+        IVec2 { x: 0, y: 64 },
+        Vec2 { x: 0.0, y: 0.0 },
+        Vec2 { x: 0.0, y: 0.0 },
+    )
 }
 
 fn standing() -> PlayerState {
-    PlayerState::new(IVec2 { x: 0, y: FLOOR_Y }, Vec2 { x: 0.0, y: 0.0 }, Vec2 { x: 0.0, y: 0.0 })
+    PlayerState::new(
+        IVec2 { x: 0, y: FLOOR_Y },
+        Vec2 { x: 0.0, y: 0.0 },
+        Vec2 { x: 0.0, y: 0.0 },
+    )
 }
 
 #[test]
@@ -125,7 +133,14 @@ fn move_v_stops_at_floor() {
 fn jump_sets_speed_and_timers() {
     let mut s = standing();
     s.jump_grace_timer = JUMP_GRACE_TIME;
-    jump(&mut s, Input { move_x: 0, jump: true, ..Default::default() });
+    jump(
+        &mut s,
+        Input {
+            move_x: 0,
+            jump: true,
+            ..Default::default()
+        },
+    );
     assert_eq!(s.speed.y, JUMP_SPEED);
     assert_eq!(s.var_jump_speed, JUMP_SPEED);
     assert_eq!(s.var_jump_timer, VAR_JUMP_TIME);
@@ -136,7 +151,14 @@ fn jump_sets_speed_and_timers() {
 fn jump_resets_wall_slide_timer() {
     let mut s = standing();
     s.wall_slide_timer = 0.3;
-    jump(&mut s, Input { move_x: 0, jump: true, ..Default::default() });
+    jump(
+        &mut s,
+        Input {
+            move_x: 0,
+            jump: true,
+            ..Default::default()
+        },
+    );
     assert_eq!(s.wall_slide_timer, WALL_SLIDE_TIME);
 }
 
@@ -190,7 +212,15 @@ fn falling_against_wall() -> PlayerState {
 #[test]
 fn wall_slide_starts_at_full_timer() {
     let mut s = falling_against_wall();
-    let max = wall_slide_max_fall(&mut s, &room(), Input { move_x: 1, jump: false, ..Default::default() });
+    let max = wall_slide_max_fall(
+        &mut s,
+        &room(),
+        Input {
+            move_x: 1,
+            jump: false,
+            ..Default::default()
+        },
+    );
     assert_eq!(max, WALL_SLIDE_START_MAX);
     assert_eq!(s.wall_slide_dir, 1);
 }
@@ -199,14 +229,33 @@ fn wall_slide_starts_at_full_timer() {
 fn wall_slide_max_rises_as_timer_runs_out() {
     let mut s = falling_against_wall();
     s.wall_slide_timer = WALL_SLIDE_TIME * 0.5;
-    let max = wall_slide_max_fall(&mut s, &room(), Input { move_x: 1, jump: false, ..Default::default() });
+    let max = wall_slide_max_fall(
+        &mut s,
+        &room(),
+        Input {
+            move_x: 1,
+            jump: false,
+            ..Default::default()
+        },
+    );
     assert_eq!(max, lerp(MAX_FALL, WALL_SLIDE_START_MAX, 0.5));
 }
 
 #[test]
 fn no_wall_slide_without_holding_toward_wall() {
     let mut s = falling_against_wall();
-    assert_eq!(wall_slide_max_fall(&mut s, &room(), Input { move_x: 0, jump: false, ..Default::default() }), MAX_FALL);
+    assert_eq!(
+        wall_slide_max_fall(
+            &mut s,
+            &room(),
+            Input {
+                move_x: 0,
+                jump: false,
+                ..Default::default()
+            }
+        ),
+        MAX_FALL
+    );
     assert_eq!(s.wall_slide_dir, 0);
 }
 
@@ -214,7 +263,18 @@ fn no_wall_slide_without_holding_toward_wall() {
 fn no_wall_slide_while_moving_up() {
     let mut s = falling_against_wall();
     s.speed.y = -50.0;
-    assert_eq!(wall_slide_max_fall(&mut s, &room(), Input { move_x: 1, jump: false, ..Default::default() }), MAX_FALL);
+    assert_eq!(
+        wall_slide_max_fall(
+            &mut s,
+            &room(),
+            Input {
+                move_x: 1,
+                jump: false,
+                ..Default::default()
+            }
+        ),
+        MAX_FALL
+    );
     assert_eq!(s.wall_slide_dir, 0);
 }
 
@@ -222,7 +282,18 @@ fn no_wall_slide_while_moving_up() {
 fn no_wall_slide_away_from_wall() {
     let mut s = falling_against_wall();
     s.position.x = WALL_X - 5;
-    assert_eq!(wall_slide_max_fall(&mut s, &room(), Input { move_x: 1, jump: false, ..Default::default() }), MAX_FALL);
+    assert_eq!(
+        wall_slide_max_fall(
+            &mut s,
+            &room(),
+            Input {
+                move_x: 1,
+                jump: false,
+                ..Default::default()
+            }
+        ),
+        MAX_FALL
+    );
     assert_eq!(s.wall_slide_dir, 0);
 }
 
@@ -230,7 +301,14 @@ fn no_wall_slide_away_from_wall() {
 fn jump_adds_horizontal_boost() {
     let mut s = standing();
     s.speed.x = 90.0;
-    jump(&mut s, Input { move_x: 1, jump: true, ..Default::default() });
+    jump(
+        &mut s,
+        Input {
+            move_x: 1,
+            jump: true,
+            ..Default::default()
+        },
+    );
     assert_eq!(s.speed.x, 90.0 + JUMP_H_BOOST);
 }
 
@@ -256,7 +334,10 @@ fn move_v_falls_through_floor_level_past_ledge() {
 #[test]
 fn move_h_blocked_by_side_of_ledge() {
     let mut s = at_rest();
-    s.position = IVec2 { x: LEDGE_X + 1, y: FLOOR_Y + 5 };
+    s.position = IVec2 {
+        x: LEDGE_X + 1,
+        y: FLOOR_Y + 5,
+    };
     s.speed.x = -90.0;
     move_h(&mut s, &room(), -3.0, false);
     assert_eq!(s.position.x, LEDGE_X + 1);
@@ -264,7 +345,14 @@ fn move_h_blocked_by_side_of_ledge() {
 }
 
 fn aim(move_x: i8, move_y: i8, facing: i8) -> Vec2 {
-    aim_vector(Input { move_x, move_y, ..Default::default() }, facing)
+    aim_vector(
+        Input {
+            move_x,
+            move_y,
+            ..Default::default()
+        },
+        facing,
+    )
 }
 
 #[test]
@@ -321,7 +409,13 @@ fn dash_launch_sets_speed_and_starts_timer() {
     let mut s = standing();
     dash_begin(&mut s, &room(), Input::default(), true, false);
     dash_launch(&mut s, Vec2 { x: 0.0, y: -1.0 }, true);
-    assert_eq!(s.speed, Vec2 { x: 0.0, y: -DASH_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: 0.0,
+            y: -DASH_SPEED
+        }
+    );
     assert_eq!(s.dash_dir, Vec2 { x: 0.0, y: -1.0 });
     assert_eq!(s.mode, Mode::Dashing { timer: DASH_TIME });
 }
@@ -377,21 +471,39 @@ fn dash_end_horizontal() {
     dash_end(&mut s);
     assert_eq!(s.mode, Mode::Normal);
     assert!(s.auto_jump);
-    assert_eq!(s.speed, Vec2 { x: END_DASH_SPEED, y: 0.0 });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: END_DASH_SPEED,
+            y: 0.0
+        }
+    );
 }
 
 #[test]
 fn dash_end_up_is_slower() {
     let mut s = dashing(Vec2 { x: 0.0, y: -1.0 });
     dash_end(&mut s);
-    assert_eq!(s.speed, Vec2 { x: 0.0, y: -END_DASH_SPEED * END_DASH_UP_MULT });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: 0.0,
+            y: -END_DASH_SPEED * END_DASH_UP_MULT
+        }
+    );
 }
 
 #[test]
 fn dash_end_down_keeps_speed() {
     let mut s = dashing(Vec2 { x: 0.0, y: 1.0 });
     dash_end(&mut s);
-    assert_eq!(s.speed, Vec2 { x: 0.0, y: DASH_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: 0.0,
+            y: DASH_SPEED
+        }
+    );
 }
 
 #[test]
@@ -425,7 +537,14 @@ fn frozen_frames_do_nothing() {
     s.speed.x = 90.0;
     s.freeze_timer = DASH_FREEZE_TIME;
     let before = s;
-    s = step(s, Input { move_x: -1, ..Default::default() }, &room());
+    s = step(
+        s,
+        Input {
+            move_x: -1,
+            ..Default::default()
+        },
+        &room(),
+    );
     assert_eq!(s.position, before.position);
     assert_eq!(s.speed, before.speed);
     assert!(s.freeze_timer < DASH_FREEZE_TIME);
@@ -442,13 +561,24 @@ fn auto_jump_cleared_on_ground() {
 fn hurtbox_is_two_pixels_shorter_than_the_hitbox() {
     let mut s = at_rest();
     s.position = IVec2 { x: 100, y: 50 };
-    assert_eq!(hurtbox(&s), Rect { left: 96, top: 39, width: 8, height: 9 });
+    assert_eq!(
+        hurtbox(&s),
+        Rect {
+            left: 96,
+            top: 39,
+            width: 8,
+            height: 9
+        }
+    );
 }
 
 fn player_at(x: i32, y: i32, speed_x: f32, speed_y: f32) -> PlayerState {
     let mut s = at_rest();
     s.position = IVec2 { x, y };
-    s.speed = Vec2 { x: speed_x, y: speed_y };
+    s.speed = Vec2 {
+        x: speed_x,
+        y: speed_y,
+    };
     s
 }
 
@@ -563,7 +693,10 @@ fn dashing_right() -> PlayerState {
     let mut s = standing();
     s.mode = Mode::Dashing { timer: DASH_TIME };
     s.dash_dir = Vec2 { x: 1.0, y: 0.0 };
-    s.speed = Vec2 { x: DASH_SPEED, y: 0.0 };
+    s.speed = Vec2 {
+        x: DASH_SPEED,
+        y: 0.0,
+    };
     s.jump_grace_timer = JUMP_GRACE_TIME;
     s
 }
@@ -601,12 +734,24 @@ fn can_super_jump_not_in_a_vertical_or_diagonal_dash() {
 fn super_jump_launches_the_way_she_faces() {
     let mut s = dashing_right();
     super_jump(&mut s);
-    assert_eq!(s.speed, Vec2 { x: SUPER_JUMP_H, y: JUMP_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: SUPER_JUMP_H,
+            y: JUMP_SPEED
+        }
+    );
 
     let mut s = dashing_right();
     s.facing = -1;
     super_jump(&mut s);
-    assert_eq!(s.speed, Vec2 { x: -SUPER_JUMP_H, y: JUMP_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: -SUPER_JUMP_H,
+            y: JUMP_SPEED
+        }
+    );
 }
 
 #[test]
@@ -632,48 +777,126 @@ fn dash_for(start: PlayerState, frames: usize, input: Input) -> PlayerState {
     s
 }
 
-const DASH_RIGHT: Input = Input { move_x: 1, move_y: 0, jump: false, jump2: false, dash: true, grab: false, crouch_dash: false };
-const JUMP_RIGHT: Input = Input { move_x: 1, move_y: 0, jump: true, jump2: false, dash: false, grab: false, crouch_dash: false };
+const DASH_RIGHT: Input = Input {
+    move_x: 1,
+    move_y: 0,
+    jump: false,
+    jump2: false,
+    dash: true,
+    grab: false,
+    crouch_dash: false,
+};
+const JUMP_RIGHT: Input = Input {
+    move_x: 1,
+    move_y: 0,
+    jump: true,
+    jump2: false,
+    dash: false,
+    grab: false,
+    crouch_dash: false,
+};
 
 #[test]
 fn step_super_jumps_out_of_a_dash() {
     let s = step(dash_for(standing(), 5, DASH_RIGHT), JUMP_RIGHT, &room());
     assert_eq!(s.mode, Mode::Normal);
-    assert_eq!(s.speed, Vec2 { x: SUPER_JUMP_H, y: JUMP_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: SUPER_JUMP_H,
+            y: JUMP_SPEED
+        }
+    );
 }
 
 #[test]
 fn step_super_jumps_on_the_launch_frame() {
     let s = step(dash_for(standing(), 4, DASH_RIGHT), JUMP_RIGHT, &room());
     assert_eq!(s.mode, Mode::Normal);
-    assert_eq!(s.speed, Vec2 { x: SUPER_JUMP_H, y: JUMP_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: SUPER_JUMP_H,
+            y: JUMP_SPEED
+        }
+    );
 }
 
 #[test]
 fn step_super_jumps_on_the_last_dash_frame() {
     let s = step(dash_for(standing(), 14, DASH_RIGHT), JUMP_RIGHT, &room());
     assert_eq!(s.mode, Mode::Normal);
-    assert_eq!(s.speed, Vec2 { x: SUPER_JUMP_H, y: JUMP_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: SUPER_JUMP_H,
+            y: JUMP_SPEED
+        }
+    );
 }
 
 #[test]
 fn step_no_super_jump_in_the_air() {
     let s = step(dash_for(at_rest(), 5, DASH_RIGHT), JUMP_RIGHT, &room());
     assert!(matches!(s.mode, Mode::Dashing { .. }));
-    assert_eq!(s.speed, Vec2 { x: DASH_SPEED, y: 0.0 });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: DASH_SPEED,
+            y: 0.0
+        }
+    );
 }
 
 #[test]
 fn step_no_super_jump_out_of_an_up_dash() {
-    let up_dash = Input { move_x: 0, move_y: -1, jump: false, jump2: false, dash: true, grab: false, crouch_dash: false };
+    let up_dash = Input {
+        move_x: 0,
+        move_y: -1,
+        jump: false,
+        jump2: false,
+        dash: true,
+        grab: false,
+        crouch_dash: false,
+    };
     let s = step(dash_for(standing(), 5, up_dash), JUMP_RIGHT, &room());
     assert!(matches!(s.mode, Mode::Dashing { .. }));
-    assert_eq!(s.speed, Vec2 { x: 0.0, y: -DASH_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: 0.0,
+            y: -DASH_SPEED
+        }
+    );
 }
 
-const JUMP_1: Input = Input { move_x: 0, move_y: 0, jump: true, jump2: false, dash: false, grab: false, crouch_dash: false };
-const JUMP_2: Input = Input { move_x: 0, move_y: 0, jump: false, jump2: true, dash: false, grab: false, crouch_dash: false };
-const JUMP_BOTH: Input = Input { move_x: 0, move_y: 0, jump: true, jump2: true, dash: false, grab: false, crouch_dash: false };
+const JUMP_1: Input = Input {
+    move_x: 0,
+    move_y: 0,
+    jump: true,
+    jump2: false,
+    dash: false,
+    grab: false,
+    crouch_dash: false,
+};
+const JUMP_2: Input = Input {
+    move_x: 0,
+    move_y: 0,
+    jump: false,
+    jump2: true,
+    dash: false,
+    grab: false,
+    crouch_dash: false,
+};
+const JUMP_BOTH: Input = Input {
+    move_x: 0,
+    move_y: 0,
+    jump: true,
+    jump2: true,
+    dash: false,
+    grab: false,
+    crouch_dash: false,
+};
 
 #[test]
 fn jump_down_with_either_button() {
@@ -746,30 +969,70 @@ fn left_wall_room() -> Room {
 // flush against the left wall
 const LEFT_WALL_X: i32 = 12;
 
-const JUMP_GRAB: Input = Input { move_x: 0, move_y: 0, jump: true, jump2: false, dash: false, grab: true, crouch_dash: false };
+const JUMP_GRAB: Input = Input {
+    move_x: 0,
+    move_y: 0,
+    jump: true,
+    jump2: false,
+    dash: false,
+    grab: true,
+    crouch_dash: false,
+};
 
 #[test]
 fn wall_jump_check_reaches_two_pixels_of_gap() {
     let room = room();
     assert!(wall_jump_check(&player_at(WALL_X, 100, 0.0, 0.0), &room, 1));
-    assert!(wall_jump_check(&player_at(WALL_X - 2, 100, 0.0, 0.0), &room, 1));
-    assert!(!wall_jump_check(&player_at(WALL_X - 3, 100, 0.0, 0.0), &room, 1));
+    assert!(wall_jump_check(
+        &player_at(WALL_X - 2, 100, 0.0, 0.0),
+        &room,
+        1
+    ));
+    assert!(!wall_jump_check(
+        &player_at(WALL_X - 3, 100, 0.0, 0.0),
+        &room,
+        1
+    ));
 }
 
 #[test]
 fn wall_jump_check_only_on_the_side_asked() {
-    assert!(!wall_jump_check(&player_at(WALL_X, 100, 0.0, 0.0), &room(), -1));
+    assert!(!wall_jump_check(
+        &player_at(WALL_X, 100, 0.0, 0.0),
+        &room(),
+        -1
+    ));
 
     let room = left_wall_room();
-    assert!(wall_jump_check(&player_at(LEFT_WALL_X, 100, 0.0, 0.0), &room, -1));
-    assert!(wall_jump_check(&player_at(LEFT_WALL_X + 2, 100, 0.0, 0.0), &room, -1));
-    assert!(!wall_jump_check(&player_at(LEFT_WALL_X + 3, 100, 0.0, 0.0), &room, -1));
-    assert!(!wall_jump_check(&player_at(LEFT_WALL_X, 100, 0.0, 0.0), &room, 1));
+    assert!(wall_jump_check(
+        &player_at(LEFT_WALL_X, 100, 0.0, 0.0),
+        &room,
+        -1
+    ));
+    assert!(wall_jump_check(
+        &player_at(LEFT_WALL_X + 2, 100, 0.0, 0.0),
+        &room,
+        -1
+    ));
+    assert!(!wall_jump_check(
+        &player_at(LEFT_WALL_X + 3, 100, 0.0, 0.0),
+        &room,
+        -1
+    ));
+    assert!(!wall_jump_check(
+        &player_at(LEFT_WALL_X, 100, 0.0, 0.0),
+        &room,
+        1
+    ));
 }
 
 #[test]
 fn can_climb_jump_facing_a_wall_with_grab_held() {
-    assert!(can_climb_jump(&player_at(WALL_X, 100, 0.0, 0.0), &room(), JUMP_GRAB));
+    assert!(can_climb_jump(
+        &player_at(WALL_X, 100, 0.0, 0.0),
+        &room(),
+        JUMP_GRAB
+    ));
 
     let mut s = player_at(LEFT_WALL_X, 100, 0.0, 0.0);
     s.facing = -1;
@@ -778,8 +1041,15 @@ fn can_climb_jump_facing_a_wall_with_grab_held() {
 
 #[test]
 fn can_climb_jump_needs_grab() {
-    let no_grab = Input { grab: false, ..JUMP_GRAB };
-    assert!(!can_climb_jump(&player_at(WALL_X, 100, 0.0, 0.0), &room(), no_grab));
+    let no_grab = Input {
+        grab: false,
+        ..JUMP_GRAB
+    };
+    assert!(!can_climb_jump(
+        &player_at(WALL_X, 100, 0.0, 0.0),
+        &room(),
+        no_grab
+    ));
 }
 
 #[test]
@@ -791,7 +1061,11 @@ fn can_climb_jump_needs_stamina() {
 
 #[test]
 fn can_climb_jump_needs_a_wall() {
-    assert!(!can_climb_jump(&player_at(WALL_X - 3, 100, 0.0, 0.0), &room(), JUMP_GRAB));
+    assert!(!can_climb_jump(
+        &player_at(WALL_X - 3, 100, 0.0, 0.0),
+        &room(),
+        JUMP_GRAB
+    ));
 }
 
 #[test]
@@ -808,9 +1082,22 @@ fn can_climb_jump_not_facing_away_from_the_wall() {
 fn climb_jump_in_the_air_costs_stamina() {
     let mut s = player_at(WALL_X, 100, 0.0, 30.0);
     s.mode = Mode::Dashing { timer: 0.1 };
-    climb_jump(&mut s, Input { move_x: 1, ..JUMP_GRAB }, false);
+    climb_jump(
+        &mut s,
+        Input {
+            move_x: 1,
+            ..JUMP_GRAB
+        },
+        false,
+    );
     assert_eq!(s.stamina, CLIMB_MAX_STAMINA - CLIMB_JUMP_COST);
-    assert_eq!(s.speed, Vec2 { x: JUMP_H_BOOST, y: JUMP_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: JUMP_H_BOOST,
+            y: JUMP_SPEED
+        }
+    );
     assert_eq!(s.var_jump_timer, VAR_JUMP_TIME);
     assert_eq!(s.mode, Mode::Normal);
 }
@@ -848,7 +1135,10 @@ fn step_climb_jumps_next_to_a_wall() {
 
 #[test]
 fn step_no_climb_jump_without_grab() {
-    let no_grab = Input { grab: false, ..JUMP_GRAB };
+    let no_grab = Input {
+        grab: false,
+        ..JUMP_GRAB
+    };
     let s = step(player_at(WALL_X, 100, 0.0, 30.0), no_grab, &room());
     assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
 }
@@ -857,7 +1147,14 @@ fn step_no_climb_jump_without_grab() {
 fn step_ground_jump_wins_over_climb_jump() {
     let mut s = player_at(36, FLOOR_Y, 0.0, 0.0);
     s.stamina = 50.0;
-    s = step(s, Input { move_x: 1, ..JUMP_GRAB }, &room());
+    s = step(
+        s,
+        Input {
+            move_x: 1,
+            ..JUMP_GRAB
+        },
+        &room(),
+    );
     assert_eq!(s.speed.y, JUMP_SPEED);
     assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
 }
@@ -867,11 +1164,24 @@ fn step_climb_jumps_out_of_a_dash() {
     let mut s = player_at(WALL_X - 2, 100, DASH_SPEED, 0.0);
     s.mode = Mode::Dashing { timer: 0.1 };
     s.dash_dir = Vec2 { x: 1.0, y: 0.0 };
-    s = step(s, Input { move_x: 1, ..JUMP_GRAB }, &room());
+    s = step(
+        s,
+        Input {
+            move_x: 1,
+            ..JUMP_GRAB
+        },
+        &room(),
+    );
     assert_eq!(s.mode, Mode::Normal);
     assert_eq!(s.stamina, CLIMB_MAX_STAMINA - CLIMB_JUMP_COST);
     assert_eq!(s.position.x, WALL_X);
-    assert_eq!(s.speed, Vec2 { x: 0.0, y: JUMP_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: 0.0,
+            y: JUMP_SPEED
+        }
+    );
 }
 
 #[test]
@@ -954,7 +1264,14 @@ fn retention_does_nothing_once_the_timer_is_out() {
 
 #[test]
 fn step_gives_retained_speed_back_before_moving() {
-    let s = step(retaining(WALL_X - 20, 0.0, 120.0), Input { move_x: 1, ..Default::default() }, &room());
+    let s = step(
+        retaining(WALL_X - 20, 0.0, 120.0),
+        Input {
+            move_x: 1,
+            ..Default::default()
+        },
+        &room(),
+    );
     assert!(s.speed.x > 100.0);
     assert!(s.position.x > WALL_X - 20);
     assert_eq!(s.wall_speed_retention_timer, 0.0);
@@ -962,7 +1279,14 @@ fn step_gives_retained_speed_back_before_moving() {
 
 #[test]
 fn step_running_into_a_wall_starts_retention() {
-    let s = step(player_at(WALL_X, 100, 90.0, 0.0), Input { move_x: 1, ..Default::default() }, &room());
+    let s = step(
+        player_at(WALL_X, 100, 90.0, 0.0),
+        Input {
+            move_x: 1,
+            ..Default::default()
+        },
+        &room(),
+    );
     assert_eq!(s.speed.x, 0.0);
     assert_eq!(s.wall_speed_retained, 90.0);
     assert_eq!(s.wall_speed_retention_timer, WALL_SPEED_RETENTION_TIME);
@@ -970,7 +1294,8 @@ fn step_running_into_a_wall_starts_retention() {
 
 // an 8 px high tunnel from x = 24 rightwards: she fits ducking, not standing
 fn tunnel_room() -> Room {
-    let text = "00000000000\n".repeat(16) + "00011111111\n" + "00000000000\n" + &"11111111111\n".repeat(5);
+    let text =
+        "00000000000\n".repeat(16) + "00011111111\n" + "00000000000\n" + &"11111111111\n".repeat(5);
     Room::from_tiles(IVec2 { x: 0, y: 0 }, &text)
 }
 
@@ -980,7 +1305,15 @@ fn ducking_at(x: i32, y: i32) -> PlayerState {
     s
 }
 
-const DOWN: Input = Input { move_x: 0, move_y: 1, jump: false, jump2: false, dash: false, grab: false, crouch_dash: false };
+const DOWN: Input = Input {
+    move_x: 0,
+    move_y: 1,
+    jump: false,
+    jump2: false,
+    dash: false,
+    grab: false,
+    crouch_dash: false,
+};
 
 #[test]
 fn collides_uses_the_shorter_hitbox_when_ducking() {
@@ -993,7 +1326,10 @@ fn collides_uses_the_shorter_hitbox_when_ducking() {
 
 #[test]
 fn can_unduck_when_not_ducking() {
-    assert!(can_unduck(&player_at(40, FLOOR_Y, 0.0, 0.0), &tunnel_room()));
+    assert!(can_unduck(
+        &player_at(40, FLOOR_Y, 0.0, 0.0),
+        &tunnel_room()
+    ));
 }
 
 #[test]
@@ -1008,7 +1344,15 @@ fn can_unduck_not_under_a_low_ceiling() {
 
 #[test]
 fn hurtbox_is_shorter_when_ducking() {
-    assert_eq!(hurtbox(&ducking_at(100, 50)), Rect { left: 96, top: 44, width: 8, height: 4 });
+    assert_eq!(
+        hurtbox(&ducking_at(100, 50)),
+        Rect {
+            left: 96,
+            top: 44,
+            width: 8,
+            height: 4
+        }
+    );
 }
 
 #[test]
@@ -1044,7 +1388,13 @@ fn super_jump_while_ducking_is_a_hyper() {
     let mut s = dashing_right();
     s.ducking = true;
     super_jump(&mut s);
-    assert_eq!(s.speed, Vec2 { x: SUPER_JUMP_H * DUCK_SUPER_JUMP_X_MULT, y: JUMP_SPEED * DUCK_SUPER_JUMP_Y_MULT });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: SUPER_JUMP_H * DUCK_SUPER_JUMP_X_MULT,
+            y: JUMP_SPEED * DUCK_SUPER_JUMP_Y_MULT
+        }
+    );
     assert_eq!(s.var_jump_speed, JUMP_SPEED * DUCK_SUPER_JUMP_Y_MULT);
     assert!(!s.ducking);
 }
@@ -1071,7 +1421,13 @@ fn dash_launch_down_diagonal_on_the_ground_slides() {
     let d = 1.0 / 2f32.sqrt();
     let mut s = launching();
     dash_launch(&mut s, Vec2 { x: -d, y: d }, true);
-    assert_eq!(s.speed, Vec2 { x: -d * DASH_SPEED * DODGE_SLIDE_SPEED_MULT, y: 0.0 });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: -d * DASH_SPEED * DODGE_SLIDE_SPEED_MULT,
+            y: 0.0
+        }
+    );
     assert_eq!(s.dash_dir, Vec2 { x: -1.0, y: 0.0 });
     assert!(s.ducking);
 }
@@ -1081,7 +1437,13 @@ fn dash_launch_down_diagonal_in_the_air_does_not_slide() {
     let d = 1.0 / 2f32.sqrt();
     let mut s = launching();
     dash_launch(&mut s, Vec2 { x: d, y: d }, false);
-    assert_eq!(s.speed, Vec2 { x: d * DASH_SPEED, y: d * DASH_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: d * DASH_SPEED,
+            y: d * DASH_SPEED
+        }
+    );
     assert_eq!(s.dash_dir, Vec2 { x: d, y: d });
     assert!(!s.ducking);
 }
@@ -1090,12 +1452,24 @@ fn dash_launch_down_diagonal_in_the_air_does_not_slide() {
 fn dash_launch_straight_down_or_sideways_does_not_slide() {
     let mut s = launching();
     dash_launch(&mut s, Vec2 { x: 0.0, y: 1.0 }, true);
-    assert_eq!(s.speed, Vec2 { x: 0.0, y: DASH_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: 0.0,
+            y: DASH_SPEED
+        }
+    );
     assert!(!s.ducking);
 
     let mut s = launching();
     dash_launch(&mut s, Vec2 { x: 1.0, y: 0.0 }, true);
-    assert_eq!(s.speed, Vec2 { x: DASH_SPEED, y: 0.0 });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: DASH_SPEED,
+            y: 0.0
+        }
+    );
     assert!(!s.ducking);
 }
 
@@ -1166,7 +1540,13 @@ fn step_hyper_from_a_down_dash() {
     let down_dash = Input { dash: true, ..DOWN };
     let s = step(dash_for(standing(), 4, down_dash), JUMP_RIGHT, &room());
     assert_eq!(s.mode, Mode::Normal);
-    assert_eq!(s.speed, Vec2 { x: SUPER_JUMP_H * DUCK_SUPER_JUMP_X_MULT, y: JUMP_SPEED * DUCK_SUPER_JUMP_Y_MULT });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: SUPER_JUMP_H * DUCK_SUPER_JUMP_X_MULT,
+            y: JUMP_SPEED * DUCK_SUPER_JUMP_Y_MULT
+        }
+    );
     assert!(!s.ducking);
 }
 
@@ -1186,7 +1566,14 @@ fn climb_jump_without_a_direction_arms_the_wall_boost() {
 #[test]
 fn climb_jump_with_a_direction_does_not_arm_the_wall_boost() {
     let mut s = player_at(WALL_X, 100, 0.0, 30.0);
-    climb_jump(&mut s, Input { move_x: 1, ..JUMP_GRAB }, false);
+    climb_jump(
+        &mut s,
+        Input {
+            move_x: 1,
+            ..JUMP_GRAB
+        },
+        false,
+    );
     assert_eq!(s.wall_boost_timer, 0.0);
 }
 
@@ -1211,7 +1598,15 @@ fn wall_boosting() -> PlayerState {
     s
 }
 
-const LEFT: Input = Input { move_x: -1, move_y: 0, jump: false, jump2: false, dash: false, grab: false, crouch_dash: false };
+const LEFT: Input = Input {
+    move_x: -1,
+    move_y: 0,
+    jump: false,
+    jump2: false,
+    dash: false,
+    grab: false,
+    crouch_dash: false,
+};
 
 #[test]
 fn step_remembers_the_direction_held() {
@@ -1224,12 +1619,18 @@ fn step_wall_boost_happens_the_frame_after_the_press() {
     let room = room();
     let mut s = step(wall_boosting(), LEFT, &room);
     assert_eq!(s.stamina, 50.0);
-    assert_eq!(s.speed.x, approach(0.0, -MAX_RUN, RUN_ACCEL * DELTA_TIME * AIR_MULT));
+    assert_eq!(
+        s.speed.x,
+        approach(0.0, -MAX_RUN, RUN_ACCEL * DELTA_TIME * AIR_MULT)
+    );
 
     s = step(s, Input::default(), &room);
     assert_eq!(s.stamina, 50.0 + CLIMB_JUMP_COST);
     assert_eq!(s.wall_boost_timer, 0.0);
-    assert_eq!(s.speed.x, approach(-WALL_JUMP_H_SPEED, 0.0, RUN_ACCEL * DELTA_TIME * AIR_MULT));
+    assert_eq!(
+        s.speed.x,
+        approach(-WALL_JUMP_H_SPEED, 0.0, RUN_ACCEL * DELTA_TIME * AIR_MULT)
+    );
 }
 
 #[test]
@@ -1269,7 +1670,13 @@ fn move_v_up_into_a_corner_slides_around_it() {
     let mut s = rising_at(50, 0.0);
     s.remainder.y = 0.25;
     move_v(&mut s, &ceiling_room(), -4.0);
-    assert_eq!(s.position, IVec2 { x: 52, y: UNDER_CEILING_Y - 1 });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: 52,
+            y: UNDER_CEILING_Y - 1
+        }
+    );
     assert_eq!(s.speed.y, -240.0);
     assert_eq!(s.remainder.y, 0.0);
 }
@@ -1279,11 +1686,23 @@ fn corner_correction_reaches_four_pixels() {
     let room = ceiling_room();
     let mut s = rising_at(48, 0.0);
     move_v(&mut s, &room, -1.0);
-    assert_eq!(s.position, IVec2 { x: 52, y: UNDER_CEILING_Y - 1 });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: 52,
+            y: UNDER_CEILING_Y - 1
+        }
+    );
 
     let mut s = rising_at(47, 0.0);
     move_v(&mut s, &room, -1.0);
-    assert_eq!(s.position, IVec2 { x: 47, y: UNDER_CEILING_Y });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: 47,
+            y: UNDER_CEILING_Y
+        }
+    );
     assert_eq!(s.speed.y, 0.0);
 }
 
@@ -1293,12 +1712,24 @@ fn corner_correction_reaches_five_pixels_in_a_dash_straight_up() {
     let mut s = rising_at(47, 0.0);
     s.dash_attack_timer = DASH_ATTACK_TIME;
     move_v(&mut s, &room, -1.0);
-    assert_eq!(s.position, IVec2 { x: 52, y: UNDER_CEILING_Y - 1 });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: 52,
+            y: UNDER_CEILING_Y - 1
+        }
+    );
 
     let mut s = rising_at(46, 0.0);
     s.dash_attack_timer = DASH_ATTACK_TIME;
     move_v(&mut s, &room, -1.0);
-    assert_eq!(s.position, IVec2 { x: 46, y: UNDER_CEILING_Y });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: 46,
+            y: UNDER_CEILING_Y
+        }
+    );
 }
 
 #[test]
@@ -1306,14 +1737,26 @@ fn corner_correction_reaches_four_pixels_in_a_dash_with_sideways_speed() {
     let mut s = rising_at(47, 10.0);
     s.dash_attack_timer = DASH_ATTACK_TIME;
     move_v(&mut s, &ceiling_room(), -1.0);
-    assert_eq!(s.position, IVec2 { x: 47, y: UNDER_CEILING_Y });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: 47,
+            y: UNDER_CEILING_Y
+        }
+    );
 }
 
 #[test]
 fn corner_correction_slides_left_too() {
     let mut s = rising_at(14, 0.0);
     move_v(&mut s, &ceiling_room(), -1.0);
-    assert_eq!(s.position, IVec2 { x: 12, y: UNDER_CEILING_Y - 1 });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: 12,
+            y: UNDER_CEILING_Y - 1
+        }
+    );
 }
 
 #[test]
@@ -1321,16 +1764,34 @@ fn corner_correction_only_slides_the_way_she_is_moving() {
     let room = ceiling_room();
     let mut s = rising_at(50, -10.0);
     move_v(&mut s, &room, -1.0);
-    assert_eq!(s.position, IVec2 { x: 50, y: UNDER_CEILING_Y });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: 50,
+            y: UNDER_CEILING_Y
+        }
+    );
     assert_eq!(s.speed.y, 0.0);
 
     let mut s = rising_at(14, 10.0);
     move_v(&mut s, &room, -1.0);
-    assert_eq!(s.position, IVec2 { x: 14, y: UNDER_CEILING_Y });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: 14,
+            y: UNDER_CEILING_Y
+        }
+    );
 
     let mut s = rising_at(50, 10.0);
     move_v(&mut s, &room, -1.0);
-    assert_eq!(s.position, IVec2 { x: 52, y: UNDER_CEILING_Y - 1 });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: 52,
+            y: UNDER_CEILING_Y - 1
+        }
+    );
 }
 
 #[test]
@@ -1363,7 +1824,13 @@ fn corner_correction_keeps_the_variable_jump() {
 fn landing_does_not_corner_correct() {
     let mut s = player_at(LEDGE_X, FLOOR_Y, 0.0, 100.0);
     move_v(&mut s, &room(), 2.0);
-    assert_eq!(s.position, IVec2 { x: LEDGE_X, y: FLOOR_Y });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: LEDGE_X,
+            y: FLOOR_Y
+        }
+    );
     assert_eq!(s.speed.y, 0.0);
 }
 
@@ -1393,7 +1860,13 @@ fn dash_into_a_ledge_just_below_its_top_pops_up_onto_it() {
     let mut s = dashing_at(PIT_X, FLOOR_Y + 2, -240.0, 0.0);
     s.remainder.x = 0.25;
     move_h(&mut s, &room(), -3.0, false);
-    assert_eq!(s.position, IVec2 { x: PIT_X - 1, y: FLOOR_Y });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: PIT_X - 1,
+            y: FLOOR_Y
+        }
+    );
     assert_eq!(s.speed.x, -240.0);
     assert_eq!(s.remainder.x, 0.0);
     assert_eq!(s.wall_speed_retention_timer, 0.0);
@@ -1403,11 +1876,23 @@ fn dash_into_a_ledge_just_below_its_top_pops_up_onto_it() {
 fn dash_corner_correction_reaches_four_pixels() {
     let mut s = dashing_at(PIT_X, FLOOR_Y + 4, -240.0, 0.0);
     move_h(&mut s, &room(), -3.0, false);
-    assert_eq!(s.position, IVec2 { x: PIT_X - 1, y: FLOOR_Y });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: PIT_X - 1,
+            y: FLOOR_Y
+        }
+    );
 
     let mut s = dashing_at(PIT_X, FLOOR_Y + 5, -240.0, 0.0);
     move_h(&mut s, &room(), -3.0, false);
-    assert_eq!(s.position, IVec2 { x: PIT_X, y: FLOOR_Y + 5 });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: PIT_X,
+            y: FLOOR_Y + 5
+        }
+    );
     assert_eq!(s.speed.x, 0.0);
 }
 
@@ -1415,7 +1900,13 @@ fn dash_corner_correction_reaches_four_pixels() {
 fn dash_corner_correction_needs_a_dash() {
     let mut s = player_at(PIT_X, FLOOR_Y + 2, -240.0, 0.0);
     move_h(&mut s, &room(), -3.0, false);
-    assert_eq!(s.position, IVec2 { x: PIT_X, y: FLOOR_Y + 2 });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: PIT_X,
+            y: FLOOR_Y + 2
+        }
+    );
     assert_eq!(s.speed.x, 0.0);
 }
 
@@ -1423,7 +1914,13 @@ fn dash_corner_correction_needs_a_dash() {
 fn dash_corner_correction_needs_a_level_dash() {
     let mut s = dashing_at(PIT_X, FLOOR_Y + 2, -170.0, -170.0);
     move_h(&mut s, &room(), -3.0, false);
-    assert_eq!(s.position, IVec2 { x: PIT_X, y: FLOOR_Y + 2 });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: PIT_X,
+            y: FLOOR_Y + 2
+        }
+    );
     assert_eq!(s.speed.x, 0.0);
 }
 
@@ -1433,7 +1930,11 @@ fn duck_free_at_checks_the_ducking_hitbox() {
     let s = player_at(20, FLOOR_Y, 0.0, 0.0);
     assert!(duck_free_at(&s, &room, 1));
     assert!(collides(&s, &room, 1, 0));
-    assert!(!duck_free_at(&player_at(20, FLOOR_Y - 4, 0.0, 0.0), &room, 1));
+    assert!(!duck_free_at(
+        &player_at(20, FLOOR_Y - 4, 0.0, 0.0),
+        &room,
+        1
+    ));
 }
 
 #[test]
@@ -1466,7 +1967,13 @@ fn air_dash_down_onto_a_ledge_edge_slips_off() {
     let mut s = air_dashing_down_at(LEDGE_X - 1, 0.0);
     s.remainder.y = 0.25;
     move_v(&mut s, &room(), 4.0);
-    assert_eq!(s.position, IVec2 { x: LEDGE_X + 1, y: FLOOR_Y + 1 });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: LEDGE_X + 1,
+            y: FLOOR_Y + 1
+        }
+    );
     assert_eq!(s.speed.y, 240.0);
     assert_eq!(s.remainder.y, 0.0);
 }
@@ -1475,11 +1982,23 @@ fn air_dash_down_onto_a_ledge_edge_slips_off() {
 fn downward_corner_correction_reaches_four_pixels() {
     let mut s = air_dashing_down_at(LEDGE_X - 3, 0.0);
     move_v(&mut s, &room(), 4.0);
-    assert_eq!(s.position, IVec2 { x: LEDGE_X + 1, y: FLOOR_Y + 1 });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: LEDGE_X + 1,
+            y: FLOOR_Y + 1
+        }
+    );
 
     let mut s = air_dashing_down_at(LEDGE_X - 4, 0.0);
     move_v(&mut s, &room(), 4.0);
-    assert_eq!(s.position, IVec2 { x: LEDGE_X - 4, y: FLOOR_Y });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: LEDGE_X - 4,
+            y: FLOOR_Y
+        }
+    );
     assert_eq!(s.speed.y, 0.0);
 }
 
@@ -1487,11 +2006,23 @@ fn downward_corner_correction_reaches_four_pixels() {
 fn downward_corner_correction_only_slips_the_way_she_is_moving() {
     let mut s = air_dashing_down_at(LEDGE_X - 1, -10.0);
     move_v(&mut s, &room(), 4.0);
-    assert_eq!(s.position, IVec2 { x: LEDGE_X - 1, y: FLOOR_Y });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: LEDGE_X - 1,
+            y: FLOOR_Y
+        }
+    );
 
     let mut s = air_dashing_down_at(LEDGE_X - 1, 10.0);
     move_v(&mut s, &room(), 4.0);
-    assert_eq!(s.position, IVec2 { x: LEDGE_X + 1, y: FLOOR_Y + 1 });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: LEDGE_X + 1,
+            y: FLOOR_Y + 1
+        }
+    );
 }
 
 #[test]
@@ -1499,11 +2030,23 @@ fn downward_corner_correction_not_for_ground_dashes_or_falls() {
     let mut s = air_dashing_down_at(LEDGE_X - 1, 0.0);
     s.dash_started_on_ground = true;
     move_v(&mut s, &room(), 4.0);
-    assert_eq!(s.position, IVec2 { x: LEDGE_X - 1, y: FLOOR_Y });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: LEDGE_X - 1,
+            y: FLOOR_Y
+        }
+    );
 
     let mut s = player_at(LEDGE_X - 1, FLOOR_Y - 1, 0.0, 240.0);
     move_v(&mut s, &room(), 4.0);
-    assert_eq!(s.position, IVec2 { x: LEDGE_X - 1, y: FLOOR_Y });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: LEDGE_X - 1,
+            y: FLOOR_Y
+        }
+    );
     assert_eq!(s.speed.y, 0.0);
 }
 
@@ -1514,7 +2057,13 @@ fn landing_after_a_down_diagonal_dash_slides() {
     s.dash_dir = Vec2 { x: d, y: d };
     move_v(&mut s, &room(), 4.0);
     assert_eq!(s.position.y, FLOOR_Y);
-    assert_eq!(s.speed, Vec2 { x: 100.0 * DODGE_SLIDE_SPEED_MULT, y: 0.0 });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: 100.0 * DODGE_SLIDE_SPEED_MULT,
+            y: 0.0
+        }
+    );
     assert_eq!(s.dash_dir, Vec2 { x: 1.0, y: 0.0 });
     assert!(s.ducking);
 }
@@ -1528,7 +2077,15 @@ fn landing_after_a_straight_down_dash_does_not_slide() {
     assert!(!s.ducking);
 }
 
-const JUMP: Input = Input { move_x: 0, move_y: 0, jump: true, jump2: false, dash: false, grab: false, crouch_dash: false };
+const JUMP: Input = Input {
+    move_x: 0,
+    move_y: 0,
+    jump: true,
+    jump2: false,
+    dash: false,
+    grab: false,
+    crouch_dash: false,
+};
 
 // just after a dash straight up
 fn bouncing_at(x: i32) -> PlayerState {
@@ -1544,7 +2101,13 @@ fn super_wall_jump_is_faster_and_higher_than_a_jump() {
     s.ducking = true;
     s.auto_jump = true;
     super_wall_jump(&mut s, 1);
-    assert_eq!(s.speed, Vec2 { x: SUPER_WALL_JUMP_H, y: SUPER_WALL_JUMP_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: SUPER_WALL_JUMP_H,
+            y: SUPER_WALL_JUMP_SPEED
+        }
+    );
     assert_eq!(s.var_jump_speed, SUPER_WALL_JUMP_SPEED);
     assert_eq!(s.var_jump_timer, SUPER_WALL_JUMP_VAR_TIME);
     assert_eq!(s.dash_attack_timer, 0.0);
@@ -1558,13 +2121,18 @@ fn wall_jump_check_reaches_further_for_a_wall_bounce() {
     let room = room();
     assert!(wall_jump_check(&bouncing_at(WALL_X - 4), &room, 1));
     assert!(!wall_jump_check(&bouncing_at(WALL_X - 5), &room, 1));
-    assert!(!wall_jump_check(&player_at(WALL_X - 4, 100, 0.0, 0.0), &room, 1));
+    assert!(!wall_jump_check(
+        &player_at(WALL_X - 4, 100, 0.0, 0.0),
+        &room,
+        1
+    ));
 }
 
 #[test]
 fn wall_jump_check_is_short_again_when_the_wall_has_spikes() {
     let mut room = room();
-    room.spikes.push(Spikes::new(Direction::Left, WALL_X + 4, 88, 16));
+    room.spikes
+        .push(Spikes::new(Direction::Left, WALL_X + 4, 88, 16));
     assert!(!wall_jump_check(&bouncing_at(WALL_X - 4), &room, 1));
     assert!(wall_jump_check(&bouncing_at(WALL_X - 2), &room, 1));
 }
@@ -1600,10 +2168,22 @@ fn jumps_and_collisions_end_the_dash_attack() {
 #[test]
 fn step_wall_bounce_after_an_upward_dash() {
     let s = step(bouncing_at(WALL_X - 4), JUMP, &room());
-    assert_eq!(s.speed, Vec2 { x: -SUPER_WALL_JUMP_H, y: SUPER_WALL_JUMP_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: -SUPER_WALL_JUMP_H,
+            y: SUPER_WALL_JUMP_SPEED
+        }
+    );
 
     let s = step(bouncing_at(LEFT_WALL_X + 4), JUMP, &left_wall_room());
-    assert_eq!(s.speed, Vec2 { x: SUPER_WALL_JUMP_H, y: SUPER_WALL_JUMP_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: SUPER_WALL_JUMP_H,
+            y: SUPER_WALL_JUMP_SPEED
+        }
+    );
 }
 
 #[test]
@@ -1613,7 +2193,13 @@ fn step_wall_bounce_during_an_upward_dash_ignores_grab() {
     s.mode = Mode::Dashing { timer: 0.1 };
     s = step(s, JUMP_GRAB, &room());
     assert_eq!(s.mode, Mode::Normal);
-    assert_eq!(s.speed, Vec2 { x: -SUPER_WALL_JUMP_H, y: SUPER_WALL_JUMP_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: -SUPER_WALL_JUMP_H,
+            y: SUPER_WALL_JUMP_SPEED
+        }
+    );
     assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
 }
 
@@ -1641,7 +2227,13 @@ fn wall_jump_pushes_off_the_wall() {
     s.dash_attack_timer = 0.2;
     s.auto_jump = true;
     wall_jump(&mut s, &room(), -1, 0);
-    assert_eq!(s.speed, Vec2 { x: -WALL_JUMP_H_SPEED, y: JUMP_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: -WALL_JUMP_H_SPEED,
+            y: JUMP_SPEED
+        }
+    );
     assert_eq!(s.var_jump_speed, JUMP_SPEED);
     assert_eq!(s.var_jump_timer, VAR_JUMP_TIME);
     assert_eq!(s.mode, Mode::Normal);
@@ -1665,11 +2257,27 @@ fn wall_jump_forces_her_direction_only_if_one_is_held() {
 #[test]
 fn step_wall_jumps_without_grab() {
     let s = step(player_at(WALL_X - 2, 100, 0.0, 30.0), JUMP, &room());
-    assert_eq!(s.speed, Vec2 { x: -WALL_JUMP_H_SPEED, y: JUMP_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: -WALL_JUMP_H_SPEED,
+            y: JUMP_SPEED
+        }
+    );
     assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
 
-    let s = step(player_at(LEFT_WALL_X + 2, 100, 0.0, 30.0), JUMP, &left_wall_room());
-    assert_eq!(s.speed, Vec2 { x: WALL_JUMP_H_SPEED, y: JUMP_SPEED });
+    let s = step(
+        player_at(LEFT_WALL_X + 2, 100, 0.0, 30.0),
+        JUMP,
+        &left_wall_room(),
+    );
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: WALL_JUMP_H_SPEED,
+            y: JUMP_SPEED
+        }
+    );
 }
 
 #[test]
@@ -1695,7 +2303,13 @@ fn step_wall_jumps_out_of_a_sideways_dash() {
     s.facing = -1;
     s = step(s, JUMP, &room());
     assert_eq!(s.mode, Mode::Normal);
-    assert_eq!(s.speed, Vec2 { x: -WALL_JUMP_H_SPEED, y: JUMP_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: -WALL_JUMP_H_SPEED,
+            y: JUMP_SPEED
+        }
+    );
 }
 
 #[test]
@@ -1704,9 +2318,23 @@ fn step_forced_direction_overrides_her_input() {
     s.facing = -1;
     s.force_move_x = -1;
     s.force_move_x_timer = 0.1;
-    s = step(s, Input { move_x: 1, ..Input::default() }, &room());
+    s = step(
+        s,
+        Input {
+            move_x: 1,
+            ..Input::default()
+        },
+        &room(),
+    );
     assert_eq!(s.facing, -1);
-    assert_eq!(s.speed.x, approach(-WALL_JUMP_H_SPEED, -MAX_RUN, RUN_REDUCE * DELTA_TIME * AIR_MULT));
+    assert_eq!(
+        s.speed.x,
+        approach(
+            -WALL_JUMP_H_SPEED,
+            -MAX_RUN,
+            RUN_REDUCE * DELTA_TIME * AIR_MULT
+        )
+    );
     assert_eq!(s.force_move_x_timer, 0.1 - DELTA_TIME);
 }
 
@@ -1715,7 +2343,10 @@ fn step_forced_direction_runs_out() {
     let mut s = player_at(40, 100, 0.0, -100.0);
     s.force_move_x = -1;
     s.force_move_x_timer = 0.01;
-    let right = Input { move_x: 1, ..Input::default() };
+    let right = Input {
+        move_x: 1,
+        ..Input::default()
+    };
     s = step(s, right, &room());
     assert_eq!(s.facing, -1);
     s = step(s, right, &room());
@@ -1727,7 +2358,11 @@ fn step_forced_direction_does_not_change_the_dash_aim() {
     let mut s = player_at(40, 100, -WALL_JUMP_H_SPEED, -100.0);
     s.force_move_x = -1;
     s.force_move_x_timer = 0.16;
-    let right_dash = Input { move_x: 1, dash: true, ..Input::default() };
+    let right_dash = Input {
+        move_x: 1,
+        dash: true,
+        ..Input::default()
+    };
     let s = dash_for(s, 5, right_dash);
     assert_eq!(s.speed.x, DASH_SPEED);
 }
@@ -1735,7 +2370,14 @@ fn step_forced_direction_does_not_change_the_dash_aim() {
 #[test]
 fn track_buttons_remembers_what_is_down() {
     let mut s = standing();
-    track_buttons(&mut s, Input { jump2: true, dash: true, ..Input::default() });
+    track_buttons(
+        &mut s,
+        Input {
+            jump2: true,
+            dash: true,
+            ..Input::default()
+        },
+    );
     assert!(!s.jump_held);
     assert!(s.jump2_held);
     assert!(s.dash_held);
@@ -1750,7 +2392,8 @@ const PLATFORM_Y: i32 = 120;
 
 fn platform_room() -> Room {
     let mut room = room();
-    room.jump_thrus.push(crate::entities::JumpThru::new(40, PLATFORM_Y, 40));
+    room.jump_thrus
+        .push(crate::entities::JumpThru::new(40, PLATFORM_Y, 40));
     room
 }
 
@@ -1764,7 +2407,10 @@ fn standing_on_a_jump_thru_is_on_the_ground() {
 
 #[test]
 fn inside_a_jump_thru_is_not_on_the_ground() {
-    assert!(!on_ground(&player_at(60, PLATFORM_Y + 2, 0.0, 0.0), &platform_room()));
+    assert!(!on_ground(
+        &player_at(60, PLATFORM_Y + 2, 0.0, 0.0),
+        &platform_room()
+    ));
 }
 
 #[test]
@@ -1809,7 +2455,10 @@ fn step_rising_through_a_jump_thru_is_pushed_up() {
     let with = step(start, Input::default(), &platform_room());
     let without = step(start, Input::default(), &room());
     let push = exact_y(&with) - exact_y(&without);
-    assert!((push - JUMP_THRU_ASSIST_SPEED * DELTA_TIME).abs() < 1e-4, "pushed {push}");
+    assert!(
+        (push - JUMP_THRU_ASSIST_SPEED * DELTA_TIME).abs() < 1e-4,
+        "pushed {push}"
+    );
 }
 
 #[test]
@@ -1827,7 +2476,13 @@ fn step_stands_on_a_jump_thru() {
     for _ in 0..10 {
         s = step(s, Input::default(), &room);
     }
-    assert_eq!(s.position, IVec2 { x: 60, y: PLATFORM_Y });
+    assert_eq!(
+        s.position,
+        IVec2 {
+            x: 60,
+            y: PLATFORM_Y
+        }
+    );
     assert_eq!(s.jump_grace_timer, JUMP_GRACE_TIME);
 }
 
@@ -1865,8 +2520,15 @@ fn dash_up_through_a_jump_thru_is_not_lifted() {
     assert_eq!(with.position.y, PLATFORM_Y + 4 - 5);
 }
 
-const CROUCH_DASH: Input =
-    Input { move_x: 0, move_y: 0, jump: false, jump2: false, dash: false, grab: false, crouch_dash: true };
+const CROUCH_DASH: Input = Input {
+    move_x: 0,
+    move_y: 0,
+    jump: false,
+    jump2: false,
+    dash: false,
+    grab: false,
+    crouch_dash: true,
+};
 
 #[test]
 fn dash_begin_from_the_crouch_dash_button_ducks() {
@@ -1890,15 +2552,45 @@ fn step_crouch_dash_starts_a_ducked_dash() {
 
 #[test]
 fn step_crouch_dash_goes_the_way_she_aims() {
-    let s = dash_for(standing(), 5, Input { move_x: 1, ..CROUCH_DASH });
-    assert_eq!(s.speed, Vec2 { x: DASH_SPEED, y: 0.0 });
+    let s = dash_for(
+        standing(),
+        5,
+        Input {
+            move_x: 1,
+            ..CROUCH_DASH
+        },
+    );
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: DASH_SPEED,
+            y: 0.0
+        }
+    );
     assert!(s.ducking);
 }
 
 #[test]
 fn step_crouch_dash_then_jump_is_a_hyper() {
-    let s = step(dash_for(standing(), 5, Input { move_x: 1, ..CROUCH_DASH }), JUMP_RIGHT, &room());
-    assert_eq!(s.speed, Vec2 { x: SUPER_JUMP_H * DUCK_SUPER_JUMP_X_MULT, y: JUMP_SPEED * DUCK_SUPER_JUMP_Y_MULT });
+    let s = step(
+        dash_for(
+            standing(),
+            5,
+            Input {
+                move_x: 1,
+                ..CROUCH_DASH
+            },
+        ),
+        JUMP_RIGHT,
+        &room(),
+    );
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: SUPER_JUMP_H * DUCK_SUPER_JUMP_X_MULT,
+            y: JUMP_SPEED * DUCK_SUPER_JUMP_Y_MULT
+        }
+    );
     assert!(!s.ducking);
 }
 
@@ -1915,7 +2607,14 @@ fn step_holding_the_crouch_dash_button_does_not_dash_again() {
 fn step_normal_dash_while_crouch_dash_is_held_does_not_duck() {
     let mut s = standing();
     s.crouch_dash_held = true;
-    s = step(s, Input { dash: true, ..CROUCH_DASH }, &room());
+    s = step(
+        s,
+        Input {
+            dash: true,
+            ..CROUCH_DASH
+        },
+        &room(),
+    );
     assert_eq!(s.mode, Mode::DashStart);
     assert!(!s.ducking);
 }
@@ -1927,9 +2626,24 @@ fn lifted(mut s: PlayerState, x: f32, y: f32) -> PlayerState {
 
 #[test]
 fn lift_boost_is_capped_and_never_downward() {
-    assert_eq!(lift_boost(&lifted(standing(), 100.0, -60.0)), Vec2 { x: 100.0, y: -60.0 });
-    assert_eq!(lift_boost(&lifted(standing(), 400.0, -300.0)), Vec2 { x: LIFT_X_CAP, y: LIFT_Y_CAP });
-    assert_eq!(lift_boost(&lifted(standing(), -400.0, 80.0)), Vec2 { x: -LIFT_X_CAP, y: 0.0 });
+    assert_eq!(
+        lift_boost(&lifted(standing(), 100.0, -60.0)),
+        Vec2 { x: 100.0, y: -60.0 }
+    );
+    assert_eq!(
+        lift_boost(&lifted(standing(), 400.0, -300.0)),
+        Vec2 {
+            x: LIFT_X_CAP,
+            y: LIFT_Y_CAP
+        }
+    );
+    assert_eq!(
+        lift_boost(&lifted(standing(), -400.0, 80.0)),
+        Vec2 {
+            x: -LIFT_X_CAP,
+            y: 0.0
+        }
+    );
     assert_eq!(lift_boost(&standing()), Vec2 { x: 0.0, y: 0.0 });
 }
 
@@ -1937,20 +2651,44 @@ fn lift_boost_is_capped_and_never_downward() {
 fn jumps_add_lift_boost() {
     let mut s = lifted(standing(), 50.0, -70.0);
     jump(&mut s, Input::default());
-    assert_eq!(s.speed, Vec2 { x: 50.0, y: JUMP_SPEED - 70.0 });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: 50.0,
+            y: JUMP_SPEED - 70.0
+        }
+    );
     assert_eq!(s.var_jump_speed, JUMP_SPEED - 70.0);
 
     let mut s = lifted(dashing_right(), 0.0, -70.0);
     super_jump(&mut s);
-    assert_eq!(s.speed, Vec2 { x: SUPER_JUMP_H, y: JUMP_SPEED - 70.0 });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: SUPER_JUMP_H,
+            y: JUMP_SPEED - 70.0
+        }
+    );
 
     let mut s = lifted(player_at(WALL_X, 100, 0.0, 0.0), 0.0, -70.0);
     wall_jump(&mut s, &room(), -1, 0);
-    assert_eq!(s.speed, Vec2 { x: -WALL_JUMP_H_SPEED, y: JUMP_SPEED - 70.0 });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: -WALL_JUMP_H_SPEED,
+            y: JUMP_SPEED - 70.0
+        }
+    );
 
     let mut s = lifted(bouncing_at(WALL_X), 0.0, -70.0);
     super_wall_jump(&mut s, -1);
-    assert_eq!(s.speed, Vec2 { x: -SUPER_WALL_JUMP_H, y: SUPER_WALL_JUMP_SPEED - 70.0 });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: -SUPER_WALL_JUMP_H,
+            y: SUPER_WALL_JUMP_SPEED - 70.0
+        }
+    );
 }
 
 #[test]
@@ -1996,7 +2734,8 @@ fn step_remembers_whether_she_was_on_the_ground() {
 #[test]
 fn wall_jump_takes_lift_from_a_moving_wall_on_her_right() {
     let mut room = room();
-    room.zip_movers.push(crate::entities::ZipMover::new(60, 80, 16, 40, 60, 0));
+    room.zip_movers
+        .push(crate::entities::ZipMover::new(60, 80, 16, 40, 60, 0));
     room.zip_movers[0].lift_speed = Vec2 { x: 0.0, y: -90.0 };
 
     let mut s = player_at(54, 100, 0.0, 0.0);
@@ -2045,7 +2784,13 @@ fn super_bounce_launches_her_straight_up() {
     s.stamina = 20.0;
     s.dash_attack_timer = 0.2;
     super_bounce(&mut s, &spring_room(), FLOOR_Y - 6);
-    assert_eq!(s.speed, Vec2 { x: 0.0, y: SUPER_BOUNCE_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: 0.0,
+            y: SUPER_BOUNCE_SPEED
+        }
+    );
     assert_eq!(s.var_jump_speed, SUPER_BOUNCE_SPEED);
     assert_eq!(s.var_jump_timer, SUPER_BOUNCE_VAR_JUMP_TIME);
     assert_eq!(s.mode, Mode::Normal);
@@ -2067,8 +2812,18 @@ fn super_bounce_lifts_her_to_the_springs_top_and_keeps_her_remainder() {
 
 #[test]
 fn step_landing_on_a_spring_bounces() {
-    let s = step(player_at(20, FLOOR_Y - 4, 0.0, 120.0), Input::default(), &spring_room());
-    assert_eq!(s.speed, Vec2 { x: 0.0, y: SUPER_BOUNCE_SPEED });
+    let s = step(
+        player_at(20, FLOOR_Y - 4, 0.0, 120.0),
+        Input::default(),
+        &spring_room(),
+    );
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: 0.0,
+            y: SUPER_BOUNCE_SPEED
+        }
+    );
     assert_eq!(s.position.y, FLOOR_Y - 6);
     assert!(!s.dead);
 }
@@ -2077,32 +2832,53 @@ fn step_landing_on_a_spring_bounces() {
 fn step_running_into_a_spring_bounces() {
     let room = spring_room();
     let mut s = standing();
-    let right = Input { move_x: 1, ..Input::default() };
+    let right = Input {
+        move_x: 1,
+        ..Input::default()
+    };
     let mut frames = 0;
     while s.speed.y == 0.0 && frames < 30 {
         s = step(s, right, &room);
         frames += 1;
     }
-    assert_eq!(s.speed, Vec2 { x: 0.0, y: SUPER_BOUNCE_SPEED });
+    assert_eq!(
+        s.speed,
+        Vec2 {
+            x: 0.0,
+            y: SUPER_BOUNCE_SPEED
+        }
+    );
 }
 
 #[test]
 fn step_rising_past_a_spring_does_not_bounce() {
-    let s = step(player_at(20, FLOOR_Y - 2, 0.0, -100.0), Input::default(), &spring_room());
+    let s = step(
+        player_at(20, FLOOR_Y - 2, 0.0, -100.0),
+        Input::default(),
+        &spring_room(),
+    );
     assert!(s.speed.y > SUPER_BOUNCE_SPEED);
     assert_eq!(s.var_jump_timer, 0.0);
 }
 
 #[test]
 fn step_no_bounce_beside_a_spring() {
-    let s = step(player_at(34, FLOOR_Y - 4, 0.0, 120.0), Input::default(), &spring_room());
+    let s = step(
+        player_at(34, FLOOR_Y - 4, 0.0, 120.0),
+        Input::default(),
+        &spring_room(),
+    );
     assert!(s.speed.y >= 0.0);
 }
 
 #[test]
 fn step_spring_bounce_holds_its_height_without_jump_held() {
     let room = spring_room();
-    let mut s = step(player_at(20, FLOOR_Y - 4, 0.0, 120.0), Input::default(), &room);
+    let mut s = step(
+        player_at(20, FLOOR_Y - 4, 0.0, 120.0),
+        Input::default(),
+        &room,
+    );
     for _ in 0..5 {
         s = step(s, Input::default(), &room);
     }
@@ -2185,7 +2961,14 @@ fn no_wall_slide_while_holding_down() {
 #[test]
 fn wall_slide_with_grab_held_and_no_direction() {
     let mut s = player_at(WALL_X, 100, 0.0, 50.0);
-    let max = wall_slide_max_fall(&mut s, &room(), Input { grab: true, ..Input::default() });
+    let max = wall_slide_max_fall(
+        &mut s,
+        &room(),
+        Input {
+            grab: true,
+            ..Input::default()
+        },
+    );
     assert_eq!(s.wall_slide_dir, 1);
     assert_eq!(max, WALL_SLIDE_START_MAX);
 }
@@ -2194,7 +2977,14 @@ fn wall_slide_with_grab_held_and_no_direction() {
 fn wall_slide_stands_her_up() {
     let mut s = ducking_at(WALL_X, 100);
     s.speed.y = 50.0;
-    wall_slide_max_fall(&mut s, &room(), Input { move_x: 1, ..Input::default() });
+    wall_slide_max_fall(
+        &mut s,
+        &room(),
+        Input {
+            move_x: 1,
+            ..Input::default()
+        },
+    );
     assert!(!s.ducking);
 }
 
@@ -2202,11 +2992,27 @@ fn wall_slide_stands_her_up() {
 fn dead_player_does_not_change() {
     let mut before = standing();
     before.dead = true;
-    let after = step(before, Input { move_x: 1, jump: true, ..Default::default() }, &room());
+    let after = step(
+        before,
+        Input {
+            move_x: 1,
+            jump: true,
+            ..Default::default()
+        },
+        &room(),
+    );
     assert_eq!(after, before);
 }
 
-const GRAB: Input = Input { move_x: 0, move_y: 0, jump: false, jump2: false, dash: false, grab: true, crouch_dash: false };
+const GRAB: Input = Input {
+    move_x: 0,
+    move_y: 0,
+    jump: false,
+    jump2: false,
+    dash: false,
+    grab: true,
+    crouch_dash: false,
+};
 const GRAB_UP: Input = Input { move_y: -1, ..GRAB };
 const GRAB_DOWN: Input = Input { move_y: 1, ..GRAB };
 
@@ -2220,7 +3026,15 @@ fn climbing(y: i32) -> PlayerState {
 
 // a wall on the right whose rows are solid only where the flag says. tiles are 8 px
 fn partial_wall(solid_rows: std::ops::Range<usize>) -> Room {
-    let text: String = (0..23).map(|row| if solid_rows.contains(&row) { "00000000001\n" } else { "00000000000\n" }).collect();
+    let text: String = (0..23)
+        .map(|row| {
+            if solid_rows.contains(&row) {
+                "00000000001\n"
+            } else {
+                "00000000000\n"
+            }
+        })
+        .collect();
     Room::from_tiles(IVec2 { x: 0, y: 0 }, &text)
 }
 
@@ -2362,7 +3176,8 @@ fn holding_still_costs_a_little_stamina() {
 #[test]
 fn a_ceiling_stops_her_climbing_up() {
     let mut room = room();
-    room.dash_blocks.push(crate::entities::DashBlock::new(64, 80, 16, 9));
+    room.dash_blocks
+        .push(crate::entities::DashBlock::new(64, 80, 16, 9));
     let s = step(climbing(100), GRAB_UP, &room);
 
     assert_eq!(s.speed.y, 0.0);
@@ -2393,7 +3208,10 @@ fn jumping_while_climbing_is_a_climb_jump() {
 
 #[test]
 fn jumping_away_while_climbing_is_a_wall_jump() {
-    let away = Input { move_x: -1, ..JUMP_GRAB };
+    let away = Input {
+        move_x: -1,
+        ..JUMP_GRAB
+    };
     let s = step(climbing(100), away, &room());
 
     assert_eq!(s.mode, Mode::Normal);
@@ -2422,7 +3240,10 @@ fn leaving_a_climb_drops_any_retained_wall_speed() {
     s.wall_speed_retained = 100.0;
     s.wall_speed_retention_timer = WALL_SPEED_RETENTION_TIME;
 
-    assert_eq!(step(s, Input::default(), &room()).wall_speed_retention_timer, 0.0);
+    assert_eq!(
+        step(s, Input::default(), &room()).wall_speed_retention_timer,
+        0.0
+    );
 }
 
 #[test]
@@ -2447,7 +3268,12 @@ fn she_slips_down_when_her_hands_are_above_the_wall() {
 
 #[test]
 fn climbing_rides_the_block_in_front_of_her() {
-    let beside = Rect { left: 80, top: 80, width: 16, height: 40 };
+    let beside = Rect {
+        left: 80,
+        top: 80,
+        width: 16,
+        height: 40,
+    };
     assert!(is_riding(&climbing(100), &beside));
     assert!(!is_riding(&player_at(WALL_X, 100, 0.0, 0.0), &beside));
 }
@@ -2518,7 +3344,14 @@ fn dashing_cancels_the_wait_for_the_sideways_push() {
     let mut s = player_at(WALL_X, 100, 0.0, -50.0);
     s.hop_wait_x = 1;
     s.hop_wait_x_speed = CLIMB_HOP_X;
-    s = step(s, Input { dash: true, ..Input::default() }, &room());
+    s = step(
+        s,
+        Input {
+            dash: true,
+            ..Input::default()
+        },
+        &room(),
+    );
 
     assert_eq!(s.mode, Mode::DashStart);
     assert_eq!(s.hop_wait_x, 0);
@@ -2527,11 +3360,16 @@ fn dashing_cancels_the_wait_for_the_sideways_push() {
 #[test]
 fn a_hop_follows_the_moving_block_she_is_hopping_onto() {
     let mut room = room();
-    room.zip_movers.push(crate::entities::ZipMover::new(40, 60, 16, 16, 40, 20));
+    room.zip_movers
+        .push(crate::entities::ZipMover::new(40, 60, 16, 16, 40, 20));
 
     // the block was 2 px lower when she last looked
     let mut s = player_at(20, 100, 0.0, 0.0);
-    s.climb_hop_solid = Some(HopSolid { kind: MovingSolid::ZipMover, index: 0, position: IVec2 { x: 40, y: 62 } });
+    s.climb_hop_solid = Some(HopSolid {
+        kind: MovingSolid::ZipMover,
+        index: 0,
+        position: IVec2 { x: 40, y: 62 },
+    });
     s.force_move_x_timer = CLIMB_HOP_FORCE_TIME;
     s = step(s, Input::default(), &room);
 
@@ -2542,10 +3380,15 @@ fn a_hop_follows_the_moving_block_she_is_hopping_onto() {
 #[test]
 fn she_stops_following_the_block_when_the_hop_lock_ends() {
     let mut room = room();
-    room.zip_movers.push(crate::entities::ZipMover::new(40, 60, 16, 16, 40, 20));
+    room.zip_movers
+        .push(crate::entities::ZipMover::new(40, 60, 16, 16, 40, 20));
 
     let mut s = player_at(20, 100, 0.0, 0.0);
-    s.climb_hop_solid = Some(HopSolid { kind: MovingSolid::ZipMover, index: 0, position: IVec2 { x: 40, y: 62 } });
+    s.climb_hop_solid = Some(HopSolid {
+        kind: MovingSolid::ZipMover,
+        index: 0,
+        position: IVec2 { x: 40, y: 62 },
+    });
     s = step(s, Input::default(), &room);
 
     assert_eq!(s.position.y, 100);

@@ -37,6 +37,20 @@ pub const WALL_JUMP_CHECK_DIST: i32 = 3;
 pub const WALL_SPEED_RETENTION_TIME: f32 = 0.06;
 pub const WALL_JUMP_H_SPEED: f32 = MAX_RUN + JUMP_H_BOOST;
 pub const CLIMB_JUMP_BOOST_TIME: f32 = 0.2;
+// how far in front of her a wall can be grabbed
+pub const CLIMB_CHECK_DIST: i32 = 2;
+// grabbing reaches this far up for a wall that starts above her
+pub const CLIMB_UP_CHECK_DIST: i32 = 2;
+pub const CLIMB_GRAB_Y_MULT: f32 = 0.2;
+pub const CLIMB_NO_MOVE_TIME: f32 = 0.1;
+pub const CLIMB_UP_SPEED: f32 = -45.0;
+pub const CLIMB_DOWN_SPEED: f32 = 80.0;
+pub const CLIMB_SLIP_SPEED: f32 = 30.0;
+pub const CLIMB_ACCEL: f32 = 900.0;
+pub const CLIMB_UP_COST: f32 = 45.454544;
+pub const CLIMB_STILL_COST: f32 = 10.0;
+// a ceiling this close stops her climbing over a ledge
+pub const CLIMB_HOP_BLOCK_DIST: i32 = 6;
 pub const UPWARD_CORNER_CORRECTION: i32 = 5;
 pub const DASH_CORNER_CORRECTION: i32 = 4;
 pub const DASH_ATTACK_TIME: f32 = 0.3;
@@ -78,6 +92,7 @@ pub struct IVec2 {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Mode {
     Normal,
+    Climb,
     DashStart,
     Dashing { timer: f32 },
 }
@@ -99,6 +114,10 @@ pub struct PlayerState {
     pub wall_slide_dir: i8,
     // the side she is holding on to while sliding down a wall with grab held
     pub climb_trigger_dir: i8,
+    // she can't move along the wall for a moment after grabbing it
+    pub climb_no_move_timer: f32,
+    // -1 = climbing up, 1 = down, 0 = holding still
+    pub last_climb_move: i8,
     // her current top fall speed, between MAX_FALL and FAST_MAX_FALL
     pub max_fall: f32,
     pub stamina: f32,
@@ -149,6 +168,8 @@ impl PlayerState {
             wall_slide_timer: WALL_SLIDE_TIME,
             wall_slide_dir: 0,
             climb_trigger_dir: 0,
+            climb_no_move_timer: 0.0,
+            last_climb_move: 0,
             max_fall: MAX_FALL,
             stamina: CLIMB_MAX_STAMINA,
             ducking: false,
@@ -296,6 +317,8 @@ pub fn floor_below(state: &PlayerState, room: &Room, dx: i32) -> bool {
 pub fn is_riding(state: &PlayerState, solid: &Rect) -> bool {
     if state.dead {
         false
+    } else if state.mode == Mode::Climb {
+        hitbox(state, state.facing as i32, 0).overlaps(solid)
     } else if state.climb_trigger_dir != 0 {
         hitbox(state, state.climb_trigger_dir as i32, 0).overlaps(solid)
     } else {
@@ -788,6 +811,165 @@ pub fn climb_jump(state: &mut PlayerState, input: Input, ground: bool) {
     set_normal(state);
 }
 
+pub fn is_tired(state: &PlayerState) -> bool {
+    let stamina = if state.wall_boost_timer > 0.0 { state.stamina + CLIMB_JUMP_COST } else { state.stamina };
+
+    stamina < CLIMB_TIRED_THRESHOLD
+}
+
+pub fn climb_check(state: &PlayerState, room: &Room, dir: i8, dy: i32) -> bool {
+    let reach = dir as i32 * CLIMB_CHECK_DIST;
+    let her = hitbox(state, reach, 0);
+    let in_bounds = her.left >= room.bounds.left && her.right() < room.bounds.right();
+
+    in_bounds && collides(state, room, reach, dy)
+}
+
+pub fn try_grab(state: &mut PlayerState, room: &Room, input: Input) -> bool {
+    if !input.grab || is_tired(state) || state.ducking {
+        return false;
+    }
+    if state.speed.y < 0.0 || sign(state.speed.x) == -(state.facing as f32) {
+        return false;
+    }
+
+    if climb_check(state, room, state.facing, 0) {
+        climb_begin(state, room);
+        return true;
+    }
+
+    if input.move_y < 1 {
+        for up in 1..=CLIMB_UP_CHECK_DIST {
+            if !collides(state, room, 0, -up) && climb_check(state, room, state.facing, -up) {
+                move_exact_v(state, room, -up);
+                climb_begin(state, room);
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+pub fn climb_begin(state: &mut PlayerState, room: &Room) {
+    state.ducking = false;
+    state.auto_jump = false;
+    state.speed.x = 0.0;
+    state.speed.y *= CLIMB_GRAB_Y_MULT;
+    state.wall_slide_timer = WALL_SLIDE_TIME;
+    state.climb_no_move_timer = CLIMB_NO_MOVE_TIME;
+    state.wall_boost_timer = 0.0;
+    state.last_climb_move = 0;
+
+    // pull her against the wall
+    for _ in 0..CLIMB_CHECK_DIST {
+        if wall_at(state, room, state.facing) {
+            break;
+        }
+        state.position.x += state.facing as i32;
+    }
+
+    state.mode = Mode::Climb;
+}
+
+fn solid_at(room: &Room, x: i32, y: i32) -> bool {
+    room.collide_rect(x, y, 1, 1)
+}
+
+// her hands are above the top of the wall
+pub fn slip_check(state: &PlayerState, room: &Room, add_y: i32) -> bool {
+    let her = hitbox(state, 0, 0);
+    let x = if state.facing == 1 { her.right() } else { her.left - 1 };
+    let y = her.top + 4 + add_y;
+
+    !solid_at(room, x, y) && !solid_at(room, x, y - 4 + add_y)
+}
+
+fn climb_update(state: &mut PlayerState, room: &Room, input: Input, ground: bool, jump_pressed: bool, dash_pressed: bool, crouch: bool) {
+    state.climb_no_move_timer -= DELTA_TIME;
+
+    if ground {
+        state.stamina = CLIMB_MAX_STAMINA;
+    }
+
+    if jump_pressed && can_unduck(state, room) {
+        if input.move_x == -state.facing {
+            wall_jump(state, room, -state.facing, input.move_x);
+        } else {
+            climb_jump(state, input, ground);
+        }
+        return;
+    }
+
+    if can_dash(state, dash_pressed) {
+        add_lift_boost(state);
+        dash_begin(state, room, input, ground, crouch);
+        return;
+    }
+
+    if !input.grab {
+        add_lift_boost(state);
+        set_normal(state);
+        return;
+    }
+
+    if !wall_at(state, room, state.facing) {
+        // climbing past the top hops her over the ledge. that isn't simulated yet
+        set_normal(state);
+        return;
+    }
+
+    let can_move = state.climb_no_move_timer <= 0.0;
+    let mut target = 0.0;
+    let mut may_slip = !can_move || input.move_y == 0;
+
+    if can_move && input.move_y == -1 {
+        let hop_blocked = collides(state, room, 0, -CLIMB_HOP_BLOCK_DIST);
+
+        if collides(state, room, 0, -1) || (hop_blocked && slip_check(state, room, -1)) {
+            state.speed.y = state.speed.y.max(0.0);
+            may_slip = true;
+        } else if slip_check(state, room, 0) {
+            // same hop
+            set_normal(state);
+            return;
+        } else {
+            target = CLIMB_UP_SPEED;
+        }
+    } else if can_move && input.move_y == 1 {
+        if ground {
+            state.speed.y = state.speed.y.min(0.0);
+        } else {
+            target = CLIMB_DOWN_SPEED;
+        }
+    }
+
+    state.last_climb_move = sign(target) as i8;
+
+    if may_slip && slip_check(state, room, 0) {
+        target = CLIMB_SLIP_SPEED;
+    }
+    state.speed.y = approach(state.speed.y, target, CLIMB_ACCEL * DELTA_TIME);
+
+    // nothing to slide down
+    if input.move_y != 1 && state.speed.y > 0.0 && !collides(state, room, state.facing as i32, 1) {
+        state.speed.y = 0.0;
+    }
+
+    if can_move {
+        if state.last_climb_move == -1 {
+            state.stamina -= CLIMB_UP_COST * DELTA_TIME;
+        } else if state.last_climb_move == 0 {
+            state.stamina -= CLIMB_STILL_COST * DELTA_TIME;
+        }
+    }
+
+    if state.stamina <= 0.0 {
+        add_lift_boost(state);
+        set_normal(state);
+    }
+}
+
 pub fn update_wall_speed_retention(state: &mut PlayerState, room: &Room) {
     if state.wall_speed_retention_timer <= 0.0 {
         return;
@@ -963,11 +1145,14 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
         }
     }
 
-    if ground {
-        state.jump_grace_timer = JUMP_GRACE_TIME;
+    if ground && state.mode != Mode::Climb {
         state.wall_slide_timer = WALL_SLIDE_TIME;
         state.stamina = CLIMB_MAX_STAMINA;
         state.auto_jump = false;
+    }
+
+    if ground {
+        state.jump_grace_timer = JUMP_GRACE_TIME;
     } else if state.jump_grace_timer > 0.0 {
         state.jump_grace_timer -= DELTA_TIME;
     }
@@ -997,7 +1182,7 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
 
     state.move_x = input.move_x;
 
-    if input.move_x != 0 {
+    if input.move_x != 0 && state.mode != Mode::Climb {
         state.facing = input.move_x;
     }
     
@@ -1015,11 +1200,21 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
 
     match state.mode {
         Mode::Normal => {
-            if can_dash(&state, dash_pressed || crouch_dash_pressed) {
+            if try_grab(&mut state, room, input) {
+                // grabbed a wall
+            } else if can_dash(&state, dash_pressed || crouch_dash_pressed) {
                 add_lift_boost(&mut state);
                 dash_begin(&mut state, room, input, ground, crouch_dash_pressed);
             } else {
                 normal_update(&mut state, room, input, ground, jump_pressed);
+            }
+        }
+
+        Mode::Climb => {
+            climb_update(&mut state, room, input, ground, jump_pressed, dash_pressed || crouch_dash_pressed, crouch_dash_pressed);
+
+            if state.mode != Mode::Climb {
+                state.wall_speed_retention_timer = 0.0;
             }
         }
 
@@ -1055,7 +1250,8 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
         }
     }
 
-    if !ground && state.speed.y <= 0.0 && touches_jump_thru(&state, room, 0, 0) {
+    let climbing_still = state.mode == Mode::Climb && state.last_climb_move != -1;
+    if !ground && state.speed.y <= 0.0 && !climbing_still && touches_jump_thru(&state, room, 0, 0) {
         nudge_v(&mut state, room, JUMP_THRU_ASSIST_SPEED * DELTA_TIME);
     }
 
@@ -1997,7 +2193,7 @@ mod tests {
 
     #[test]
     fn step_climb_jumps_next_to_a_wall() {
-        let s = step(player_at(WALL_X, 100, 0.0, 30.0), JUMP_GRAB, &room());
+        let s = step(player_at(WALL_X, 100, 0.0, -30.0), JUMP_GRAB, &room());
         assert_eq!(s.speed.y, JUMP_SPEED);
         assert_eq!(s.stamina, CLIMB_MAX_STAMINA - CLIMB_JUMP_COST);
     }
@@ -3338,5 +3534,251 @@ mod tests {
         before.dead = true;
         let after = step(before, Input { move_x: 1, jump: true, ..Default::default() }, &room());
         assert_eq!(after, before);
+    }
+
+    const GRAB: Input = Input { move_x: 0, move_y: 0, jump: false, jump2: false, dash: false, grab: true, crouch_dash: false };
+    const GRAB_UP: Input = Input { move_y: -1, ..GRAB };
+    const GRAB_DOWN: Input = Input { move_y: 1, ..GRAB };
+
+    // holding the wall at WALL_X, free to move along it
+    fn climbing(y: i32) -> PlayerState {
+        let mut s = player_at(WALL_X, y, 0.0, 0.0);
+        s.facing = 1;
+        s.mode = Mode::Climb;
+        s
+    }
+
+    // a wall on the right whose rows are solid only where the flag says. tiles are 8 px
+    fn partial_wall(solid_rows: std::ops::Range<usize>) -> Room {
+        let text: String = (0..23).map(|row| if solid_rows.contains(&row) { "00000000001\n" } else { "00000000000\n" }).collect();
+        Room::from_tiles(IVec2 { x: 0, y: 0 }, &text)
+    }
+
+    #[test]
+    fn grabbing_a_wall_while_falling_starts_a_climb() {
+        let mut s = player_at(WALL_X, 100, 50.0, 30.0);
+        s.facing = 1;
+        s = step(s, GRAB, &room());
+
+        assert_eq!(s.mode, Mode::Climb);
+        assert_eq!(s.speed.x, 0.0);
+        assert_eq!(s.speed.y, 30.0 * CLIMB_GRAB_Y_MULT);
+        assert_eq!(s.climb_no_move_timer, CLIMB_NO_MOVE_TIME);
+    }
+
+    #[test]
+    fn no_grab_while_rising() {
+        let mut s = player_at(WALL_X, 100, 0.0, -30.0);
+        s.facing = 1;
+        assert_eq!(step(s, GRAB, &room()).mode, Mode::Normal);
+    }
+
+    #[test]
+    fn no_grab_without_the_button() {
+        let mut s = player_at(WALL_X, 100, 0.0, 30.0);
+        s.facing = 1;
+        assert_eq!(step(s, Input::default(), &room()).mode, Mode::Normal);
+    }
+
+    #[test]
+    fn no_grab_when_tired() {
+        let mut s = player_at(WALL_X, 100, 0.0, 30.0);
+        s.facing = 1;
+        s.stamina = CLIMB_TIRED_THRESHOLD - 1.0;
+        assert_eq!(step(s, GRAB, &room()).mode, Mode::Normal);
+    }
+
+    #[test]
+    fn a_pending_wall_boost_counts_towards_not_being_tired() {
+        let mut s = at_rest();
+        s.stamina = CLIMB_TIRED_THRESHOLD - 1.0;
+        assert!(is_tired(&s));
+
+        s.wall_boost_timer = 0.1;
+        assert!(!is_tired(&s));
+    }
+
+    #[test]
+    fn no_grab_while_moving_away_from_the_wall() {
+        let mut s = player_at(WALL_X, 100, -50.0, 30.0);
+        s.facing = 1;
+        assert!(!try_grab(&mut s, &room(), GRAB));
+    }
+
+    #[test]
+    fn no_grab_while_ducking() {
+        let mut s = ducking_at(WALL_X, 100);
+        s.facing = 1;
+        assert!(!try_grab(&mut s, &room(), GRAB));
+    }
+
+    #[test]
+    fn grabbing_pulls_her_in_from_one_pixel_away() {
+        let mut s = player_at(WALL_X - 1, 100, 0.0, 0.0);
+        s.facing = 1;
+        assert!(try_grab(&mut s, &room(), GRAB));
+        assert_eq!(s.position.x, WALL_X);
+
+        let mut s = player_at(WALL_X - 2, 100, 0.0, 0.0);
+        s.facing = 1;
+        assert!(!try_grab(&mut s, &room(), GRAB));
+    }
+
+    #[test]
+    fn grabbing_reaches_two_pixels_up() {
+        // the wall's bottom edge is y = 48. her head is 11 px above her feet
+        let room = partial_wall(0..6);
+
+        let mut s = player_at(WALL_X, 60, 0.0, 0.0);
+        s.facing = 1;
+        assert!(try_grab(&mut s, &room, GRAB));
+        assert_eq!(s.position.y, 58);
+
+        let mut s = player_at(WALL_X, 61, 0.0, 0.0);
+        s.facing = 1;
+        assert!(!try_grab(&mut s, &room, GRAB));
+    }
+
+    #[test]
+    fn no_reaching_up_while_holding_down() {
+        let room = partial_wall(0..6);
+        let mut s = player_at(WALL_X, 60, 0.0, 0.0);
+        s.facing = 1;
+        assert!(!try_grab(&mut s, &room, GRAB_DOWN));
+    }
+
+    #[test]
+    fn she_cannot_move_along_the_wall_right_after_grabbing() {
+        let mut s = climbing(100);
+        s.climb_no_move_timer = CLIMB_NO_MOVE_TIME;
+        s = step(s, GRAB_UP, &room());
+
+        assert_eq!(s.speed.y, 0.0);
+        assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
+    }
+
+    #[test]
+    fn climbing_up_speeds_up_and_costs_stamina() {
+        let mut s = step(climbing(100), GRAB_UP, &room());
+        assert_eq!(s.speed.y, -CLIMB_ACCEL * DELTA_TIME);
+        assert_eq!(s.last_climb_move, -1);
+        assert_eq!(s.stamina, CLIMB_MAX_STAMINA - CLIMB_UP_COST * DELTA_TIME);
+
+        for _ in 0..10 {
+            s = step(s, GRAB_UP, &room());
+        }
+        assert_eq!(s.speed.y, CLIMB_UP_SPEED);
+    }
+
+    #[test]
+    fn climbing_down_is_free() {
+        let mut s = climbing(100);
+        for _ in 0..10 {
+            s = step(s, GRAB_DOWN, &room());
+        }
+
+        assert_eq!(s.speed.y, CLIMB_DOWN_SPEED);
+        assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
+    }
+
+    #[test]
+    fn holding_still_costs_a_little_stamina() {
+        let s = step(climbing(100), GRAB, &room());
+
+        assert_eq!(s.position.y, 100);
+        assert_eq!(s.stamina, CLIMB_MAX_STAMINA - CLIMB_STILL_COST * DELTA_TIME);
+    }
+
+    #[test]
+    fn a_ceiling_stops_her_climbing_up() {
+        let mut room = room();
+        room.dash_blocks.push(crate::entities::DashBlock::new(64, 80, 16, 9));
+        let s = step(climbing(100), GRAB_UP, &room);
+
+        assert_eq!(s.speed.y, 0.0);
+        assert_eq!(s.last_climb_move, 0);
+    }
+
+    #[test]
+    fn letting_go_ends_the_climb() {
+        let s = step(climbing(100), Input::default(), &room());
+        assert_eq!(s.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn running_out_of_stamina_ends_the_climb() {
+        let mut s = climbing(100);
+        s.stamina = 0.1;
+        assert_eq!(step(s, GRAB, &room()).mode, Mode::Normal);
+    }
+
+    #[test]
+    fn jumping_while_climbing_is_a_climb_jump() {
+        let s = step(climbing(100), JUMP_GRAB, &room());
+
+        assert_eq!(s.mode, Mode::Normal);
+        assert_eq!(s.speed.y, JUMP_SPEED);
+        assert_eq!(s.stamina, CLIMB_MAX_STAMINA - CLIMB_JUMP_COST);
+    }
+
+    #[test]
+    fn jumping_away_while_climbing_is_a_wall_jump() {
+        let away = Input { move_x: -1, ..JUMP_GRAB };
+        let s = step(climbing(100), away, &room());
+
+        assert_eq!(s.mode, Mode::Normal);
+        assert_eq!(s.speed.x, -WALL_JUMP_H_SPEED);
+        assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
+    }
+
+    #[test]
+    fn dashing_out_of_a_climb() {
+        let dash = Input { dash: true, ..GRAB };
+        assert_eq!(step(climbing(100), dash, &room()).mode, Mode::DashStart);
+    }
+
+    #[test]
+    fn she_keeps_facing_the_wall_while_climbing() {
+        let away = Input { move_x: -1, ..GRAB };
+        let s = step(climbing(100), away, &room());
+
+        assert_eq!(s.facing, 1);
+        assert_eq!(s.mode, Mode::Climb);
+    }
+
+    #[test]
+    fn leaving_a_climb_drops_any_retained_wall_speed() {
+        let mut s = climbing(100);
+        s.wall_speed_retained = 100.0;
+        s.wall_speed_retention_timer = WALL_SPEED_RETENTION_TIME;
+
+        assert_eq!(step(s, Input::default(), &room()).wall_speed_retention_timer, 0.0);
+    }
+
+    #[test]
+    fn slip_check_is_true_with_her_hands_above_the_wall() {
+        // the wall's top edge is y = 48
+        let room = partial_wall(6..23);
+        assert!(slip_check(&climbing(54), &room, 0));
+        assert!(!slip_check(&climbing(55), &room, 0));
+        assert!(!slip_check(&climbing(100), &room, 0));
+    }
+
+    #[test]
+    fn she_slips_down_when_her_hands_are_above_the_wall() {
+        let room = partial_wall(6..23);
+        let mut s = climbing(54);
+        s = step(s, GRAB, &room);
+        s = step(s, GRAB, &room);
+
+        assert_eq!(s.speed.y, CLIMB_SLIP_SPEED);
+        assert_eq!(s.mode, Mode::Climb);
+    }
+
+    #[test]
+    fn climbing_rides_the_block_in_front_of_her() {
+        let beside = Rect { left: 80, top: 80, width: 16, height: 40 };
+        assert!(is_riding(&climbing(100), &beside));
+        assert!(!is_riding(&player_at(WALL_X, 100, 0.0, 0.0), &beside));
     }
 }

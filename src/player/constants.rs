@@ -1,4 +1,4 @@
-use crate::Vec2;
+use crate::geom::Vec2;
 
 pub const MAX_RUN: f32 = 90.0;
 pub const RUN_ACCEL: f32 = 1000.0;

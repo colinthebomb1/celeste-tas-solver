@@ -1,4 +1,4 @@
-use celeste_tas_solver::Vec2;
+use celeste_tas_solver::geom::Vec2;
 use celeste_tas_solver::trace::{TraceFrame, parse_trace};
 
 fn f(s: &str) -> f32 {

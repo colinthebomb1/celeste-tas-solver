@@ -9,8 +9,8 @@ use crate::entities::jump_thru::load_jump_thrus;
 use crate::entities::spikes::load_spikes;
 use crate::entities::spring::load_springs;
 use crate::entities::zipper::load_zippers;
+use crate::geom::IVec2;
 use crate::level::room::{Chapter, Room};
-use crate::player::IVec2;
 
 // adds one kind of entity from a level to its room. positions in the map are relative to the room's origin
 type Loader = fn(&Element, IVec2, &mut Room) -> Result<(), MapError>;
@@ -337,8 +337,8 @@ pub fn find_celeste_dir() -> Option<PathBuf> {
 mod tests {
     use super::*;
     use crate::entities::{Crystal, JumpThru, Spikes, Spring};
-    use crate::level::room::Direction;
-    use crate::level::room::Rect;
+    use crate::geom::Direction;
+    use crate::geom::Rect;
 
     const LOOKUP: [&str; 33] = [
         "Map",

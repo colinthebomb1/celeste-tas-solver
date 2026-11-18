@@ -1,6 +1,7 @@
+use crate::geom::IVec2;
+use crate::geom::{Direction, Rect};
 use crate::level::map::{Element, MapError, entities};
-use crate::level::room::{Direction, Rect, Room};
-use crate::player::IVec2;
+use crate::level::room::Room;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Spikes {

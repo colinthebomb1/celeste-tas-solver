@@ -1,6 +1,8 @@
+use crate::geom::IVec2;
+use crate::geom::Rect;
 use crate::level::map::{Element, MapError, entities};
-use crate::level::room::{Rect, Room};
-use crate::player::{DELTA_TIME, IVec2, Player, hurtbox, use_crystal};
+use crate::level::room::Room;
+use crate::player::{DELTA_TIME, Player, hurtbox, use_crystal};
 
 pub const CRYSTAL_SIZE: i32 = 16;
 pub const CRYSTAL_RESPAWN_TIME: f32 = 2.5;
@@ -76,7 +78,7 @@ pub fn update_crystals(room: &mut Room, player: &mut Player) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Vec2;
+    use crate::fixtures::at;
     use crate::player::{CLIMB_MAX_STAMINA, CLIMB_TIRED_THRESHOLD};
 
     fn room_with_crystal(crystal: Crystal) -> Room {
@@ -85,18 +87,10 @@ mod tests {
         room
     }
 
-    fn player_at(x: i32, y: i32) -> Player {
-        Player::new(
-            IVec2 { x, y },
-            Vec2 { x: 0.0, y: 0.0 },
-            Vec2 { x: 0.0, y: 0.0 },
-        )
-    }
-
     fn spent(x: i32, y: i32) -> Player {
         Player {
             dashes: 0,
-            ..player_at(x, y)
+            ..at(x, y)
         }
     }
 
@@ -132,7 +126,7 @@ mod tests {
     #[test]
     fn a_crystal_is_left_alone_when_she_has_her_dash() {
         let mut room = room_with_crystal(Crystal::new(16, 16, false, false));
-        let mut s = player_at(16, 20);
+        let mut s = at(16, 20);
 
         update_crystals(&mut room, &mut s);
 
@@ -145,7 +139,7 @@ mod tests {
         let mut room = room_with_crystal(Crystal::new(16, 16, false, false));
         let mut s = Player {
             stamina: CLIMB_TIRED_THRESHOLD - 1.0,
-            ..player_at(16, 20)
+            ..at(16, 20)
         };
 
         update_crystals(&mut room, &mut s);
@@ -156,7 +150,7 @@ mod tests {
         let mut room = room_with_crystal(Crystal::new(16, 16, false, false));
         let mut s = Player {
             stamina: CLIMB_TIRED_THRESHOLD,
-            ..player_at(16, 20)
+            ..at(16, 20)
         };
 
         update_crystals(&mut room, &mut s);
@@ -223,7 +217,7 @@ mod tests {
     #[test]
     fn a_two_dash_refill_gives_two_dashes() {
         let mut room = room_with_crystal(Crystal::new(16, 16, true, false));
-        let mut s = player_at(16, 20);
+        let mut s = at(16, 20);
 
         update_crystals(&mut room, &mut s);
 

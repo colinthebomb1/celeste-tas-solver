@@ -2,12 +2,12 @@ mod climb;
 mod collision;
 mod constants;
 mod dash;
+#[cfg(test)]
+mod fixtures;
 mod jump;
 mod movement;
 mod state;
 mod step;
-#[cfg(test)]
-mod tests;
 
 pub use climb::*;
 pub use collision::*;
@@ -18,6 +18,6 @@ pub use movement::*;
 pub use state::*;
 pub use step::*;
 
-use crate::Vec2;
 use crate::entities::Spikes;
-use crate::level::room::{Direction, Rect, Room};
+use crate::geom::{Direction, IVec2, Rect, Vec2};
+use crate::level::room::Room;

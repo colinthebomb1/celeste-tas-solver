@@ -296,3 +296,271 @@ fn normal_update(player: &mut Player, room: &Room, frame: Frame) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::player::fixtures::*;
+
+    #[test]
+    fn not_on_ground_above_floor() {
+        let mut s = standing();
+        s.position.y -= 1;
+        assert!(!on_ground(&s, &room()));
+    }
+
+    #[test]
+    fn not_on_ground_while_moving_up() {
+        let mut s = standing();
+        s.speed.y = -10.0;
+        assert!(!on_ground(&s, &room()));
+    }
+
+    #[test]
+    fn wall_at_detects_wall_to_the_right_only() {
+        let mut s = at_rest();
+        s.position.x = WALL_X;
+        assert!(collides(&s, &room(), 1, 0));
+        assert!(!collides(&s, &room(), -1, 0));
+        s.position.x = WALL_X - 1;
+        assert!(!collides(&s, &room(), 1, 0));
+    }
+
+    #[test]
+    fn not_on_ground_past_ledge() {
+        let mut s = standing();
+        s.position.x = LEDGE_X;
+        assert!(on_ground(&s, &room()));
+        s.position.x = LEDGE_X + 1;
+        assert!(!on_ground(&s, &room()));
+    }
+
+    #[test]
+    fn frozen_frames_do_nothing() {
+        let mut s = standing();
+        s.speed.x = 90.0;
+        s.freeze_timer = DASH_FREEZE_TIME;
+        let before = s;
+        s = step(
+            s,
+            Input {
+                move_x: -1,
+                ..Default::default()
+            },
+            &room(),
+        );
+        assert_eq!(s.position, before.position);
+        assert_eq!(s.speed, before.speed);
+        assert!(s.freeze_timer < DASH_FREEZE_TIME);
+    }
+
+    #[test]
+    fn step_kills_when_she_falls_out() {
+        let room = room();
+        let mut s = player_at(60, 190, 0.0, 160.0);
+        s = step(s, Input::default(), &room);
+        assert!(!s.dead);
+        s = step(s, Input::default(), &room);
+        s = step(s, Input::default(), &room);
+        assert!(s.dead);
+        assert_eq!(s.speed, Vec2 { x: 0.0, y: 0.0 });
+    }
+
+    #[test]
+    fn falling_inside_the_room_is_not_death() {
+        let s = step(player_at(60, 150, 0.0, 160.0), Input::default(), &room());
+        assert!(!s.dead);
+    }
+
+    #[test]
+    fn step_tracks_each_button() {
+        let s = step(standing(), JUMP_2, &room());
+        assert!(s.held.jump2);
+        assert!(!s.held.jump);
+        let s = step(s, JUMP_1, &room());
+        assert!(s.held.jump);
+        assert!(!s.held.jump2);
+    }
+
+    #[test]
+    fn step_refills_stamina_on_the_ground() {
+        let mut s = standing();
+        s.stamina = 10.0;
+        s = step(s, Input::default(), &room());
+        assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
+    }
+
+    #[test]
+    fn step_does_not_refill_stamina_in_the_air() {
+        let mut s = at_rest();
+        s.stamina = 10.0;
+        s = step(s, Input::default(), &room());
+        assert_eq!(s.stamina, 10.0);
+    }
+
+    #[test]
+    fn step_gives_retained_speed_back_before_moving() {
+        let s = step(
+            retaining(WALL_X - 20, 0.0, 120.0),
+            Input {
+                move_x: 1,
+                ..Default::default()
+            },
+            &room(),
+        );
+        assert!(s.speed.x > 100.0);
+        assert!(s.position.x > WALL_X - 20);
+        assert_eq!(s.wall.retention_timer, 0.0);
+    }
+
+    #[test]
+    fn step_remembers_the_direction_held() {
+        assert_eq!(step(at_rest(), LEFT, &room()).move_x, -1);
+        assert_eq!(step(at_rest(), Input::default(), &room()).move_x, 0);
+    }
+
+    #[test]
+    fn step_forced_direction_runs_out() {
+        let mut s = player_at(40, 100, 0.0, -100.0);
+        s.forced_move = -1;
+        s.forced_move_timer = 0.01;
+        let right = Input {
+            move_x: 1,
+            ..Input::default()
+        };
+        s = step(s, right, &room());
+        assert_eq!(s.facing, -1);
+        s = step(s, right, &room());
+        assert_eq!(s.facing, 1);
+    }
+
+    #[test]
+    fn track_buttons_remembers_what_is_down() {
+        let mut s = standing();
+        track_buttons(
+            &mut s,
+            Input {
+                jump2: true,
+                dash: true,
+                ..Input::default()
+            },
+        );
+        assert!(!s.held.jump);
+        assert!(s.held.jump2);
+        assert!(s.held.dash);
+
+        track_buttons(&mut s, Input::default());
+        assert!(!s.held.jump2);
+        assert!(!s.held.dash);
+    }
+
+    #[test]
+    fn step_walking_off_a_rising_block_keeps_its_speed() {
+        let mut s = lifted(player_at(60, 100, 0.0, 0.0), 0.0, -70.0);
+        s.was_on_ground = true;
+        s = step(s, Input::default(), &room());
+        assert!(s.speed.y < -50.0);
+    }
+
+    #[test]
+    fn step_remembers_whether_she_was_on_the_ground() {
+        assert!(step(standing(), Input::default(), &room()).was_on_ground);
+        assert!(!step(at_rest(), Input::default(), &room()).was_on_ground);
+    }
+
+    #[test]
+    fn step_holding_down_at_full_fall_speed_falls_faster() {
+        let room = room();
+        let mut s = step(falling(MAX_FALL), DOWN, &room);
+        assert_eq!(s.max_fall, MAX_FALL + FASTFALL_ACCEL * DELTA_TIME);
+        assert_eq!(s.speed.y, s.max_fall);
+
+        // 2 px a frame for long enough would leave the room, so check the limit directly
+        s.max_fall = FASTFALL_SPEED - 1.0;
+        s.speed.y = FASTFALL_SPEED - 1.0;
+        s.position.y = 20;
+        s = step(s, DOWN, &room);
+        assert_eq!(s.max_fall, FASTFALL_SPEED);
+        assert_eq!(s.speed.y, FASTFALL_SPEED);
+    }
+
+    #[test]
+    fn step_no_fastfall_below_full_fall_speed() {
+        let s = step(falling(100.0), DOWN, &room());
+        assert_eq!(s.max_fall, MAX_FALL);
+    }
+
+    #[test]
+    fn step_no_fastfall_without_down() {
+        let s = step(falling(MAX_FALL), Input::default(), &room());
+        assert_eq!(s.max_fall, MAX_FALL);
+        assert_eq!(s.speed.y, MAX_FALL);
+    }
+
+    #[test]
+    fn step_letting_go_of_down_slows_her_back() {
+        let mut s = falling(FASTFALL_SPEED);
+        s.max_fall = FASTFALL_SPEED;
+        s = step(s, Input::default(), &room());
+        assert_eq!(s.max_fall, FASTFALL_SPEED - FASTFALL_ACCEL * DELTA_TIME);
+        assert_eq!(s.speed.y, s.max_fall);
+    }
+
+    #[test]
+    fn set_normal_resets_the_fall_limit_only_when_leaving_another_state() {
+        let mut s = falling(FASTFALL_SPEED);
+        s.max_fall = FASTFALL_SPEED;
+        set_normal(&mut s);
+        assert_eq!(s.max_fall, FASTFALL_SPEED);
+
+        s.state = State::Dash { timer: 0.0 };
+        set_normal(&mut s);
+        assert_eq!(s.max_fall, MAX_FALL);
+        assert_eq!(s.state, State::Normal);
+    }
+
+    #[test]
+    fn dead_player_does_not_change() {
+        let mut before = standing();
+        before.dead = true;
+        let after = step(
+            before,
+            Input {
+                move_x: 1,
+                jump: true,
+                ..Default::default()
+            },
+            &room(),
+        );
+        assert_eq!(after, before);
+    }
+
+    #[test]
+    fn holding_still_costs_a_little_stamina() {
+        let s = step(climbing(100), GRAB, &room());
+
+        assert_eq!(s.position.y, 100);
+        assert_eq!(s.stamina, CLIMB_MAX_STAMINA - CLIMB_STILL_COST * DELTA_TIME);
+    }
+
+    #[test]
+    fn losing_the_wall_without_rising_just_lets_go() {
+        let room = partial_wall(0..0);
+        let s = step(climbing(100), GRAB, &room);
+
+        assert_eq!(s.state, State::Normal);
+        assert_eq!(s.speed.x, 0.0);
+        assert_eq!(s.forced_move_timer, 0.0);
+    }
+
+    #[test]
+    fn falling_cancels_the_wait_for_the_sideways_push() {
+        let mut s = player_at(WALL_X, 100, 0.0, 10.0);
+        s.climb.hop_wait = 1;
+        s.climb.hop_speed = CLIMBHOP_X;
+        s = step(s, Input::default(), &room());
+
+        assert_eq!(s.climb.hop_wait, 0);
+        assert_eq!(s.speed.x, 0.0);
+    }
+}

@@ -1,8 +1,9 @@
-use celeste_tas_solver::Vec2;
+use celeste_tas_solver::geom::IVec2;
+use celeste_tas_solver::geom::Vec2;
 use celeste_tas_solver::level::transition::{
     TRANSITION_FRAMES, before_transition, find_transition, finish_transition,
 };
-use celeste_tas_solver::player::{IVec2, Player};
+use celeste_tas_solver::player::Player;
 
 mod common;
 

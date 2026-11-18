@@ -1,7 +1,7 @@
 use celeste_tas_solver::entities::{JumpThru, Spikes, Spring};
+use celeste_tas_solver::geom::IVec2;
+use celeste_tas_solver::geom::{Direction, Rect};
 use celeste_tas_solver::level::map::load_room;
-use celeste_tas_solver::level::room::{Direction, Rect};
-use celeste_tas_solver::player::IVec2;
 
 mod common;
 

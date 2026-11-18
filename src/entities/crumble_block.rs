@@ -1,7 +1,9 @@
 use crate::entities::Solid;
+use crate::geom::IVec2;
+use crate::geom::Rect;
 use crate::level::map::{Element, MapError, entities};
-use crate::level::room::{Rect, Room};
-use crate::player::{DELTA_TIME, IVec2, Player, State, hitbox};
+use crate::level::room::Room;
+use crate::player::{DELTA_TIME, Player, State, hitbox};
 
 pub const CRUMBLE_HEIGHT: i32 = 8;
 pub const CRUMBLE_SHAKE_TIME: f32 = 0.2;
@@ -145,7 +147,7 @@ fn hold_or_crumble(block: &mut CrumbleBlock, solid: &mut Solid, player: &Player)
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Vec2;
+    use crate::fixtures::at;
 
     // a room with one block, 40 px wide with its top at y = 64
     fn block() -> Room {
@@ -156,14 +158,6 @@ mod tests {
 
     fn solid(room: &Room) -> bool {
         room.solids[room.crumble_blocks[0].solid].collidable
-    }
-
-    fn at(x: i32, y: i32) -> Player {
-        Player::new(
-            IVec2 { x, y },
-            Vec2 { x: 0.0, y: 0.0 },
-            Vec2 { x: 0.0, y: 0.0 },
-        )
     }
 
     fn on_top() -> Player {

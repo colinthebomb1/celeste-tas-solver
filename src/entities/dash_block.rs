@@ -1,6 +1,7 @@
+use crate::geom::IVec2;
+use crate::geom::Rect;
 use crate::level::map::{Element, MapError, entities};
-use crate::level::room::{Rect, Room};
-use crate::player::IVec2;
+use crate::level::room::Room;
 
 // the game freezes this long when it breaks,
 // also when she leaves a room that still has one

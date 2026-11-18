@@ -1,6 +1,7 @@
+use crate::geom::IVec2;
+use crate::geom::Rect;
 use crate::level::map::{Element, MapError, entities};
-use crate::level::room::{Rect, Room};
-use crate::player::IVec2;
+use crate::level::room::Room;
 
 pub const SPRING_WIDTH: i32 = 16;
 pub const SPRING_HEIGHT: i32 = 6;

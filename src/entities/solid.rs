@@ -1,7 +1,9 @@
-use crate::Vec2;
-use crate::level::room::{Rect, Room};
+use crate::geom::IVec2;
+use crate::geom::Rect;
+use crate::geom::Vec2;
+use crate::level::room::Room;
 use crate::player::{
-    DELTA_TIME, IVec2, Player, hitbox, is_riding, move_exact_h, move_exact_v, set_lift_speed,
+    DELTA_TIME, Player, hitbox, is_riding, move_exact_h, move_exact_v, set_lift_speed,
 };
 
 // something she can't pass through that isn't a ground tile
@@ -123,18 +125,7 @@ pub fn move_solid(room: &mut Room, id: usize, player: &mut Player, dx: i32, dy: 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn open_room() -> Room {
-        Room::from_tiles(IVec2 { x: 0, y: 0 }, &"00000000000\n".repeat(23))
-    }
-
-    fn at(x: i32, y: i32) -> Player {
-        Player::new(
-            IVec2 { x, y },
-            Vec2 { x: 0.0, y: 0.0 },
-            Vec2 { x: 0.0, y: 0.0 },
-        )
-    }
+    use crate::fixtures::{at, open_room};
 
     #[test]
     fn a_solid_blocks_her_until_it_is_not_collidable() {

@@ -1,7 +1,9 @@
 use crate::entities::solid::{advance_v, move_solid};
+use crate::geom::IVec2;
+use crate::geom::Rect;
 use crate::level::map::{Element, MapError, entities};
-use crate::level::room::{Rect, Room};
-use crate::player::{DELTA_TIME, IVec2, Player, approach, hitbox, is_riding};
+use crate::level::room::Room;
+use crate::player::{DELTA_TIME, Player, approach, hitbox, is_riding};
 
 pub const FALL_SHAKE_TIME: f32 = 0.2;
 pub const FALL_WAIT_TIME: f32 = 0.4;
@@ -258,36 +260,16 @@ fn move_down(room: &mut Room, index: usize, player: &mut Player, pixels: i32) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Vec2;
     use crate::entities::JumpThru;
+    use crate::fixtures::{at, floor_room, idle, open_room};
     use crate::player::Input;
     use crate::sim::step_room;
-
-    // 11 x 23 tiles, open except for a floor along the bottom row. the floor's top is y = 176
-    fn floor_room() -> Room {
-        let tiles = format!("{}11111111111", "00000000000\n".repeat(22));
-        Room::from_tiles(IVec2 { x: 0, y: 0 }, &tiles)
-    }
 
     // a 16 x 16 block at (40, 80)
     fn block_room() -> Room {
         let mut room = floor_room();
         room.add_falling_block(40, 80, 16, 16, true);
         room
-    }
-
-    fn at(x: i32, y: i32) -> Player {
-        Player::new(
-            IVec2 { x, y },
-            Vec2 { x: 0.0, y: 0.0 },
-            Vec2 { x: 0.0, y: 0.0 },
-        )
-    }
-
-    fn idle(room: &mut Room, player: Player, frames: usize) -> Player {
-        (0..frames).fold(player, |player, _| {
-            step_room(player, Input::default(), room)
-        })
     }
 
     fn update(room: &mut Room, player: &mut Player, frames: usize) {
@@ -308,10 +290,7 @@ mod tests {
     fn stays_put_with_nobody_on_it() {
         let mut room = block_room();
         idle(&mut room, at(100, 176), 120);
-        assert_eq!(
-            room.solids[room.falling_blocks[0].solid].position(),
-            IVec2 { x: 40, y: 80 }
-        );
+        assert_eq!(room.solids[0].position(), IVec2 { x: 40, y: 80 });
         assert_eq!(room.falling_blocks[0].stage, FallStage::Idle);
     }
 
@@ -402,10 +381,7 @@ mod tests {
         let mut room = block_room();
         let s = idle(&mut room, at(48, 80), 120);
 
-        assert_eq!(
-            room.solids[room.falling_blocks[0].solid].position(),
-            IVec2 { x: 40, y: 160 }
-        );
+        assert_eq!(room.solids[0].position(), IVec2 { x: 40, y: 160 });
         assert_eq!(room.falling_blocks[0].stage, FallStage::Resting);
         assert_eq!(s.position, IVec2 { x: 48, y: 160 });
         assert!(!s.dead);
@@ -432,7 +408,7 @@ mod tests {
         let mut s = at(48, 80);
         update(&mut room, &mut s, 1);
 
-        assert_eq!(room.solids[room.falling_blocks[0].solid].position().y, 83);
+        assert_eq!(room.solids[0].position().y, 83);
         assert_eq!(s.position.y, 83);
         assert_eq!(s.lift.speed.y, FALL_MAX_SPEED * DELTA_TIME / DELTA_TIME);
     }
@@ -447,13 +423,13 @@ mod tests {
         let mut s = at(48, 108);
         update(&mut room, &mut s, 1);
 
-        assert_eq!(room.solids[room.falling_blocks[0].solid].position().y, 83);
+        assert_eq!(room.solids[0].position().y, 83);
         assert_eq!(s.position.y, 110);
     }
 
     #[test]
     fn it_disappears_below_the_room() {
-        let mut room = Room::from_tiles(IVec2 { x: 0, y: 0 }, &"00000000000\n".repeat(23));
+        let mut room = open_room();
         room.add_falling_block(40, 80, 16, 16, true);
         room.falling_blocks[0].stage = FallStage::Falling;
 
@@ -461,11 +437,8 @@ mod tests {
         update(&mut room, &mut away, 120);
 
         assert_eq!(room.falling_blocks[0].stage, FallStage::Gone);
-        assert!(
-            room.solids[room.falling_blocks[0].solid].position().y
-                > room.bottom() + FALL_OUT_MARGIN
-        );
-        assert!(!room.solids[room.falling_blocks[0].solid].collidable);
+        assert!(room.solids[0].position().y > room.bottom() + FALL_OUT_MARGIN);
+        assert!(!room.solids[0].collidable);
     }
 
     #[test]
@@ -477,7 +450,7 @@ mod tests {
         let mut away = at(8, 8);
         update(&mut room, &mut away, 60);
 
-        assert_eq!(room.solids[room.falling_blocks[0].solid].position().y, 104);
+        assert_eq!(room.solids[0].position().y, 104);
         assert_eq!(room.falling_blocks[0].stage, FallStage::Propped);
     }
 
@@ -491,7 +464,7 @@ mod tests {
         update(&mut room, &mut away, 120);
 
         assert!(!room.solids[room.dash_blocks[0].solid].collidable);
-        assert_eq!(room.solids[room.falling_blocks[0].solid].position().y, 160);
+        assert_eq!(room.solids[0].position().y, 160);
     }
 
     #[test]
@@ -502,12 +475,12 @@ mod tests {
 
         let mut away = at(8, 8);
         update(&mut room, &mut away, 60);
-        assert_eq!(room.solids[room.falling_blocks[0].solid].position().y, 104);
+        assert_eq!(room.solids[0].position().y, 104);
         assert_eq!(room.falling_blocks[0].stage, FallStage::Propped);
 
         room.solids[room.falling_blocks[1].solid].collidable = false;
         update(&mut room, &mut away, 120);
-        assert_eq!(room.solids[room.falling_blocks[0].solid].position().y, 160);
+        assert_eq!(room.solids[0].position().y, 160);
         assert_eq!(room.falling_blocks[0].stage, FallStage::Resting);
     }
 }

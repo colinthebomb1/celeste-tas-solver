@@ -1,8 +1,9 @@
-use celeste_tas_solver::Vec2;
+use celeste_tas_solver::geom::IVec2;
+use celeste_tas_solver::geom::Vec2;
 use celeste_tas_solver::level::transition::{
     TRANSITION_FRAMES, before_transition, find_transition, finish_transition,
 };
-use celeste_tas_solver::player::{IVec2, Input, Player, State, step, track_buttons};
+use celeste_tas_solver::player::{Input, Player, State, step, track_buttons};
 use celeste_tas_solver::sim::step_room;
 use celeste_tas_solver::trace::parse_trace;
 

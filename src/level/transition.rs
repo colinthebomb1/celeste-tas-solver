@@ -1,5 +1,6 @@
 use crate::entities::dash_block::DASH_BLOCK_FREEZE_TIME;
-use crate::level::room::{Chapter, Direction};
+use crate::geom::Direction;
+use crate::level::room::Chapter;
 use crate::player::{
     CLIMB_MAX_STAMINA, DASH_COOLDOWN, HITBOX_WIDTH, JUMP_HOLD_TIME, JUMP_SPEED, MAX_DASHES, Player,
     WALL_SLIDE_TIME, collides, hitbox_height, set_normal,
@@ -123,9 +124,11 @@ pub fn finish_transition(player: &mut Player, chapter: &Chapter, transition: Tra
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Vec2;
+    use crate::fixtures::at;
+    use crate::geom::IVec2;
+    use crate::geom::Vec2;
     use crate::level::room::Room;
-    use crate::player::{IVec2, State};
+    use crate::player::State;
 
     const OPEN: &str = "0000\n0000\n0000\n0000";
 
@@ -155,14 +158,6 @@ mod tests {
     const RIGHT: usize = 2;
     const DOWN: usize = 3;
     const LEFT: usize = 4;
-
-    fn at(x: i32, y: i32) -> Player {
-        Player::new(
-            IVec2 { x, y },
-            Vec2 { x: 0.0, y: 0.0 },
-            Vec2 { x: 0.0, y: 0.0 },
-        )
-    }
 
     #[test]
     fn no_transition_inside_the_room() {

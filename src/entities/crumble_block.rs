@@ -183,10 +183,10 @@ mod tests {
     fn it_is_solid_until_it_crumbles() {
         let mut room = Room::from_tiles(IVec2 { x: 0, y: 0 }, "0000\n0000");
         room.crumble_blocks.push(CrumbleBlock::new(8, 8, 16));
-        assert!(room.collide_rect(8, 8, 1, 1));
+        assert!(room.solid_at(8, 8));
 
         room.crumble_blocks[0].collidable = false;
-        assert!(!room.collide_rect(8, 8, 1, 1));
+        assert!(!room.solid_at(8, 8));
     }
 
     #[test]

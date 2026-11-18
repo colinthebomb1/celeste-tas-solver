@@ -561,13 +561,13 @@ mod tests {
         let a = load_room(&map, "room_a").unwrap();
         assert_eq!(a.origin, IVec2 { x: 0, y: 0 });
         assert_eq!((a.width, a.height), (3, 2));
-        assert!(!a.is_solid(0, 0));
-        assert!(a.is_solid(2, 0));
-        assert!(a.is_solid(0, 1));
+        assert!(!a.tile_solid(0, 0));
+        assert!(a.tile_solid(2, 0));
+        assert!(a.tile_solid(0, 1));
 
         let b = load_room(&map, "room_b").unwrap();
         assert_eq!(b.origin, IVec2 { x: 320, y: -184 });
-        assert!(b.is_solid(0, 0));
+        assert!(b.tile_solid(0, 0));
     }
 
     #[test]

@@ -33,7 +33,7 @@ pub fn move_exact_h(state: &mut PlayerState, room: &Room, amount: i32) -> bool {
 pub fn move_exact_v(state: &mut PlayerState, room: &Room, amount: i32) -> bool {
     let step = amount.signum();
     for _ in 0..amount.abs() {
-        if blocked_v(state, room, step) {
+        if blocked(state, room, 0, step) {
             state.remainder.y = 0.0;
             return true;
         }
@@ -121,7 +121,7 @@ pub fn move_v(state: &mut PlayerState, room: &Room, amount: f32) {
 
     let step = movement_y.signum();
     for _ in 0..movement_y.abs() {
-        if blocked_v(state, room, step) {
+        if blocked(state, room, 0, step) {
             state.remainder.y = 0.0;
 
             if state.speed.y < 0.0 {
@@ -160,7 +160,7 @@ pub fn nudge_v(state: &mut PlayerState, room: &Room, amount: f32) {
 
     let step = movement_y.signum();
     for _ in 0..movement_y.abs() {
-        if blocked_v(state, room, step) {
+        if blocked(state, room, 0, step) {
             state.remainder.y = 0.0;
             return;
         }
@@ -198,14 +198,14 @@ pub fn dash_corner_correction_down(state: &mut PlayerState, room: &Room) -> bool
 
     for dir in dirs {
         for i in 1..=DASH_CORNER_CORRECTION {
-            if !floor_below(state, room, dir * i) {
+            if !blocked(state, room, dir * i, 1) {
                 for _ in 0..i {
                     if collides(state, room, dir, 0) {
                         break;
                     }
                     state.position.x += dir;
                 }
-                if !blocked_v(state, room, 1) {
+                if !blocked(state, room, 0, 1) {
                     state.position.y += 1;
                 }
                 return true;

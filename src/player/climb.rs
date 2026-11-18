@@ -52,7 +52,7 @@ pub fn climb_begin(state: &mut PlayerState, room: &Room) {
 
     // pull her against the wall
     for _ in 0..CLIMB_CHECK_DIST {
-        if wall_at(state, room, state.facing) {
+        if collides(state, room, state.facing as i32, 0) {
             break;
         }
         state.position.x += state.facing as i32;
@@ -83,7 +83,7 @@ pub(crate) fn moving_solid_position(room: &Room, solid: HopSolid) -> Option<IVec
 
 // she pops up over the ledge. the sideways push waits until the wall is out of her way
 pub fn climb_hop(state: &mut PlayerState, room: &Room) {
-    if wall_at(state, room, state.facing) {
+    if collides(state, room, state.facing as i32, 0) {
         state.climb_hop_solid = moving_solid_at(room, &hitbox(state, state.facing as i32, 0));
         state.hop_wait_x = state.facing;
         state.hop_wait_x_speed = state.facing as f32 * CLIMB_HOP_X;
@@ -123,7 +123,7 @@ pub(crate) fn update_hop_wait(state: &mut PlayerState, room: &Room) {
 
     if sign(state.speed.x) == -(state.hop_wait_x as f32) || state.speed.y > 0.0 {
         state.hop_wait_x = 0;
-    } else if !wall_at(state, room, state.hop_wait_x) {
+    } else if !collides(state, room, state.hop_wait_x as i32, 0) {
         state.speed.x = state.hop_wait_x_speed;
         state.hop_wait_x = 0;
     }
@@ -135,7 +135,7 @@ pub fn slip_check(state: &PlayerState, room: &Room, add_y: i32) -> bool {
     let x = if state.facing == 1 { her.right() } else { her.left - 1 };
     let y = her.top + 4 + add_y;
 
-    !solid_at(room, x, y) && !solid_at(room, x, y - 4 + add_y)
+    !room.solid_at(x, y) && !room.solid_at(x, y - 4 + add_y)
 }
 
 pub(crate) fn climb_update(state: &mut PlayerState, room: &Room, input: Input, ground: bool, jump_pressed: bool, dash_pressed: bool, crouch: bool) {
@@ -166,7 +166,7 @@ pub(crate) fn climb_update(state: &mut PlayerState, room: &Room, input: Input, g
         return;
     }
 
-    if !wall_at(state, room, state.facing) {
+    if !collides(state, room, state.facing as i32, 0) {
         if state.speed.y < 0.0 {
             climb_hop(state, room);
         } else {

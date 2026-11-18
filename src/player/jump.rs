@@ -7,7 +7,7 @@ pub fn wall_slide_max_fall(state: &mut PlayerState, room: &Room, input: Input) -
     if into_wall && input.move_y != 1 {
         if state.speed.y >= 0.0
             && state.wall_slide_timer > 0.0
-            && wall_at(state, room, state.facing)
+            && collides(state, room, state.facing as i32, 0)
             && can_unduck(state, room)
         {
             state.ducking = false;

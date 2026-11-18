@@ -13,6 +13,14 @@ pub struct Rect {
 }
 
 impl Rect {
+    pub const fn new(left: i32, top: i32, width: i32, height: i32) -> Rect {
+        Rect { left, top, width, height }
+    }
+
+    pub fn shifted(&self, dx: i32, dy: i32) -> Rect {
+        Rect { left: self.left + dx, top: self.top + dy, ..*self }
+    }
+
     pub fn right(&self) -> i32 {
         self.left + self.width
     }
@@ -112,7 +120,7 @@ impl Room {
         self.bounds.bottom()
     }
 
-    pub fn is_solid(&self, tile_x: i32, tile_y: i32) -> bool {
+    pub fn tile_solid(&self, tile_x: i32, tile_y: i32) -> bool {
         if tile_x as usize >= self.width || tile_x < 0 || tile_y as usize >= self.height || tile_y < 0 {
             return false;
         }
@@ -120,29 +128,29 @@ impl Room {
         self.solid[tile_y as usize * self.width + tile_x as usize]
     }
 
-    pub fn collide_rect(&self, left: i32, top: i32, width: i32, height: i32) -> bool {
-        let right = left + width - 1;
-        let bottom = top + height - 1;
-
+    // ground tiles only, not blocks
+    pub fn tiles_solid(&self, rect: &Rect) -> bool {
         // div_euclid rounds down, so pixels left of or above the room get negative tiles
-        let tile_left = (left - self.origin.x).div_euclid(TILE_SIZE);
-        let tile_right = (right - self.origin.x).div_euclid(TILE_SIZE);
-        let tile_top = (top - self.origin.y).div_euclid(TILE_SIZE);
-        let tile_bottom = (bottom - self.origin.y).div_euclid(TILE_SIZE);
+        let tile_left = (rect.left - self.origin.x).div_euclid(TILE_SIZE);
+        let tile_right = (rect.right() - 1 - self.origin.x).div_euclid(TILE_SIZE);
+        let tile_top = (rect.top - self.origin.y).div_euclid(TILE_SIZE);
+        let tile_bottom = (rect.bottom() - 1 - self.origin.y).div_euclid(TILE_SIZE);
 
-        for tile_y in tile_top..=tile_bottom {
-            for tile_x in tile_left..=tile_right {
-                if self.is_solid(tile_x, tile_y) {
-                    return true;
-                }
-            }
-        }
+        (tile_top..=tile_bottom).any(|tile_y| (tile_left..=tile_right).any(|tile_x| self.tile_solid(tile_x, tile_y)))
+    }
 
-        let rect = Rect { left, top, width, height };
-        self.zip_movers.iter().any(|zip| zip.collidable && zip.rect().overlaps(&rect))
-            || self.dash_blocks.iter().any(|block| !block.broken && block.hitbox.overlaps(&rect))
-            || self.falling_blocks.iter().any(|block| block.collidable && block.rect().overlaps(&rect))
-            || self.crumble_blocks.iter().any(|block| block.collidable && block.hitbox.overlaps(&rect))
+    // anything she can't pass through: tiles and whichever blocks are solid right now
+    pub fn solid(&self, rect: &Rect) -> bool {
+        self.tiles_solid(rect)
+            || self.zip_movers.iter().any(|zip| zip.collidable && zip.rect().overlaps(rect))
+            || self.dash_blocks.iter().any(|block| !block.broken && block.hitbox.overlaps(rect))
+            || self.falling_blocks.iter().any(|block| block.collidable && block.rect().overlaps(rect))
+            || self.crumble_blocks.iter().any(|block| block.collidable && block.hitbox.overlaps(rect))
+    }
+
+    // one pixel
+    pub fn solid_at(&self, x: i32, y: i32) -> bool {
+        self.solid(&Rect::new(x, y, 1, 1))
     }
 }
 
@@ -169,12 +177,12 @@ mod tests {
     fn collide_rect_hits_a_zip_mover_where_it_is_now() {
         let mut room = at_origin("0000\n0000\n0000\n0000");
         room.zip_movers.push(ZipMover::new(8, 8, 16, 8, 8, 0));
-        assert!(room.collide_rect(10, 10, 2, 2));
-        assert!(!room.collide_rect(10, 2, 2, 2));
+        assert!(room.solid(&Rect::new(10, 10, 2, 2)));
+        assert!(!room.solid(&Rect::new(10, 2, 2, 2)));
 
         room.zip_movers[0].position.y = 0;
-        assert!(!room.collide_rect(10, 10, 2, 2));
-        assert!(room.collide_rect(10, 2, 2, 2));
+        assert!(!room.solid(&Rect::new(10, 10, 2, 2)));
+        assert!(room.solid(&Rect::new(10, 2, 2, 2)));
     }
 
     #[test]
@@ -182,18 +190,18 @@ mod tests {
         let mut room = at_origin("0000\n0000\n0000\n0000");
         room.zip_movers.push(ZipMover::new(8, 8, 16, 8, 8, 0));
         room.zip_movers[0].collidable = false;
-        assert!(!room.collide_rect(10, 10, 2, 2));
+        assert!(!room.solid(&Rect::new(10, 10, 2, 2)));
     }
 
     #[test]
     fn collide_rect_hits_a_dash_block_until_it_is_broken() {
         let mut room = at_origin("0000\n0000\n0000\n0000");
         room.dash_blocks.push(DashBlock::new(8, 8, 16, 8));
-        assert!(room.collide_rect(10, 10, 2, 2));
-        assert!(!room.collide_rect(2, 2, 2, 2));
+        assert!(room.solid(&Rect::new(10, 10, 2, 2)));
+        assert!(!room.solid(&Rect::new(2, 2, 2, 2)));
 
         room.dash_blocks[0].broken = true;
-        assert!(!room.collide_rect(10, 10, 2, 2));
+        assert!(!room.solid(&Rect::new(10, 10, 2, 2)));
     }
 
     #[test]
@@ -298,41 +306,41 @@ mod tests {
         let room = at_origin("01\r\n10\r\n");
         assert_eq!(room.width, 2);
         assert_eq!(room.height, 2);
-        assert!(room.is_solid(0, 1));
-        assert!(!room.is_solid(1, 1));
+        assert!(room.tile_solid(0, 1));
+        assert!(!room.tile_solid(1, 1));
     }
 
     #[test]
     fn is_solid_reads_tiles() {
         let room = at_origin("010\n001");
-        assert!(room.is_solid(1, 0));
-        assert!(room.is_solid(2, 1));
-        assert!(!room.is_solid(0, 0));
-        assert!(!room.is_solid(1, 1));
+        assert!(room.tile_solid(1, 0));
+        assert!(room.tile_solid(2, 1));
+        assert!(!room.tile_solid(0, 0));
+        assert!(!room.tile_solid(1, 1));
     }
 
     #[test]
     fn any_character_but_zero_is_solid() {
         let room = at_origin("0a3");
-        assert!(!room.is_solid(0, 0));
-        assert!(room.is_solid(1, 0));
-        assert!(room.is_solid(2, 0));
+        assert!(!room.tile_solid(0, 0));
+        assert!(room.tile_solid(1, 0));
+        assert!(room.tile_solid(2, 0));
     }
 
     #[test]
     fn short_rows_are_air_on_the_right() {
         let room = at_origin("0001\n1");
-        assert!(room.is_solid(0, 1));
-        assert!(!room.is_solid(3, 1));
+        assert!(room.tile_solid(0, 1));
+        assert!(!room.tile_solid(3, 1));
     }
 
     #[test]
     fn outside_the_room_is_not_solid() {
         let room = at_origin("11\n11");
-        assert!(!room.is_solid(-1, 0));
-        assert!(!room.is_solid(0, -1));
-        assert!(!room.is_solid(2, 0));
-        assert!(!room.is_solid(0, 2));
+        assert!(!room.tile_solid(-1, 0));
+        assert!(!room.tile_solid(0, -1));
+        assert!(!room.tile_solid(2, 0));
+        assert!(!room.tile_solid(0, 2));
     }
 
     fn one_block() -> Room {
@@ -342,41 +350,41 @@ mod tests {
     #[test]
     fn collide_rect_overlapping_a_solid_tile() {
         let room = one_block();
-        assert!(room.collide_rect(10, 10, 2, 2));
-        assert!(room.collide_rect(0, 0, 24, 24));
+        assert!(room.solid(&Rect::new(10, 10, 2, 2)));
+        assert!(room.solid(&Rect::new(0, 0, 24, 24)));
     }
 
     #[test]
     fn collide_rect_touching_edges_is_not_a_collision() {
         let room = one_block();
-        assert!(!room.collide_rect(0, 8, 8, 8));
-        assert!(!room.collide_rect(16, 8, 8, 8));
-        assert!(!room.collide_rect(8, 0, 8, 8));
-        assert!(!room.collide_rect(8, 16, 8, 8));
+        assert!(!room.solid(&Rect::new(0, 8, 8, 8)));
+        assert!(!room.solid(&Rect::new(16, 8, 8, 8)));
+        assert!(!room.solid(&Rect::new(8, 0, 8, 8)));
+        assert!(!room.solid(&Rect::new(8, 16, 8, 8)));
     }
 
     #[test]
     fn collide_rect_one_pixel_overlap() {
         let room = one_block();
-        assert!(room.collide_rect(1, 8, 8, 8));
-        assert!(room.collide_rect(15, 8, 8, 8));
-        assert!(room.collide_rect(8, 1, 8, 8));
-        assert!(room.collide_rect(8, 15, 8, 8));
+        assert!(room.solid(&Rect::new(1, 8, 8, 8)));
+        assert!(room.solid(&Rect::new(15, 8, 8, 8)));
+        assert!(room.solid(&Rect::new(8, 1, 8, 8)));
+        assert!(room.solid(&Rect::new(8, 15, 8, 8)));
     }
 
     #[test]
     fn collide_rect_uses_world_coordinates() {
         let room = Room::from_tiles(IVec2 { x: 100, y: -200 }, "000\n010\n000");
-        assert!(room.collide_rect(108, -192, 1, 1));
-        assert!(!room.collide_rect(8, 8, 1, 1));
+        assert!(room.solid_at(108, -192));
+        assert!(!room.solid_at(8, 8));
     }
 
     #[test]
     fn collide_rect_outside_the_room() {
         let room = at_origin("1");
-        assert!(!room.collide_rect(-50, -50, 8, 11));
-        assert!(!room.collide_rect(1000, 1000, 8, 8));
-        assert!(!room.collide_rect(-8, 0, 8, 8));
-        assert!(room.collide_rect(-4, -4, 8, 8));
+        assert!(!room.solid(&Rect::new(-50, -50, 8, 11)));
+        assert!(!room.solid(&Rect::new(1000, 1000, 8, 8)));
+        assert!(!room.solid(&Rect::new(-8, 0, 8, 8)));
+        assert!(room.solid(&Rect::new(-4, -4, 8, 8)));
     }
 }

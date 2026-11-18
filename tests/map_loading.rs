@@ -13,10 +13,10 @@ fn first_room_matches_the_game() {
     };
     assert_eq!(room.origin, IVec2 { x: 0, y: 0 });
     assert_eq!((room.width, room.height), (40, 23));
-    assert!(room.is_solid(4, 18));
-    assert!(!room.is_solid(5, 18));
-    assert!(room.is_solid(10, 16));
-    assert!(!room.is_solid(10, 15));
+    assert!(room.tile_solid(4, 18));
+    assert!(!room.tile_solid(5, 18));
+    assert!(room.tile_solid(10, 16));
+    assert!(!room.tile_solid(10, 15));
     assert_eq!(room.name, "lvl_1");
     assert_eq!(room.bounds, Rect { left: 0, top: 0, width: 320, height: 180 });
     assert_eq!(room.bottom(), 180);

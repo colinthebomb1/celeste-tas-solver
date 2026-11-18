@@ -71,13 +71,15 @@ fn move_h_ties_round_to_even_like_csharp() {
 #[test]
 fn collide_at_uses_her_hitbox() {
     let room = room();
-    assert!(!collide_at(&room, 0, FLOOR_Y));
-    assert!(collide_at(&room, 0, FLOOR_Y + 1));
-    assert!(collide_at(&room, LEDGE_X, FLOOR_Y + 1));
-    assert!(!collide_at(&room, LEDGE_X + 1, FLOOR_Y + 1));
-    assert!(!collide_at(&room, WALL_X, 64));
-    assert!(collide_at(&room, WALL_X + 1, 64));
-    assert!(!collide_at(&room, 60, FLOOR_Y + 12));
+    let inside = |x: i32, y: i32| collides(&player_at(x, y, 0.0, 0.0), &room, 0, 0);
+
+    assert!(!inside(0, FLOOR_Y));
+    assert!(inside(0, FLOOR_Y + 1));
+    assert!(inside(LEDGE_X, FLOOR_Y + 1));
+    assert!(!inside(LEDGE_X + 1, FLOOR_Y + 1));
+    assert!(!inside(WALL_X, 64));
+    assert!(inside(WALL_X + 1, 64));
+    assert!(!inside(60, FLOOR_Y + 12));
 }
 
 #[test]
@@ -165,10 +167,10 @@ fn move_h_reaching_wall_exactly_is_not_a_collision() {
 fn wall_at_detects_wall_to_the_right_only() {
     let mut s = at_rest();
     s.position.x = WALL_X;
-    assert!(wall_at(&s, &room(), 1));
-    assert!(!wall_at(&s, &room(), -1));
+    assert!(collides(&s, &room(), 1, 0));
+    assert!(!collides(&s, &room(), -1, 0));
     s.position.x = WALL_X - 1;
-    assert!(!wall_at(&s, &room(), 1));
+    assert!(!collides(&s, &room(), 1, 0));
 }
 
 #[test]

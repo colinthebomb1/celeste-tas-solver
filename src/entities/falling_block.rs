@@ -1,6 +1,6 @@
 use crate::level::map::{Element, MapError};
 use crate::player::{approach, hitbox, is_riding, move_exact_v, set_lift_speed, IVec2, PlayerState, DELTA_TIME};
-use crate::level::room::{Rect, Room, TILE_SIZE};
+use crate::level::room::{Rect, Room};
 use crate::Vec2;
 
 pub const FALL_SHAKE_TIME: f32 = 0.2;
@@ -56,10 +56,6 @@ impl FallingBlock {
     pub fn rect(&self) -> Rect {
         Rect { left: self.position.x, top: self.position.y, width: self.width, height: self.height }
     }
-
-    fn rect_at(&self, dx: i32, dy: i32) -> Rect {
-        Rect { left: self.position.x + dx, top: self.position.y + dy, width: self.width, height: self.height }
-    }
 }
 
 pub fn load_falling_blocks(level: &Element, origin: IVec2) -> Result<Vec<FallingBlock>, MapError> {
@@ -101,27 +97,24 @@ fn holds_it_up(state: &PlayerState, block: &FallingBlock) -> bool {
 }
 
 fn solid_below(room: &mut Room, index: usize) -> bool {
-    let below = room.falling_blocks[index].rect_at(0, 1);
+    let below = room.falling_blocks[index].rect().shifted(0, 1);
 
     room.falling_blocks[index].collidable = false;
-    let solid = room.collide_rect(below.left, below.top, below.width, below.height);
+    let solid = room.solid(&below);
     room.falling_blocks[index].collidable = true;
 
     solid
 }
 
 fn tiles_below(room: &Room, index: usize) -> bool {
-    let block = &room.falling_blocks[index];
-    let tile_y = (block.position.y + block.height - room.origin.y).div_euclid(TILE_SIZE);
-    let tile_left = (block.position.x - room.origin.x).div_euclid(TILE_SIZE);
-    let tile_right = (block.position.x + block.width - 1 - room.origin.x).div_euclid(TILE_SIZE);
+    let block = room.falling_blocks[index].rect();
 
-    (tile_left..=tile_right).any(|tile_x| room.is_solid(tile_x, tile_y))
+    room.tiles_solid(&Rect::new(block.left, block.bottom(), block.width, 1))
 }
 
 fn jump_thru_below(room: &Room, index: usize) -> bool {
     let block = &room.falling_blocks[index];
-    let (here, below) = (block.rect(), block.rect_at(0, 1));
+    let (here, below) = (block.rect(), block.rect().shifted(0, 1));
 
     room.jump_thrus.iter().any(|thru| thru.hitbox.overlaps(&below) && !thru.hitbox.overlaps(&here))
 }
@@ -194,7 +187,7 @@ fn wait_or_fall(room: &mut Room, index: usize, state: &mut PlayerState) {
 
 fn wait_while_propped(room: &mut Room, index: usize) {
     let on_jump_thru = {
-        let below = room.falling_blocks[index].rect_at(0, 1);
+        let below = room.falling_blocks[index].rect().shifted(0, 1);
         room.jump_thrus.iter().any(|thru| thru.hitbox.overlaps(&below))
     };
 
@@ -237,7 +230,7 @@ fn move_down(room: &mut Room, index: usize, state: &mut PlayerState, pixels: i32
     let mut stopped = false;
 
     while moved < pixels {
-        let below = room.falling_blocks[index].rect_at(0, moved + 1);
+        let below = room.falling_blocks[index].rect().shifted(0, moved + 1);
         for dash_block in room.dash_blocks.iter_mut().filter(|dash_block| dash_block.hitbox.overlaps(&below)) {
             dash_block.broken = true;
         }
@@ -322,9 +315,9 @@ mod tests {
     #[test]
     fn it_is_solid() {
         let room = block_room();
-        assert!(room.collide_rect(40, 80, 1, 1));
-        assert!(room.collide_rect(55, 95, 1, 1));
-        assert!(!room.collide_rect(56, 80, 1, 1));
+        assert!(room.solid_at(40, 80));
+        assert!(room.solid_at(55, 95));
+        assert!(!room.solid_at(56, 80));
     }
 
     #[test]

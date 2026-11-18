@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::physics::IVec2;
+use crate::entities::crumble_block::load_crumble_blocks;
 use crate::entities::dash_block::load_dash_blocks;
 use crate::entities::falling_block::load_falling_blocks;
 use crate::entities::jump_thru::load_jump_thrus;
@@ -273,6 +274,7 @@ fn room_from_level(level: &Element) -> Result<Room, MapError> {
     room.springs = load_springs(level, origin)?;
     room.refills = load_refills(level, origin)?;
     room.dash_blocks = load_dash_blocks(level, origin)?;
+    room.crumble_blocks = load_crumble_blocks(level, origin)?;
     room.falling_blocks = load_falling_blocks(level, origin)?;
     room.zip_movers = load_zip_movers(level, origin)?;
     
@@ -295,14 +297,14 @@ pub fn find_celeste_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::{DashBlock, FallingBlock, JumpThru, Refill, Spikes, Spring, ZipMover};
+    use crate::entities::{CrumbleBlock, DashBlock, FallingBlock, JumpThru, Refill, Spikes, Spring, ZipMover};
     use crate::room::Direction;
 
-    const LOOKUP: [&str; 32] = [
+    const LOOKUP: [&str; 33] = [
         "Map", "levels", "level", "name", "x", "y", "solids", "innerText", "room_a", "room_b",
         "flag", "big", "ratio", "note", "entities", "spikesUp", "spikesDown", "spikesLeft",
         "spikesRight", "width", "height", "strawberry", "jumpThru", "zipMover", "node", "spring", "dashBlock",
-        "refill", "twoDash", "oneUse", "fallingBlock", "climbFall",
+        "refill", "twoDash", "oneUse", "fallingBlock", "climbFall", "crumbleBlock",
     ];
 
     fn string(s: &str) -> Vec<u8> {
@@ -689,6 +691,13 @@ mod tests {
         let map = map_with_entities(&[element("fallingBlock", &size, &[]), element("fallingBlock", &no_climb, &[])]);
         let room = load_room(&map, "room_b").unwrap();
         assert_eq!(room.falling_blocks, vec![FallingBlock::new(472, -24, 32, 24, true), FallingBlock::new(472, -24, 32, 24, false)]);
+    }
+
+    #[test]
+    fn load_room_reads_crumble_blocks_in_world_coordinates() {
+        let map = map_with_entities(&[entity("crumbleBlock", 304, 64, Some(("width", 40)))]);
+        let room = load_room(&map, "room_b").unwrap();
+        assert_eq!(room.crumble_blocks, vec![CrumbleBlock::new(624, -120, 40)]);
     }
 
     #[test]

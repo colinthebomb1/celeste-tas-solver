@@ -213,7 +213,7 @@ fn community_lvl_1() {
 }
 
 // frames of the whole chapter that match the game so far. raise it as the simulator improves
-const CHAPTER_1A_MATCHED: usize = 2547;
+const CHAPTER_1A_MATCHED: usize = 2997;
 
 // one simulation of the community TAS through every room of 1A.
 // run with: cargo test --test desync chapter -- --nocapture
@@ -237,9 +237,11 @@ fn chapter_1a_progress() {
 
     let desync = |frame: usize, room: &str, state: &PlayerState| {
         eprintln!(
-            "chapter 1A: desync on frame {frame} in {} (inputs {})\n  simulator: {:?}\n  game:      {:?}",
+            "chapter 1A: desync on frame {frame} in {} (tas line {}, inputs {}, time {})\n  simulator: {:?}\n  game:      {:?}",
             room,
+            column(rows[frame], 0).trim(),
             column(rows[frame], 1).trim(),
+            column(rows[frame], 3).trim(),
             observe(state),
             game_row(rows[frame]),
         );

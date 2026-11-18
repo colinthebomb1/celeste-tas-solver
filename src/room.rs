@@ -1,4 +1,4 @@
-use crate::entities::{DashBlock, FallingBlock, JumpThru, Refill, Spikes, Spring, ZipMover};
+use crate::entities::{CrumbleBlock, DashBlock, FallingBlock, JumpThru, Refill, Spikes, Spring, ZipMover};
 use crate::physics::IVec2;
 
 pub const TILE_SIZE: i32 = 8;
@@ -57,6 +57,7 @@ pub struct Room {
     pub springs: Vec<Spring>,
     pub refills: Vec<Refill>,
     pub dash_blocks: Vec<DashBlock>,
+    pub crumble_blocks: Vec<CrumbleBlock>,
     pub falling_blocks: Vec<FallingBlock>,
     pub zip_movers: Vec<ZipMover>,
 }
@@ -91,6 +92,7 @@ impl Room {
             springs: Vec::new(),
             refills: Vec::new(),
             dash_blocks: Vec::new(),
+            crumble_blocks: Vec::new(),
             falling_blocks: Vec::new(),
             zip_movers: Vec::new(),
         };
@@ -140,6 +142,7 @@ impl Room {
         self.zip_movers.iter().any(|zip| zip.collidable && zip.rect().overlaps(&rect))
             || self.dash_blocks.iter().any(|block| !block.broken && block.hitbox.overlaps(&rect))
             || self.falling_blocks.iter().any(|block| block.collidable && block.rect().overlaps(&rect))
+            || self.crumble_blocks.iter().any(|block| block.collidable && block.hitbox.overlaps(&rect))
     }
 }
 

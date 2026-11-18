@@ -1,3 +1,4 @@
+use crate::entities::crumble_block::update_crumble_blocks;
 use crate::entities::falling_block::update_falling_blocks;
 use crate::entities::refill::update_refills;
 use crate::entities::zip_mover::update_zip_movers;
@@ -13,6 +14,7 @@ pub fn step_room(state: PlayerState, input: Input, room: &mut Room) -> PlayerSta
         update_refills(room, &mut state);
         update_zip_movers(room, &mut state);
         update_falling_blocks(room, &mut state);
+        update_crumble_blocks(room, &state);
     }
 
     state

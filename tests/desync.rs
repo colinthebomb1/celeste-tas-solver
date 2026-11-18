@@ -212,21 +212,19 @@ fn community_lvl_1() {
     assert_matches_trace_in("lvl_1", "community lvl_1", &text, &inputs);
 }
 
-// frames of the whole chapter that match the game so far. raise it as the simulator improves
-const CHAPTER_1A_MATCHED: usize = 2997;
-
 // one simulation of the community TAS through every room of 1A.
 // run with: cargo test --test desync chapter -- --nocapture
 #[test]
-fn chapter_1a_progress() {
+fn chapter_1a() {
     let text = include_str!("traces/community/1A_full.txt");
     let Some(mut chapter) = common::chapter_1a() else {
         eprintln!("chapter 1A: skipped. Celeste install could not be found, try setting CELESTE_DIR");
         return;
     };
 
-    // the last rows are the level exit and have no position
-    let rows: Vec<&str> = text.lines().skip(1).take_while(|row| row.split('\t').nth(6).is_some()).collect();
+    // the run ends when the ending cutscene takes over
+    let in_cutscene = |row: &str| column(row, 7).split(' ').any(|status| status == "Cutscene");
+    let rows: Vec<&str> = text.lines().skip(1).take_while(|row| !in_cutscene(row)).collect();
     let total = rows.len() - 1;
     let first_two_lines: String = text.lines().take(2).map(|line| format!("{line}\n")).collect();
 
@@ -287,8 +285,5 @@ fn chapter_1a_progress() {
     }
 
     eprintln!("chapter 1A: matched {matched} of {total} frames");
-    assert!(
-        matched >= CHAPTER_1A_MATCHED,
-        "chapter 1A: matched {matched} frames, used to match {CHAPTER_1A_MATCHED}"
-    );
+    assert_eq!(matched, total, "chapter 1A: desynced after frame {matched}");
 }

@@ -54,7 +54,11 @@ pub const CLIMB_HOP_BLOCK_DIST: i32 = 6;
 pub const CLIMB_HOP_Y: f32 = -120.0;
 pub const CLIMB_HOP_X: f32 = 100.0;
 pub const CLIMB_HOP_FORCE_TIME: f32 = 0.2;
-pub const UPWARD_CORNER_CORRECTION: i32 = 5;
+pub const UPWARD_CORNER_CORRECTION: i32 = 4;
+// a dash with no sideways speed reaches a pixel further
+pub const DASH_UPWARD_CORNER_CORRECTION: i32 = 5;
+// sideways speed below this counts as none
+pub const CORNER_CORRECTION_SPEED_SLACK: f32 = 0.01;
 pub const DASH_CORNER_CORRECTION: i32 = 4;
 pub const DASH_ATTACK_TIME: f32 = 0.3;
 pub const SUPER_WALL_JUMP_H: f32 = MAX_RUN + JUMP_H_BOOST * 2.0;
@@ -589,8 +593,15 @@ pub fn dash_corner_correction_down(state: &mut PlayerState, room: &Room) -> bool
 }
 
 pub fn upward_corner_correction(state: &mut PlayerState, room: &Room) -> bool {
-    if state.speed.x <= 0.0 {
-        for i in 1..=UPWARD_CORNER_CORRECTION {
+    let slack = CORNER_CORRECTION_SPEED_SLACK;
+    let reach = if state.dash_attack_timer > 0.0 && state.speed.x.abs() < slack {
+        DASH_UPWARD_CORNER_CORRECTION
+    } else {
+        UPWARD_CORNER_CORRECTION
+    };
+
+    if state.speed.x <= slack {
+        for i in 1..=reach {
             if !collides(state, room, -i, -1) {
                 state.position.x -= i;
                 state.position.y -= 1;
@@ -599,8 +610,8 @@ pub fn upward_corner_correction(state: &mut PlayerState, room: &Room) -> bool {
         }
     }
 
-    if state.speed.x >= 0.0 {
-        for i in 1..=UPWARD_CORNER_CORRECTION {
+    if state.speed.x >= -slack {
+        for i in 1..=reach {
             if !collides(state, room, i, -1) {
                 state.position.x += i;
                 state.position.y -= 1;
@@ -2733,16 +2744,38 @@ mod tests {
     }
 
     #[test]
-    fn corner_correction_reaches_five_pixels() {
+    fn corner_correction_reaches_four_pixels() {
+        let room = ceiling_room();
+        let mut s = rising_at(48, 0.0);
+        move_v(&mut s, &room, -1.0);
+        assert_eq!(s.position, IVec2 { x: 52, y: UNDER_CEILING_Y - 1 });
+
+        let mut s = rising_at(47, 0.0);
+        move_v(&mut s, &room, -1.0);
+        assert_eq!(s.position, IVec2 { x: 47, y: UNDER_CEILING_Y });
+        assert_eq!(s.speed.y, 0.0);
+    }
+
+    #[test]
+    fn corner_correction_reaches_five_pixels_in_a_dash_straight_up() {
         let room = ceiling_room();
         let mut s = rising_at(47, 0.0);
+        s.dash_attack_timer = DASH_ATTACK_TIME;
         move_v(&mut s, &room, -1.0);
         assert_eq!(s.position, IVec2 { x: 52, y: UNDER_CEILING_Y - 1 });
 
         let mut s = rising_at(46, 0.0);
+        s.dash_attack_timer = DASH_ATTACK_TIME;
         move_v(&mut s, &room, -1.0);
         assert_eq!(s.position, IVec2 { x: 46, y: UNDER_CEILING_Y });
-        assert_eq!(s.speed.y, 0.0);
+    }
+
+    #[test]
+    fn corner_correction_reaches_four_pixels_in_a_dash_with_sideways_speed() {
+        let mut s = rising_at(47, 10.0);
+        s.dash_attack_timer = DASH_ATTACK_TIME;
+        move_v(&mut s, &ceiling_room(), -1.0);
+        assert_eq!(s.position, IVec2 { x: 47, y: UNDER_CEILING_Y });
     }
 
     #[test]

@@ -1,5 +1,5 @@
 use crate::map::{Element, MapError};
-use crate::physics::{approach, hitbox, move_exact_h, move_exact_v, set_lift_speed, IVec2, PlayerState, DELTA_TIME};
+use crate::physics::{approach, hitbox, is_riding as rides, move_exact_h, move_exact_v, set_lift_speed, IVec2, PlayerState, DELTA_TIME};
 use crate::room::{Rect, Room};
 use crate::Vec2;
 
@@ -92,7 +92,7 @@ pub fn update_zip_movers(room: &mut Room, state: &mut PlayerState) {
 }
 
 pub fn is_riding(state: &PlayerState, room: &Room, index: usize) -> bool {
-    !state.dead && hitbox(state, 0, 1).overlaps(&room.zip_movers[index].rect())
+    rides(state, &room.zip_movers[index].rect())
 }
 
 fn sine_in(t: f32) -> f32 {

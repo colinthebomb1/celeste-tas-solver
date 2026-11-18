@@ -97,6 +97,8 @@ pub struct PlayerState {
     pub facing: i8,
     pub wall_slide_timer: f32,
     pub wall_slide_dir: i8,
+    // the side she is holding on to while sliding down a wall with grab held
+    pub climb_trigger_dir: i8,
     // her current top fall speed, between MAX_FALL and FAST_MAX_FALL
     pub max_fall: f32,
     pub stamina: f32,
@@ -146,6 +148,7 @@ impl PlayerState {
             facing: 1,
             wall_slide_timer: WALL_SLIDE_TIME,
             wall_slide_dir: 0,
+            climb_trigger_dir: 0,
             max_fall: MAX_FALL,
             stamina: CLIMB_MAX_STAMINA,
             ducking: false,
@@ -287,6 +290,17 @@ pub fn enters_jump_thru(state: &PlayerState, room: &Room, dx: i32, dy: i32) -> b
 
 pub fn floor_below(state: &PlayerState, room: &Room, dx: i32) -> bool {
     collides(state, room, dx, 1) || enters_jump_thru(state, room, dx, 1)
+}
+
+// whether a moving block carries her along
+pub fn is_riding(state: &PlayerState, solid: &Rect) -> bool {
+    if state.dead {
+        false
+    } else if state.climb_trigger_dir != 0 {
+        hitbox(state, state.climb_trigger_dir as i32, 0).overlaps(solid)
+    } else {
+        hitbox(state, 0, 1).overlaps(solid)
+    }
 }
 
 pub fn set_lift_speed(state: &mut PlayerState, lift_speed: Vec2) {
@@ -583,6 +597,9 @@ pub fn wall_slide_max_fall(state: &mut PlayerState, room: &Room, input: Input) -
         }
 
         if state.wall_slide_dir != 0 {
+            if input.grab {
+                state.climb_trigger_dir = state.wall_slide_dir;
+            }
             max = lerp(MAX_FALL, WALL_SLIDE_START_MAX, state.wall_slide_timer / WALL_SLIDE_TIME)
         }
     }
@@ -928,6 +945,7 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
     }
 
     let ground = on_ground(&state, room);
+    state.climb_trigger_dir = 0;
 
     if state.wall_slide_dir != 0 {
         state.wall_slide_timer = (state.wall_slide_timer - DELTA_TIME).max(0.0);
@@ -1048,7 +1066,7 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
         }
     }
 
-    if state.speed.y > 0.0 && !ground && input.move_y != 1 && can_unduck(&state, room) {
+    if state.speed.y > 0.0 && !ground && state.jump_grace_timer <= 0.0 && can_unduck(&state, room) {
         state.ducking = false;
     }
 
@@ -2278,10 +2296,18 @@ mod tests {
     }
 
     #[test]
-    fn step_stays_ducked_when_falling_with_down_held() {
+    fn step_stays_ducked_when_falling_in_coyote_time() {
         let mut s = ducking_at(0, 64);
         s.speed.y = 50.0;
-        assert!(step(s, DOWN, &room()).ducking);
+        s.jump_grace_timer = JUMP_GRACE_TIME;
+        assert!(step(s, Input::default(), &room()).ducking);
+    }
+
+    #[test]
+    fn step_stands_up_when_falling_even_with_down_held() {
+        let mut s = ducking_at(0, 64);
+        s.speed.y = 50.0;
+        assert!(!step(s, DOWN, &room()).ducking);
     }
 
     #[test]

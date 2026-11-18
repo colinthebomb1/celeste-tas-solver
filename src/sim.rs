@@ -1,3 +1,4 @@
+use crate::entities::falling_block::update_falling_blocks;
 use crate::entities::refill::update_refills;
 use crate::entities::zip_mover::update_zip_movers;
 use crate::physics::{step, Input, PlayerState};
@@ -11,6 +12,7 @@ pub fn step_room(state: PlayerState, input: Input, room: &mut Room) -> PlayerSta
     if !frozen {
         update_refills(room, &mut state);
         update_zip_movers(room, &mut state);
+        update_falling_blocks(room, &mut state);
     }
 
     state

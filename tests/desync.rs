@@ -191,7 +191,7 @@ fn input_from_row(row: &str) -> Input {
             "J" => input.jump = true,
             "K" => input.jump2 = true,
             "X" | "C" => input.dash = true,
-            "Z" => input.crouch_dash = true,
+            "Z" | "V" => input.crouch_dash = true,
             "G" => input.grab = true,
             _ => {}
         }
@@ -212,7 +212,7 @@ fn community_lvl_1() {
 }
 
 // frames of the whole chapter that match the game so far. raise it as the simulator improves
-const CHAPTER_1A_MATCHED: usize = 1585;
+const CHAPTER_1A_MATCHED: usize = 1909;
 
 // one simulation of the community TAS through every room of 1A.
 // run with: cargo test --test desync chapter -- --nocapture

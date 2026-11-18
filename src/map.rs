@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::physics::IVec2;
 use crate::entities::dash_block::load_dash_blocks;
+use crate::entities::falling_block::load_falling_blocks;
 use crate::entities::jump_thru::load_jump_thrus;
 use crate::entities::refill::load_refills;
 use crate::entities::spikes::load_spikes;
@@ -272,6 +273,7 @@ fn room_from_level(level: &Element) -> Result<Room, MapError> {
     room.springs = load_springs(level, origin)?;
     room.refills = load_refills(level, origin)?;
     room.dash_blocks = load_dash_blocks(level, origin)?;
+    room.falling_blocks = load_falling_blocks(level, origin)?;
     room.zip_movers = load_zip_movers(level, origin)?;
     
     Ok(room)
@@ -293,14 +295,14 @@ pub fn find_celeste_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::{DashBlock, JumpThru, Refill, Spikes, Spring, ZipMover};
+    use crate::entities::{DashBlock, FallingBlock, JumpThru, Refill, Spikes, Spring, ZipMover};
     use crate::room::Direction;
 
-    const LOOKUP: [&str; 30] = [
+    const LOOKUP: [&str; 32] = [
         "Map", "levels", "level", "name", "x", "y", "solids", "innerText", "room_a", "room_b",
         "flag", "big", "ratio", "note", "entities", "spikesUp", "spikesDown", "spikesLeft",
         "spikesRight", "width", "height", "strawberry", "jumpThru", "zipMover", "node", "spring", "dashBlock",
-        "refill", "twoDash", "oneUse",
+        "refill", "twoDash", "oneUse", "fallingBlock", "climbFall",
     ];
 
     fn string(s: &str) -> Vec<u8> {
@@ -677,6 +679,16 @@ mod tests {
         let map = map_with_entities(&[plain, element("refill", &attributes, &[])]);
         let room = load_room(&map, "room_b").unwrap();
         assert_eq!(room.refills, vec![Refill::new(472, -112, false, false), Refill::new(328, -168, true, true)]);
+    }
+
+    #[test]
+    fn load_room_reads_falling_blocks_in_world_coordinates() {
+        let size = [("x", v_i16(152)), ("y", v_i16(160)), ("width", v_u8(32)), ("height", v_u8(24))];
+        let mut no_climb = size.to_vec();
+        no_climb.push(("climbFall", v_bool(false)));
+        let map = map_with_entities(&[element("fallingBlock", &size, &[]), element("fallingBlock", &no_climb, &[])]);
+        let room = load_room(&map, "room_b").unwrap();
+        assert_eq!(room.falling_blocks, vec![FallingBlock::new(472, -24, 32, 24, true), FallingBlock::new(472, -24, 32, 24, false)]);
     }
 
     #[test]

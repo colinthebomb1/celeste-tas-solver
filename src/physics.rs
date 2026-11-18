@@ -51,6 +51,9 @@ pub const CLIMB_UP_COST: f32 = 45.454544;
 pub const CLIMB_STILL_COST: f32 = 10.0;
 // a ceiling this close stops her climbing over a ledge
 pub const CLIMB_HOP_BLOCK_DIST: i32 = 6;
+pub const CLIMB_HOP_Y: f32 = -120.0;
+pub const CLIMB_HOP_X: f32 = 100.0;
+pub const CLIMB_HOP_FORCE_TIME: f32 = 0.2;
 pub const UPWARD_CORNER_CORRECTION: i32 = 5;
 pub const DASH_CORNER_CORRECTION: i32 = 4;
 pub const DASH_ATTACK_TIME: f32 = 0.3;
@@ -97,6 +100,20 @@ pub enum Mode {
     Dashing { timer: f32 },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MovingSolid {
+    ZipMover,
+    FallingBlock,
+}
+
+// the moving block she is hopping onto, and where it was when she last looked
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HopSolid {
+    pub kind: MovingSolid,
+    pub index: usize,
+    pub position: IVec2,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PlayerState {
     pub position: IVec2,
@@ -118,6 +135,10 @@ pub struct PlayerState {
     pub climb_no_move_timer: f32,
     // -1 = climbing up, 1 = down, 0 = holding still
     pub last_climb_move: i8,
+    // after a climb hop she waits to clear the ledge, then gets this sideways speed
+    pub hop_wait_x: i8,
+    pub hop_wait_x_speed: f32,
+    pub climb_hop_solid: Option<HopSolid>,
     // her current top fall speed, between MAX_FALL and FAST_MAX_FALL
     pub max_fall: f32,
     pub stamina: f32,
@@ -170,6 +191,9 @@ impl PlayerState {
             climb_trigger_dir: 0,
             climb_no_move_timer: 0.0,
             last_climb_move: 0,
+            hop_wait_x: 0,
+            hop_wait_x_speed: 0.0,
+            climb_hop_solid: None,
             max_fall: MAX_FALL,
             stamina: CLIMB_MAX_STAMINA,
             ducking: false,
@@ -872,6 +896,74 @@ pub fn climb_begin(state: &mut PlayerState, room: &Room) {
     state.mode = Mode::Climb;
 }
 
+fn moving_solid_at(room: &Room, rect: &Rect) -> Option<HopSolid> {
+    let zip = room.zip_movers.iter().position(|zip| zip.collidable && zip.rect().overlaps(rect));
+    let falling = room.falling_blocks.iter().position(|block| block.collidable && block.rect().overlaps(rect));
+
+    if let Some(index) = zip {
+        Some(HopSolid { kind: MovingSolid::ZipMover, index, position: room.zip_movers[index].position })
+    } else {
+        falling.map(|index| HopSolid { kind: MovingSolid::FallingBlock, index, position: room.falling_blocks[index].position })
+    }
+}
+
+fn moving_solid_position(room: &Room, solid: HopSolid) -> Option<IVec2> {
+    let (position, collidable) = match solid.kind {
+        MovingSolid::ZipMover => (room.zip_movers[solid.index].position, room.zip_movers[solid.index].collidable),
+        MovingSolid::FallingBlock => (room.falling_blocks[solid.index].position, room.falling_blocks[solid.index].collidable),
+    };
+
+    collidable.then_some(position)
+}
+
+// she pops up over the ledge. the sideways push waits until the wall is out of her way
+pub fn climb_hop(state: &mut PlayerState, room: &Room) {
+    if wall_at(state, room, state.facing) {
+        state.climb_hop_solid = moving_solid_at(room, &hitbox(state, state.facing as i32, 0));
+        state.hop_wait_x = state.facing;
+        state.hop_wait_x_speed = state.facing as f32 * CLIMB_HOP_X;
+    } else {
+        state.climb_hop_solid = None;
+        state.hop_wait_x = 0;
+        state.speed.x = state.facing as f32 * CLIMB_HOP_X;
+    }
+
+    state.speed.y = state.speed.y.min(CLIMB_HOP_Y);
+    state.force_move_x = 0;
+    state.force_move_x_timer = CLIMB_HOP_FORCE_TIME;
+    set_normal(state);
+}
+
+// keeps her beside a moving block while she hops onto it
+fn follow_hop_solid(state: &mut PlayerState, room: &Room) {
+    let Some(solid) = state.climb_hop_solid else {
+        return;
+    };
+
+    match moving_solid_position(room, solid) {
+        None => state.climb_hop_solid = None,
+        Some(position) if position != solid.position => {
+            state.climb_hop_solid = Some(HopSolid { position, ..solid });
+            move_exact_h(state, room, position.x - solid.position.x);
+            move_exact_v(state, room, position.y - solid.position.y);
+        }
+        Some(_) => {}
+    }
+}
+
+fn update_hop_wait(state: &mut PlayerState, room: &Room) {
+    if state.hop_wait_x == 0 {
+        return;
+    }
+
+    if sign(state.speed.x) == -(state.hop_wait_x as f32) || state.speed.y > 0.0 {
+        state.hop_wait_x = 0;
+    } else if !wall_at(state, room, state.hop_wait_x) {
+        state.speed.x = state.hop_wait_x_speed;
+        state.hop_wait_x = 0;
+    }
+}
+
 fn solid_at(room: &Room, x: i32, y: i32) -> bool {
     room.collide_rect(x, y, 1, 1)
 }
@@ -914,8 +1006,11 @@ fn climb_update(state: &mut PlayerState, room: &Room, input: Input, ground: bool
     }
 
     if !wall_at(state, room, state.facing) {
-        // climbing past the top hops her over the ledge. that isn't simulated yet
-        set_normal(state);
+        if state.speed.y < 0.0 {
+            climb_hop(state, room);
+        } else {
+            set_normal(state);
+        }
         return;
     }
 
@@ -930,8 +1025,7 @@ fn climb_update(state: &mut PlayerState, room: &Room, input: Input, ground: bool
             state.speed.y = state.speed.y.max(0.0);
             may_slip = true;
         } else if slip_check(state, room, 0) {
-            // same hop
-            set_normal(state);
+            climb_hop(state, room);
             return;
         } else {
             target = CLIMB_UP_SPEED;
@@ -1177,8 +1271,11 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
         state.force_move_x_timer -= DELTA_TIME;
         Input { move_x: state.force_move_x, ..input }
     } else {
+        state.climb_hop_solid = None;
         input
     };
+
+    follow_hop_solid(&mut state, room);
 
     state.move_x = input.move_x;
 
@@ -1189,6 +1286,7 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
     let aim = aim_vector(aim_input, state.facing);
 
     update_wall_speed_retention(&mut state, room);
+    update_hop_wait(&mut state, room);
 
     if state.var_jump_timer > 0.0 {
         state.var_jump_timer -= DELTA_TIME;
@@ -1197,6 +1295,8 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
     if dashing(&state) && state.dash_dir.y == 0.0 {
         dash_jump_thru_nudge(&mut state, room);
     }
+
+    let was_normal = state.mode == Mode::Normal;
 
     match state.mode {
         Mode::Normal => {
@@ -1239,6 +1339,12 @@ pub fn step(mut state: PlayerState, input: Input, room: &Room) -> PlayerState {
                 dash_end(&mut state);
             }
         }
+    }
+
+    if was_normal && state.mode != Mode::Normal {
+        state.wall_boost_timer = 0.0;
+        state.wall_speed_retention_timer = 0.0;
+        state.hop_wait_x = 0;
     }
 
     // lift speed lasts a bit after the block stops moving
@@ -3780,5 +3886,105 @@ mod tests {
         let beside = Rect { left: 80, top: 80, width: 16, height: 40 };
         assert!(is_riding(&climbing(100), &beside));
         assert!(!is_riding(&player_at(WALL_X, 100, 0.0, 0.0), &beside));
+    }
+
+    #[test]
+    fn climbing_past_the_top_of_a_wall_hops() {
+        // the wall's top edge is y = 48
+        let room = partial_wall(6..23);
+        let s = step(climbing(54), GRAB_UP, &room);
+
+        assert_eq!(s.mode, Mode::Normal);
+        assert_eq!(s.speed.y, CLIMB_HOP_Y);
+        assert_eq!(s.speed.x, 0.0);
+        assert_eq!(s.hop_wait_x, 1);
+        assert_eq!(s.force_move_x_timer, CLIMB_HOP_FORCE_TIME);
+    }
+
+    #[test]
+    fn a_hop_carries_her_onto_the_ledge() {
+        let room = partial_wall(6..23);
+        let mut s = step(climbing(54), GRAB_UP, &room);
+
+        for _ in 0..40 {
+            s = step(s, Input::default(), &room);
+        }
+
+        assert!(s.position.x > WALL_X);
+        assert_eq!(s.position.y, 48);
+        assert_eq!(s.hop_wait_x, 0);
+    }
+
+    #[test]
+    fn a_hop_with_no_wall_left_pushes_her_sideways_at_once() {
+        let room = partial_wall(0..0);
+        let mut s = climbing(100);
+        s.speed.y = -10.0;
+        s = step(s, GRAB, &room);
+
+        assert_eq!(s.mode, Mode::Normal);
+        assert_eq!(s.speed.x, CLIMB_HOP_X);
+        assert_eq!(s.speed.y, CLIMB_HOP_Y);
+        assert_eq!(s.hop_wait_x, 0);
+    }
+
+    #[test]
+    fn losing_the_wall_without_rising_just_lets_go() {
+        let room = partial_wall(0..0);
+        let s = step(climbing(100), GRAB, &room);
+
+        assert_eq!(s.mode, Mode::Normal);
+        assert_eq!(s.speed.x, 0.0);
+        assert_eq!(s.force_move_x_timer, 0.0);
+    }
+
+    #[test]
+    fn falling_cancels_the_wait_for_the_sideways_push() {
+        let mut s = player_at(WALL_X, 100, 0.0, 10.0);
+        s.hop_wait_x = 1;
+        s.hop_wait_x_speed = CLIMB_HOP_X;
+        s = step(s, Input::default(), &room());
+
+        assert_eq!(s.hop_wait_x, 0);
+        assert_eq!(s.speed.x, 0.0);
+    }
+
+    #[test]
+    fn dashing_cancels_the_wait_for_the_sideways_push() {
+        let mut s = player_at(WALL_X, 100, 0.0, -50.0);
+        s.hop_wait_x = 1;
+        s.hop_wait_x_speed = CLIMB_HOP_X;
+        s = step(s, Input { dash: true, ..Input::default() }, &room());
+
+        assert_eq!(s.mode, Mode::DashStart);
+        assert_eq!(s.hop_wait_x, 0);
+    }
+
+    #[test]
+    fn a_hop_follows_the_moving_block_she_is_hopping_onto() {
+        let mut room = room();
+        room.zip_movers.push(crate::entities::ZipMover::new(40, 60, 16, 16, 40, 20));
+
+        // the block was 2 px lower when she last looked
+        let mut s = player_at(20, 100, 0.0, 0.0);
+        s.climb_hop_solid = Some(HopSolid { kind: MovingSolid::ZipMover, index: 0, position: IVec2 { x: 40, y: 62 } });
+        s.force_move_x_timer = CLIMB_HOP_FORCE_TIME;
+        s = step(s, Input::default(), &room);
+
+        assert_eq!(s.position.y, 98);
+        assert_eq!(s.climb_hop_solid.unwrap().position, IVec2 { x: 40, y: 60 });
+    }
+
+    #[test]
+    fn she_stops_following_the_block_when_the_hop_lock_ends() {
+        let mut room = room();
+        room.zip_movers.push(crate::entities::ZipMover::new(40, 60, 16, 16, 40, 20));
+
+        let mut s = player_at(20, 100, 0.0, 0.0);
+        s.climb_hop_solid = Some(HopSolid { kind: MovingSolid::ZipMover, index: 0, position: IVec2 { x: 40, y: 62 } });
+        s = step(s, Input::default(), &room);
+
+        assert_eq!(s.position.y, 100);
+        assert_eq!(s.climb_hop_solid, None);
     }
 }

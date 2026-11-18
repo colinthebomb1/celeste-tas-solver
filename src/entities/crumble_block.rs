@@ -1,6 +1,6 @@
-use crate::map::{Element, MapError};
-use crate::physics::{hitbox, IVec2, Mode, PlayerState, DELTA_TIME};
-use crate::room::{Rect, Room};
+use crate::level::map::{Element, MapError};
+use crate::player::{hitbox, IVec2, Mode, PlayerState, DELTA_TIME};
+use crate::level::room::{Rect, Room};
 
 pub const CRUMBLE_HEIGHT: i32 = 8;
 pub const CRUMBLE_SHAKE_TIME: f32 = 0.2;

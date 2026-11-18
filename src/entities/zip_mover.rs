@@ -1,6 +1,6 @@
-use crate::map::{Element, MapError};
-use crate::physics::{approach, hitbox, is_riding as rides, move_exact_h, move_exact_v, set_lift_speed, IVec2, PlayerState, DELTA_TIME};
-use crate::room::{Rect, Room};
+use crate::level::map::{Element, MapError};
+use crate::player::{approach, hitbox, is_riding as rides, move_exact_h, move_exact_v, set_lift_speed, IVec2, PlayerState, DELTA_TIME};
+use crate::level::room::{Rect, Room};
 use crate::Vec2;
 
 pub const ZIP_START_DELAY: f32 = 0.1;
@@ -245,7 +245,7 @@ fn move_pixels(room: &mut Room, index: usize, state: &mut PlayerState, dx: i32, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::physics::{lift_boost, Input, LIFT_Y_CAP};
+    use crate::player::{lift_boost, Input, LIFT_Y_CAP};
     use crate::sim::step_room;
 
     // an empty room with one block at (40, 120), 32 x 16, that travels 80 px up

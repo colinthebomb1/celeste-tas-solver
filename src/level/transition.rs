@@ -1,9 +1,9 @@
 use crate::entities::dash_block::DASH_BLOCK_FREEZE_TIME;
-use crate::physics::{
+use crate::player::{
     collides, hitbox_height, set_normal, PlayerState, CLIMB_MAX_STAMINA, DASH_COOLDOWN, HITBOX_WIDTH, JUMP_SPEED,
     MAX_DASHES, VAR_JUMP_TIME, WALL_SLIDE_TIME,
 };
-use crate::room::{Chapter, Direction};
+use crate::level::room::{Chapter, Direction};
 
 pub const TRANSITION_FRAMES: usize = 40;
 // how far the game looks past her center for the next room
@@ -115,8 +115,8 @@ pub fn finish_transition(state: &mut PlayerState, chapter: &Chapter, transition:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::physics::{IVec2, Mode};
-    use crate::room::Room;
+    use crate::player::{IVec2, Mode};
+    use crate::level::room::Room;
     use crate::Vec2;
 
     const OPEN: &str = "0000\n0000\n0000\n0000";

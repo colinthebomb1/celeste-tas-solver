@@ -1,6 +1,6 @@
-use crate::map::{Element, MapError};
-use crate::physics::{approach, hitbox, is_riding, move_exact_v, set_lift_speed, IVec2, PlayerState, DELTA_TIME};
-use crate::room::{Rect, Room, TILE_SIZE};
+use crate::level::map::{Element, MapError};
+use crate::player::{approach, hitbox, is_riding, move_exact_v, set_lift_speed, IVec2, PlayerState, DELTA_TIME};
+use crate::level::room::{Rect, Room, TILE_SIZE};
 use crate::Vec2;
 
 pub const FALL_SHAKE_TIME: f32 = 0.2;
@@ -289,7 +289,7 @@ fn carry_down(room: &mut Room, index: usize, state: &mut PlayerState, pixels: i3
 mod tests {
     use super::*;
     use crate::entities::{DashBlock, JumpThru};
-    use crate::physics::Input;
+    use crate::player::Input;
     use crate::sim::step_room;
 
     // 11 x 23 tiles, open except for a floor along the bottom row. the floor's top is y = 176

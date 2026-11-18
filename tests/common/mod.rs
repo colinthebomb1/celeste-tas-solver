@@ -1,8 +1,8 @@
 // each test file uses a different part of this
 #![allow(dead_code)]
 
-use celeste_tas_solver::map::{find_celeste_dir, load_chapter, load_map, load_room, Element};
-use celeste_tas_solver::room::{Chapter, Room};
+use celeste_tas_solver::level::map::{find_celeste_dir, load_chapter, load_map, load_room, Element};
+use celeste_tas_solver::level::room::{Chapter, Room};
 
 pub fn map_1a() -> Option<Element> {
     let path = find_celeste_dir()?.join("Content/Maps/1-ForsakenCity.bin");

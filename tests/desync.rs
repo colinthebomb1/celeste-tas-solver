@@ -1,7 +1,7 @@
-use celeste_tas_solver::physics::{step, track_buttons, IVec2, Input, Mode, PlayerState};
+use celeste_tas_solver::player::{step, track_buttons, IVec2, Input, Mode, PlayerState};
 use celeste_tas_solver::sim::step_room;
 use celeste_tas_solver::trace::parse_trace;
-use celeste_tas_solver::transition::{before_transition, find_transition, finish_transition, TRANSITION_FRAMES};
+use celeste_tas_solver::level::transition::{before_transition, find_transition, finish_transition, TRANSITION_FRAMES};
 use celeste_tas_solver::Vec2;
 
 mod common;

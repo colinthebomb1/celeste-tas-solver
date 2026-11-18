@@ -1,6 +1,6 @@
-use crate::map::{Element, MapError};
-use crate::physics::IVec2;
-use crate::room::Rect;
+use crate::level::map::{Element, MapError};
+use crate::player::IVec2;
+use crate::level::room::Rect;
 
 pub const JUMP_THRU_HEIGHT: i32 = 5;
 

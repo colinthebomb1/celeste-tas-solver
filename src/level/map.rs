@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::physics::IVec2;
+use crate::player::IVec2;
 use crate::entities::crumble_block::load_crumble_blocks;
 use crate::entities::dash_block::load_dash_blocks;
 use crate::entities::falling_block::load_falling_blocks;
@@ -10,7 +10,7 @@ use crate::entities::refill::load_refills;
 use crate::entities::spikes::load_spikes;
 use crate::entities::spring::load_springs;
 use crate::entities::zip_mover::load_zip_movers;
-use crate::room::{Chapter, Room};
+use crate::level::room::{Chapter, Room};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MapError {
@@ -298,7 +298,7 @@ pub fn find_celeste_dir() -> Option<PathBuf> {
 mod tests {
     use super::*;
     use crate::entities::{CrumbleBlock, DashBlock, FallingBlock, JumpThru, Refill, Spikes, Spring, ZipMover};
-    use crate::room::Direction;
+    use crate::level::room::Direction;
 
     const LOOKUP: [&str; 33] = [
         "Map", "levels", "level", "name", "x", "y", "solids", "innerText", "room_a", "room_b",

@@ -1,6 +1,6 @@
-use crate::map::{Element, MapError};
-use crate::physics::IVec2;
-use crate::room::{Direction, Rect};
+use crate::level::map::{Element, MapError};
+use crate::player::IVec2;
+use crate::level::room::{Direction, Rect};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Spikes {

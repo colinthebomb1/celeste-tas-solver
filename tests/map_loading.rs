@@ -1,7 +1,7 @@
-use celeste_tas_solver::map::load_room;
-use celeste_tas_solver::physics::IVec2;
+use celeste_tas_solver::level::map::load_room;
+use celeste_tas_solver::player::IVec2;
 use celeste_tas_solver::entities::{DashBlock, JumpThru, Spikes, Spring};
-use celeste_tas_solver::room::{Direction, Rect};
+use celeste_tas_solver::level::room::{Direction, Rect};
 
 mod common;
 

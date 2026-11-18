@@ -1,6 +1,6 @@
-use crate::map::{Element, MapError};
-use crate::physics::{hurtbox, use_refill, IVec2, PlayerState, DELTA_TIME};
-use crate::room::{Rect, Room};
+use crate::level::map::{Element, MapError};
+use crate::player::{hurtbox, use_refill, IVec2, PlayerState, DELTA_TIME};
+use crate::level::room::{Rect, Room};
 
 pub const REFILL_SIZE: i32 = 16;
 pub const REFILL_RESPAWN_TIME: f32 = 2.5;
@@ -73,7 +73,7 @@ pub fn update_refills(room: &mut Room, state: &mut PlayerState) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::physics::{CLIMB_MAX_STAMINA, CLIMB_TIRED_THRESHOLD};
+    use crate::player::{CLIMB_MAX_STAMINA, CLIMB_TIRED_THRESHOLD};
     use crate::Vec2;
 
     fn room_with_refill(refill: Refill) -> Room {

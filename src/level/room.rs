@@ -1,5 +1,5 @@
 use crate::entities::{CrumbleBlock, DashBlock, FallingBlock, JumpThru, Refill, Spikes, Spring, ZipMover};
-use crate::physics::IVec2;
+use crate::player::IVec2;
 
 pub const TILE_SIZE: i32 = 8;
 pub const SCREEN_HEIGHT: i32 = 180;

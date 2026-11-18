@@ -1,5 +1,5 @@
-use celeste_tas_solver::physics::{IVec2, PlayerState};
-use celeste_tas_solver::transition::{before_transition, find_transition, finish_transition, TRANSITION_FRAMES};
+use celeste_tas_solver::player::{IVec2, PlayerState};
+use celeste_tas_solver::level::transition::{before_transition, find_transition, finish_transition, TRANSITION_FRAMES};
 use celeste_tas_solver::Vec2;
 
 mod common;

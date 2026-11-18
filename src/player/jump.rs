@@ -152,7 +152,9 @@ pub fn super_wall_jump(state: &mut PlayerState, dir: i8) {
     set_normal(state);
 }
 
-pub fn jump_off_wall(state: &mut PlayerState, room: &Room, input: Input, ground: bool) -> bool {
+pub fn jump_off_wall(state: &mut PlayerState, room: &Room, frame: Frame) -> bool {
+    let input = frame.input;
+
     if !can_unduck(state, room) {
         return false;
     }
@@ -170,7 +172,7 @@ pub fn jump_off_wall(state: &mut PlayerState, room: &Room, input: Input, ground:
     if dashing_up {
         super_wall_jump(state, -wall);
     } else if can_climb_jump(state, room, input) {
-        climb_jump(state, input, ground);
+        climb_jump(state, frame);
     } else if wall_bounce_ready(state) {
         super_wall_jump(state, -wall);
     } else {
@@ -192,7 +194,9 @@ pub fn can_climb_jump(state: &PlayerState, room: &Room, input: Input) -> bool {
     }
 }
 
-pub fn climb_jump(state: &mut PlayerState, input: Input, ground: bool) {
+pub fn climb_jump(state: &mut PlayerState, frame: Frame) {
+    let Frame { input, ground, .. } = frame;
+
     if !ground {
         state.stamina -= CLIMB_JUMP_COST;
     }

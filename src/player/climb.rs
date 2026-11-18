@@ -140,15 +140,15 @@ pub fn slip_check(state: &PlayerState, room: &Room, add_y: i32) -> bool {
     !room.solid_at(x, y) && !room.solid_at(x, y - 4 + add_y)
 }
 
-pub(crate) fn climb_update(
-    state: &mut PlayerState,
-    room: &Room,
-    input: Input,
-    ground: bool,
-    jump_pressed: bool,
-    dash_pressed: bool,
-    crouch: bool,
-) {
+pub(crate) fn climb_update(state: &mut PlayerState, room: &Room, frame: Frame) {
+    let Frame {
+        input,
+        ground,
+        jump_pressed,
+        dash_pressed,
+        ..
+    } = frame;
+
     state.climb_no_move_timer -= DELTA_TIME;
 
     if ground {
@@ -159,14 +159,14 @@ pub(crate) fn climb_update(
         if input.move_x == -state.facing {
             wall_jump(state, room, -state.facing, input.move_x);
         } else {
-            climb_jump(state, input, ground);
+            climb_jump(state, frame);
         }
         return;
     }
 
     if can_dash(state, dash_pressed) {
         add_lift_boost(state);
-        dash_begin(state, room, input, ground, crouch);
+        dash_begin(state, room, frame);
         return;
     }
 

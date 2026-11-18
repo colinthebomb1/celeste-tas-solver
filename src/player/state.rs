@@ -154,6 +154,18 @@ impl Input {
     }
 }
 
+// what holds for the frame, the buttons, and whether she started it on the ground
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Frame {
+    pub input: Input,
+    // where a dash would go
+    pub aim: Vec2,
+    pub ground: bool,
+    pub jump_pressed: bool,
+    pub dash_pressed: bool,
+    pub crouch_dash_pressed: bool,
+}
+
 pub fn jump_pressed(state: &PlayerState, input: Input) -> bool {
     (!state.jump_held && input.jump) || (!state.jump2_held && input.jump2)
 }

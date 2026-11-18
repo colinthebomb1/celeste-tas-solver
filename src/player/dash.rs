@@ -29,7 +29,14 @@ pub fn can_dash(state: &PlayerState, dash_pressed: bool) -> bool {
     dash_pressed && state.dash_cooldown_timer <= 0.0 && state.dashes > 0
 }
 
-pub fn dash_begin(state: &mut PlayerState, room: &Room, input: Input, ground: bool, crouch: bool) {
+pub fn dash_begin(state: &mut PlayerState, room: &Room, frame: Frame) {
+    let Frame {
+        input,
+        ground,
+        crouch_dash_pressed,
+        ..
+    } = frame;
+
     state.dashes -= 1;
     state.freeze_timer = DASH_FREEZE_TIME;
     state.dash_cooldown_timer = DASH_COOLDOWN;
@@ -44,7 +51,7 @@ pub fn dash_begin(state: &mut PlayerState, room: &Room, input: Input, ground: bo
     // holding down at the start of a dash ducks
     if !ground && state.ducking && can_unduck(state, room) {
         state.ducking = false;
-    } else if !state.ducking && (crouch || input.move_y == 1) {
+    } else if !state.ducking && (crouch_dash_pressed || input.move_y == 1) {
         state.ducking = true;
     }
 

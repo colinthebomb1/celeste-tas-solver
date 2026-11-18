@@ -5,6 +5,15 @@ const FLOOR_Y: i32 = 144;
 const LEDGE_X: i32 = 43;
 const WALL_X: i32 = 76;
 
+// a frame with these buttons held and nothing newly pressed
+fn frame(input: Input, ground: bool) -> Frame {
+    Frame {
+        input,
+        ground,
+        ..Frame::default()
+    }
+}
+
 fn room() -> Room {
     let text = "00000000001\n".repeat(18) + &"11111000001\n".repeat(5);
     Room::from_tiles(IVec2 { x: 0, y: 0 }, &text)
@@ -392,7 +401,7 @@ fn dash_begin_freezes_and_zeroes_speed() {
     let mut s = standing();
     s.speed = Vec2 { x: 90.0, y: 0.0 };
     s.wall_slide_timer = 0.3;
-    dash_begin(&mut s, &room(), Input::default(), true, false);
+    dash_begin(&mut s, &room(), frame(Input::default(), true));
     assert_eq!(s.mode, Mode::DashStart);
     assert_eq!(s.dashes, MAX_DASHES - 1);
     assert_eq!(s.freeze_timer, DASH_FREEZE_TIME);
@@ -407,7 +416,7 @@ fn dash_begin_freezes_and_zeroes_speed() {
 #[test]
 fn dash_launch_sets_speed_and_starts_timer() {
     let mut s = standing();
-    dash_begin(&mut s, &room(), Input::default(), true, false);
+    dash_begin(&mut s, &room(), frame(Input::default(), true));
     dash_launch(&mut s, Vec2 { x: 0.0, y: -1.0 }, true);
     assert_eq!(
         s.speed,
@@ -424,13 +433,13 @@ fn dash_launch_sets_speed_and_starts_timer() {
 fn dash_launch_keeps_faster_speed_in_same_direction() {
     let mut s = standing();
     s.speed.x = 300.0;
-    dash_begin(&mut s, &room(), Input::default(), true, false);
+    dash_begin(&mut s, &room(), frame(Input::default(), true));
     dash_launch(&mut s, Vec2 { x: 1.0, y: 0.0 }, true);
     assert_eq!(s.speed.x, 300.0);
 
     let mut s = standing();
     s.speed.x = -300.0;
-    dash_begin(&mut s, &room(), Input::default(), true, false);
+    dash_begin(&mut s, &room(), frame(Input::default(), true));
     dash_launch(&mut s, Vec2 { x: 1.0, y: 0.0 }, true);
     assert_eq!(s.speed.x, DASH_SPEED);
 }
@@ -439,7 +448,7 @@ fn dash_launch_keeps_faster_speed_in_same_direction() {
 fn dash_launch_up_drops_horizontal_speed() {
     let mut s = standing();
     s.speed.x = 300.0;
-    dash_begin(&mut s, &room(), Input::default(), true, false);
+    dash_begin(&mut s, &room(), frame(Input::default(), true));
     dash_launch(&mut s, Vec2 { x: 0.0, y: -1.0 }, true);
     assert_eq!(s.speed.x, 0.0);
 }
@@ -447,20 +456,20 @@ fn dash_launch_up_drops_horizontal_speed() {
 #[test]
 fn dash_launch_turns_to_face_horizontal_dashes() {
     let mut s = standing();
-    dash_begin(&mut s, &room(), Input::default(), true, false);
+    dash_begin(&mut s, &room(), frame(Input::default(), true));
     dash_launch(&mut s, Vec2 { x: -1.0, y: 0.0 }, true);
     assert_eq!(s.facing, -1);
 
     let mut s = standing();
     s.facing = -1;
-    dash_begin(&mut s, &room(), Input::default(), true, false);
+    dash_begin(&mut s, &room(), frame(Input::default(), true));
     dash_launch(&mut s, Vec2 { x: 0.0, y: -1.0 }, true);
     assert_eq!(s.facing, -1);
 }
 
 fn dashing(dir: Vec2) -> PlayerState {
     let mut s = standing();
-    dash_begin(&mut s, &room(), Input::default(), true, false);
+    dash_begin(&mut s, &room(), frame(Input::default(), true));
     dash_launch(&mut s, dir, true);
     s
 }
@@ -1084,11 +1093,13 @@ fn climb_jump_in_the_air_costs_stamina() {
     s.mode = Mode::Dashing { timer: 0.1 };
     climb_jump(
         &mut s,
-        Input {
-            move_x: 1,
-            ..JUMP_GRAB
-        },
-        false,
+        frame(
+            Input {
+                move_x: 1,
+                ..JUMP_GRAB
+            },
+            false,
+        ),
     );
     assert_eq!(s.stamina, CLIMB_MAX_STAMINA - CLIMB_JUMP_COST);
     assert_eq!(
@@ -1105,7 +1116,7 @@ fn climb_jump_in_the_air_costs_stamina() {
 #[test]
 fn climb_jump_on_the_ground_is_free() {
     let mut s = standing();
-    climb_jump(&mut s, JUMP_GRAB, true);
+    climb_jump(&mut s, frame(JUMP_GRAB, true));
     assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
     assert_eq!(s.speed.y, JUMP_SPEED);
 }
@@ -1358,28 +1369,28 @@ fn hurtbox_is_shorter_when_ducking() {
 #[test]
 fn dash_begin_ducks_when_down_is_held() {
     let mut s = standing();
-    dash_begin(&mut s, &room(), DOWN, true, false);
+    dash_begin(&mut s, &room(), frame(DOWN, true));
     assert!(s.ducking);
 }
 
 #[test]
 fn dash_begin_stays_standing_without_down() {
     let mut s = standing();
-    dash_begin(&mut s, &room(), Input::default(), true, false);
+    dash_begin(&mut s, &room(), frame(Input::default(), true));
     assert!(!s.ducking);
 }
 
 #[test]
 fn dash_begin_stays_ducked_on_the_ground() {
     let mut s = ducking_at(0, FLOOR_Y);
-    dash_begin(&mut s, &room(), Input::default(), true, false);
+    dash_begin(&mut s, &room(), frame(Input::default(), true));
     assert!(s.ducking);
 }
 
 #[test]
 fn dash_begin_stands_up_in_the_air() {
     let mut s = ducking_at(0, 64);
-    dash_begin(&mut s, &room(), Input::default(), false, false);
+    dash_begin(&mut s, &room(), frame(Input::default(), false));
     assert!(!s.ducking);
 }
 
@@ -1553,13 +1564,13 @@ fn step_hyper_from_a_down_dash() {
 #[test]
 fn climb_jump_without_a_direction_arms_the_wall_boost() {
     let mut s = player_at(WALL_X, 100, 0.0, 30.0);
-    climb_jump(&mut s, JUMP_GRAB, false);
+    climb_jump(&mut s, frame(JUMP_GRAB, false));
     assert_eq!(s.wall_boost_dir, -1);
     assert_eq!(s.wall_boost_timer, CLIMB_JUMP_BOOST_TIME);
 
     let mut s = player_at(LEFT_WALL_X, 100, 0.0, 30.0);
     s.facing = -1;
-    climb_jump(&mut s, JUMP_GRAB, false);
+    climb_jump(&mut s, frame(JUMP_GRAB, false));
     assert_eq!(s.wall_boost_dir, 1);
 }
 
@@ -1568,11 +1579,13 @@ fn climb_jump_with_a_direction_does_not_arm_the_wall_boost() {
     let mut s = player_at(WALL_X, 100, 0.0, 30.0);
     climb_jump(
         &mut s,
-        Input {
-            move_x: 1,
-            ..JUMP_GRAB
-        },
-        false,
+        frame(
+            Input {
+                move_x: 1,
+                ..JUMP_GRAB
+            },
+            false,
+        ),
     );
     assert_eq!(s.wall_boost_timer, 0.0);
 }
@@ -1846,12 +1859,12 @@ const PIT_X: i32 = 44;
 #[test]
 fn dash_begin_remembers_whether_it_started_on_the_ground() {
     let mut s = standing();
-    dash_begin(&mut s, &room(), Input::default(), true, false);
+    dash_begin(&mut s, &room(), frame(Input::default(), true));
     assert!(s.dash_started_on_ground);
 
     let mut s = at_rest();
     s.dash_started_on_ground = true;
-    dash_begin(&mut s, &room(), Input::default(), false, false);
+    dash_begin(&mut s, &room(), frame(Input::default(), false));
     assert!(!s.dash_started_on_ground);
 }
 
@@ -2140,7 +2153,7 @@ fn wall_jump_check_is_short_again_when_the_wall_has_spikes() {
 #[test]
 fn dash_attack_runs_from_the_start_of_a_dash() {
     let mut s = standing();
-    dash_begin(&mut s, &room(), Input::default(), true, false);
+    dash_begin(&mut s, &room(), frame(Input::default(), true));
     assert_eq!(s.dash_attack_timer, DASH_ATTACK_TIME);
 
     let s = dash_for(standing(), 6, DASH_RIGHT);
@@ -2533,11 +2546,25 @@ const CROUCH_DASH: Input = Input {
 #[test]
 fn dash_begin_from_the_crouch_dash_button_ducks() {
     let mut s = standing();
-    dash_begin(&mut s, &room(), Input::default(), true, true);
+    dash_begin(
+        &mut s,
+        &room(),
+        Frame {
+            crouch_dash_pressed: true,
+            ..frame(Input::default(), true)
+        },
+    );
     assert!(s.ducking);
 
     let mut s = at_rest();
-    dash_begin(&mut s, &room(), Input::default(), false, true);
+    dash_begin(
+        &mut s,
+        &room(),
+        Frame {
+            crouch_dash_pressed: true,
+            ..frame(Input::default(), false)
+        },
+    );
     assert!(s.ducking);
 }
 

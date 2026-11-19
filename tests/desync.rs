@@ -1,20 +1,9 @@
-use celeste_tas_solver::geom::IVec2;
-use celeste_tas_solver::geom::Vec2;
 use celeste_tas_solver::player::{Input, Player, State, step};
 use celeste_tas_solver::sim::{Sim, step_chapter};
-use celeste_tas_solver::trace::parse_trace;
 
 mod common;
+use common::{NONE, column, input_from_row, start_state};
 
-const NONE: Input = Input {
-    move_x: 0,
-    move_y: 0,
-    jump: false,
-    jump2: false,
-    dash: false,
-    grab: false,
-    demodash: false,
-};
 const RIGHT: Input = Input { move_x: 1, ..NONE };
 const JUMP: Input = Input { jump: true, ..NONE };
 const RIGHT_JUMP: Input = Input {
@@ -44,10 +33,6 @@ fn expand(lines: &[(usize, Input)]) -> Vec<Input> {
         .iter()
         .flat_map(|&(count, input)| std::iter::repeat_n(input, count))
         .collect()
-}
-
-fn column(line: &str, index: usize) -> &str {
-    line.split('\t').nth(index).expect("missing column")
 }
 
 // the game prints Math.Round(v, 12): scale by 1e12 as a double, round half to even
@@ -83,23 +68,6 @@ fn observe(s: &Player) -> Observed {
         state: state.to_string(),
         dead: s.dead,
     }
-}
-
-// position is read as f64 so the subpixel keeps all its bits away from the origin
-fn start_state(text: &str) -> Player {
-    let first = parse_trace(text)[0];
-    let row = text.lines().nth(1).expect("empty trace");
-    let (x, y) = column(row, 4).split_once(", ").expect("bad position");
-    let (x, y): (f64, f64) = (x.parse().unwrap(), y.parse().unwrap());
-    let position = IVec2 {
-        x: x.round() as i32,
-        y: y.round() as i32,
-    };
-    let subpixel = Vec2 {
-        x: (x - x.round()) as f32,
-        y: (y - y.round()) as f32,
-    };
-    Player::new(position, subpixel, first.speed)
 }
 
 fn game_row(row: &str) -> Observed {
@@ -249,27 +217,6 @@ fn fall_out_of_the_room() {
         include_str!("traces/11_fall_out.txt"),
         &inputs,
     );
-}
-
-// the trace's Inputs column looks like "3/   5,R,X"
-fn input_from_row(row: &str) -> Input {
-    let (_, line) = column(row, 1).split_once('/').expect("bad inputs column");
-    let mut input = NONE;
-    for key in line.split(',').skip(1) {
-        match key.trim() {
-            "L" => input.move_x = -1,
-            "R" => input.move_x = 1,
-            "U" => input.move_y = -1,
-            "D" => input.move_y = 1,
-            "J" => input.jump = true,
-            "K" => input.jump2 = true,
-            "X" | "C" => input.dash = true,
-            "Z" | "V" => input.demodash = true,
-            "G" => input.grab = true,
-            _ => {}
-        }
-    }
-    input
 }
 
 // the community TAS's first room, up to where the room transition takes control away

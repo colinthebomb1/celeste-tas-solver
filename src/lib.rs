@@ -4,5 +4,6 @@ mod fixtures;
 pub mod geom;
 pub mod level;
 pub mod player;
+pub mod search;
 pub mod sim;
 pub mod trace;

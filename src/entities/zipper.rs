@@ -6,7 +6,7 @@ use crate::level::room::{Room, RoomState};
 use crate::player::Player;
 use crate::player::collision::is_riding;
 use crate::player::constants::DELTA_TIME;
-use crate::player::movement::approach;
+use crate::player::movement::{approach, lerp};
 
 const ZIP_START_DELAY: f32 = 0.1;
 const ZIP_PAUSE: f32 = 0.5;
@@ -99,10 +99,6 @@ fn sine_in(t: f32) -> f32 {
     -(((std::f32::consts::FRAC_PI_2 * t) as f64).cos() as f32) + 1.0
 }
 
-pub(crate) fn lerp(from: i32, to: i32, amount: f32) -> f32 {
-    from as f32 + (to - from) as f32 * amount
-}
-
 fn update_zipper(room: &Room, state: &mut RoomState, index: usize, player: &mut Player) {
     let zip = &state.zippers[index];
     let (solid, start, target) = (zip.solid, zip.start, zip.target);
@@ -135,8 +131,8 @@ fn update_zipper(room: &Room, state: &mut RoomState, index: usize, player: &mut 
                 state,
                 solid,
                 player,
-                lerp(start.x, target.x, percent),
-                lerp(start.y, target.y, percent),
+                lerp(start.x as f32, target.x as f32, percent),
+                lerp(start.y as f32, target.y as f32, percent),
             );
 
             if at >= 1.0 {
@@ -165,8 +161,8 @@ fn update_zipper(room: &Room, state: &mut RoomState, index: usize, player: &mut 
                 state,
                 solid,
                 player,
-                lerp(target.x, start.x, percent),
-                lerp(target.y, start.y, percent),
+                lerp(target.x as f32, start.x as f32, percent),
+                lerp(target.y as f32, start.y as f32, percent),
             );
 
             if at >= 1.0 {

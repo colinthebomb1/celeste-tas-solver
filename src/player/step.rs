@@ -1,9 +1,10 @@
 use super::climb::{climb_update, follow_hop_solid, try_grab, update_hop_wait};
 use super::collision::{
     can_stand, collides, enters_jump_thru, fell_out, on_ground, spikes_kill, touches_jump_thru,
+    touches_spikes,
 };
 use super::constants::*;
-use super::dash::{aim_vector, can_dash, dash_begin, dash_end, dash_launch, dashing};
+use super::dash::{aim_vector, can_dash, dash_begin, dash_end, dash_launch, dashing, refill_dash};
 use super::jump::{
     bounce_on_springs, can_super_dash, jump, jump_off_wall, super_dash, wall_slide_max_fall,
 };
@@ -31,7 +32,7 @@ pub fn step(mut player: Player, input: Input, room: &Room, state: &RoomState) ->
 
     frame.ground = on_ground(&player, room, state);
 
-    run_timers(&mut player, frame.ground);
+    run_timers(&mut player, room, frame.ground);
     apply_input(&mut player, room, state, &mut frame);
     update_state(&mut player, room, state, frame);
     settle_before_moving(&mut player, room, state, frame.ground);
@@ -68,7 +69,7 @@ fn read_buttons(player: &mut Player, input: Input) -> Frame {
     frame
 }
 
-fn run_timers(player: &mut Player, ground: bool) {
+fn run_timers(player: &mut Player, room: &Room, ground: bool) {
     player.climb.trigger_dir = 0;
 
     if player.wall.slide_dir != 0 {
@@ -103,8 +104,8 @@ fn run_timers(player: &mut Player, ground: bool) {
 
     if player.dash.refill_cooldown > 0.0 {
         player.dash.refill_cooldown -= DELTA_TIME;
-    } else if ground {
-        player.dashes = MAX_DASHES;
+    } else if ground && !touches_spikes(player, room) {
+        refill_dash(player);
     }
 }
 
@@ -144,6 +145,8 @@ fn update_state(player: &mut Player, room: &Room, state: &RoomState, frame: Fram
 
     match player.state {
         State::Normal => {
+            walk_off_liftboost(player, frame.ground);
+
             if try_grab(player, room, state, frame.input) {
                 // grabbed a wall
             } else if can_dash(player, frame.dash_pressed) {
@@ -185,6 +188,14 @@ fn update_state(player: &mut Player, room: &Room, state: &RoomState, frame: Fram
         player.wall.boost_timer = 0.0;
         player.wall.retention_timer = 0.0;
         player.climb.hop_wait = 0;
+    }
+}
+
+// walking off a rising block keeps its upward speed. she is moving up then, so she can't grab
+fn walk_off_liftboost(player: &mut Player, ground: bool) {
+    let boost = liftboost(player);
+    if boost.y < 0.0 && player.was_on_ground && !ground && player.speed.y >= 0.0 {
+        player.speed.y = boost.y;
     }
 }
 
@@ -253,12 +264,6 @@ fn normal_update(player: &mut Player, room: &Room, state: &RoomState, frame: Fra
         ..
     } = frame;
 
-    // walking off a rising block keeps its upward speed
-    let boost = liftboost(player);
-    if boost.y < 0.0 && player.was_on_ground && !ground && player.speed.y >= 0.0 {
-        player.speed.y = boost.y;
-    }
-
     if player.crouching {
         if ground && input.move_y != 1 && can_stand(player, room, state) {
             player.crouching = false;
@@ -321,6 +326,37 @@ mod tests {
     use super::*;
     use crate::player::fixtures::*;
     use crate::player::state::set_normal;
+
+    #[test]
+    fn no_dash_refill_on_the_ground_while_touching_spikes() {
+        let mut s = standing();
+        s.dashes = 0;
+        run_timers(&mut s, &spiked_floor(), true);
+        assert_eq!(s.dashes, 0);
+
+        run_timers(&mut s, &room(), true);
+        assert_eq!(s.dashes, MAX_DASHES);
+    }
+
+    #[test]
+    fn standing_on_the_ground_keeps_a_second_dash() {
+        let mut s = standing();
+        s.dashes = TWO_DASHES;
+        run_timers(&mut s, &room(), true);
+        assert_eq!(s.dashes, TWO_DASHES);
+    }
+
+    #[test]
+    fn walking_off_a_rising_block_beside_a_wall_does_not_grab() {
+        let room = room();
+        let mut s = lifted(falling_against_wall(), 0.0, -90.0);
+        s.speed.y = 0.0;
+        s.was_on_ground = true;
+
+        let s = step(s, GRAB, &room, &room.initial);
+        assert_eq!(s.state, State::Normal);
+        assert!(s.speed.y < 0.0);
+    }
 
     #[test]
     fn not_on_ground_above_floor() {

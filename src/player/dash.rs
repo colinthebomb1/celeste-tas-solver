@@ -112,6 +112,11 @@ pub(crate) fn dash_end(player: &mut Player) {
     set_normal(player);
 }
 
+// never lowers her count, so a second dash from a two-dash crystal is kept
+pub(crate) fn refill_dash(player: &mut Player) {
+    player.dashes = player.dashes.max(MAX_DASHES);
+}
+
 pub(crate) fn use_crystal(player: &mut Player, two_dashes: bool) -> bool {
     let dashes = if two_dashes { TWO_DASHES } else { MAX_DASHES };
 
@@ -127,6 +132,18 @@ pub(crate) fn use_crystal(player: &mut Player, two_dashes: bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn refill_dash_gives_one_back_and_keeps_two() {
+        let mut s = standing();
+        s.dashes = 0;
+        refill_dash(&mut s);
+        assert_eq!(s.dashes, MAX_DASHES);
+
+        s.dashes = TWO_DASHES;
+        refill_dash(&mut s);
+        assert_eq!(s.dashes, TWO_DASHES);
+    }
     use crate::player::fixtures::*;
     use crate::player::step::step;
 

@@ -4,9 +4,9 @@ use crate::level::room::{Chapter, RoomState};
 use crate::player::Player;
 use crate::player::collision::{collides, hitbox_height};
 use crate::player::constants::{
-    CLIMB_MAX_STAMINA, DASH_COOLDOWN, HITBOX_WIDTH, JUMP_HOLD_TIME, JUMP_SPEED, MAX_DASHES,
-    WALL_SLIDE_TIME,
+    CLIMB_MAX_STAMINA, DASH_COOLDOWN, HITBOX_WIDTH, JUMP_HOLD_TIME, JUMP_SPEED, WALL_SLIDE_TIME,
 };
+use crate::player::dash::refill_dash;
 use crate::player::state::set_normal;
 
 pub const TRANSITION_FRAMES: usize = 40;
@@ -122,7 +122,8 @@ pub fn finish_transition(
 
     player.wall.slide_timer = WALL_SLIDE_TIME;
     player.coyote_timer = 0.0;
-    player.dashes = MAX_DASHES;
+    player.forced_move_timer = 0.0;
+    refill_dash(player);
     player.stamina = CLIMB_MAX_STAMINA;
 
     // the room she left is unloaded now, and every dash block still in it freezes the game
@@ -143,6 +144,7 @@ mod tests {
     use crate::geom::Vec2;
     use crate::level::room::Room;
     use crate::player::State;
+    use crate::player::constants::{MAX_DASHES, TWO_DASHES};
 
     const OPEN: &str = "0000\n0000\n0000\n0000";
 
@@ -421,6 +423,26 @@ mod tests {
         let mut s = at(116, 105);
         finish(&mut s, &chapter, up);
         assert_eq!(s.freeze_timer, 0.0);
+    }
+
+    #[test]
+    fn finish_ends_a_forced_move_and_keeps_a_second_dash() {
+        let chapter = cross();
+        let mut s = at(129, 120);
+        s.forced_move = -1;
+        s.forced_move_timer = 0.1;
+        s.dashes = TWO_DASHES;
+        finish(
+            &mut s,
+            &chapter,
+            Transition {
+                from: CENTRE,
+                to: RIGHT,
+                direction: Direction::Right,
+            },
+        );
+        assert_eq!(s.forced_move_timer, 0.0);
+        assert_eq!(s.dashes, TWO_DASHES);
     }
 
     #[test]

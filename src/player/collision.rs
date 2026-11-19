@@ -84,9 +84,17 @@ pub(crate) fn spikes_kill(player: &Player, spikes: &Spikes) -> bool {
     }
 }
 
-// top of hitbox is more than 4 px below the room's bottom edge
+// the top of her hitbox is more than 4 px below the room's bottom edge
 pub(crate) fn fell_out(player: &Player, room: &Room) -> bool {
-    player.position.y - HITBOX_HEIGHT > room.bottom() + 4
+    hitbox(player, 0, 0).top > room.bottom() + 4
+}
+
+// any spikes, whichever way they point
+pub(crate) fn touches_spikes(player: &Player, room: &Room) -> bool {
+    let her = hitbox(player, 0, 0);
+    room.spikes
+        .iter()
+        .any(|spikes| spikes.hitbox.overlaps(&her))
 }
 
 pub(crate) fn touches_jump_thru(player: &Player, room: &Room, dx: i32, dy: i32) -> bool {
@@ -246,6 +254,25 @@ mod tests {
         assert!(!fell_out(&player_at(60, 180, 0.0, 0.0), &room));
         assert!(!fell_out(&player_at(60, 195, 0.0, 0.0), &room));
         assert!(fell_out(&player_at(60, 196, 0.0, 0.0), &room));
+    }
+
+    #[test]
+    fn fell_out_sooner_when_crouched() {
+        // her crouched hitbox is 5 px shorter, so its top passes the line 5 px earlier
+        let room = room();
+        assert!(!fell_out(&crouching_at(60, 190), &room));
+        assert!(fell_out(&crouching_at(60, 191), &room));
+    }
+
+    #[test]
+    fn touches_spikes_that_overlap_her_hitbox() {
+        let room = spiked_floor();
+        assert!(touches_spikes(&player_at(20, FLOOR_Y, 0.0, 0.0), &room));
+        assert!(!touches_spikes(
+            &player_at(20, FLOOR_Y - 3, 0.0, 0.0),
+            &room
+        ));
+        assert!(!touches_spikes(&player_at(60, FLOOR_Y, 0.0, 0.0), &room));
     }
 
     #[test]

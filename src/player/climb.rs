@@ -17,12 +17,17 @@ fn is_tired(player: &Player) -> bool {
     stamina < CLIMB_TIRED_THRESHOLD
 }
 
+// walls within 2 px of the room's sides can't be climbed or slid down
+pub(crate) fn climb_in_bounds(player: &Player, room: &Room, dir: i8) -> bool {
+    let her = hitbox(player, dir as i32 * CLIMB_CHECK_DIST, 0);
+
+    her.left >= room.bounds.left && her.right() < room.bounds.right()
+}
+
 fn climb_check(player: &Player, room: &Room, state: &RoomState, dir: i8, dy: i32) -> bool {
     let reach = dir as i32 * CLIMB_CHECK_DIST;
-    let her = hitbox(player, reach, 0);
-    let in_bounds = her.left >= room.bounds.left && her.right() < room.bounds.right();
 
-    in_bounds && collides(player, room, state, reach, dy)
+    climb_in_bounds(player, room, dir) && collides(player, room, state, reach, dy)
 }
 
 pub(crate) fn try_grab(player: &mut Player, room: &Room, state: &RoomState, input: Input) -> bool {

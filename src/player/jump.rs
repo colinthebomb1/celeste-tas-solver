@@ -1,6 +1,7 @@
+use super::climb::climb_in_bounds;
 use super::collision::{can_stand, collides, hitbox, hitbox_height, hurtbox};
 use super::constants::*;
-use super::dash::dashing;
+use super::dash::{dashing, refill_dash};
 use super::movement::{add_liftboost, lerp, nudge_v, set_lift_speed};
 use super::state::{Frame, Input, Player, set_normal};
 use crate::geom::{Direction, Rect};
@@ -18,6 +19,7 @@ pub(crate) fn wall_slide_max_fall(
     if into_wall && input.move_y != 1 {
         if player.speed.y >= 0.0
             && player.wall.slide_timer > 0.0
+            && climb_in_bounds(player, room, player.facing)
             && collides(player, room, state, player.facing as i32, 0)
             && can_stand(player, room, state)
         {
@@ -135,7 +137,8 @@ pub(crate) fn wall_kick(player: &mut Player, state: &RoomState, dir: i8, move_x:
     }
 
     if player.lift.speed == NO_LIFT && player.lift.last_speed == NO_LIFT {
-        let reach = hitbox(player, WALL_KICK_REACH, 0);
+        // dir is the way she kicks, so the wall is the other way
+        let reach = hitbox(player, -(dir as i32) * WALL_KICK_REACH, 0);
         if let Some(wall) = state
             .solids
             .iter()
@@ -235,7 +238,7 @@ pub(crate) fn climb_jump(player: &mut Player, frame: Frame) {
 fn spring_bounce(player: &mut Player, room: &Room, state: &RoomState, from_y: i32) {
     nudge_v(player, room, state, (from_y - player.position.y) as f32);
 
-    player.dashes = MAX_DASHES;
+    refill_dash(player);
     player.stamina = CLIMB_MAX_STAMINA;
     set_normal(player);
 
@@ -1062,6 +1065,54 @@ mod tests {
         let mut s = player_at(54, 100, 0.0, 0.0);
         wall_kick(&mut s, &room.initial, -1, 0);
         assert_eq!(s.speed.y, JUMP_SPEED - 90.0);
+    }
+
+    // a rising block whose right edge is 2 px from her left side
+    fn rising_block_on_her_left() -> (RoomState, Player) {
+        let mut state = RoomState::default();
+        let id = state.add_solid(Rect::new(40, 80, 16, 40));
+        state.solids[id].lift_speed = Vec2 { x: 0.0, y: -90.0 };
+        (state, player_at(62, 100, 0.0, 0.0))
+    }
+
+    #[test]
+    fn wall_kick_takes_lift_from_a_moving_wall_on_her_left() {
+        let (state, mut s) = rising_block_on_her_left();
+        wall_kick(&mut s, &state, 1, 0);
+        assert_eq!(s.speed.y, JUMP_SPEED - 90.0);
+    }
+
+    #[test]
+    fn wall_kick_takes_no_lift_from_a_block_behind_her() {
+        let (state, mut s) = rising_block_on_her_left();
+        wall_kick(&mut s, &state, -1, 0);
+        assert_eq!(s.speed.y, JUMP_SPEED);
+    }
+
+    #[test]
+    fn no_wall_slide_on_a_wall_at_the_rooms_edge() {
+        // the room is 88 px wide, and this block starts 1 px inside its right edge
+        let mut room = crate::fixtures::open_room();
+        room.initial.add_solid(Rect::new(87, 0, 8, 184));
+        let mut s = falling_against_wall();
+        s.position.x = 83;
+
+        let toward = Input {
+            move_x: 1,
+            ..Default::default()
+        };
+        let max = wall_slide_max_fall(&mut s, &room, &room.initial, toward);
+        assert_eq!(max, s.max_fall);
+        assert_eq!(s.wall.slide_dir, 0);
+    }
+
+    #[test]
+    fn spring_bounce_keeps_a_second_dash() {
+        let room = spring_room();
+        let mut s = dashing_at(20, FLOOR_Y, 200.0, 50.0);
+        s.dashes = TWO_DASHES;
+        spring_bounce(&mut s, &room, &room.initial, FLOOR_Y - 6);
+        assert_eq!(s.dashes, TWO_DASHES);
     }
 
     #[test]

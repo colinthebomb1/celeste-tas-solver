@@ -221,11 +221,12 @@ fn dash_corner_correction_down(player: &mut Player, room: &Room, state: &RoomSta
         return false;
     }
 
+    let slack = CORNER_CORRECTION_SPEED_SLACK;
     let mut dirs = Vec::new();
-    if player.speed.x <= 0.0 {
+    if player.speed.x <= slack {
         dirs.push(-1);
     }
-    if player.speed.x >= 0.0 {
+    if player.speed.x >= -slack {
         dirs.push(1);
     }
 
@@ -280,8 +281,8 @@ fn upward_corner_correction(player: &mut Player, room: &Room, state: &RoomState)
     false
 }
 
-pub(crate) fn lerp(value1: f32, value2: f32, amount: f32) -> f32 {
-    value1 * (1.0 - amount) + value2 * amount
+pub(crate) fn lerp(from: f32, to: f32, amount: f32) -> f32 {
+    (from as f64 + (to as f64 - from as f64) * amount as f64) as f32
 }
 
 pub(crate) fn add_liftboost(player: &mut Player) {
@@ -439,6 +440,12 @@ mod tests {
         assert_eq!(lerp(160.0, 20.0, 0.0), 160.0);
         assert_eq!(lerp(160.0, 20.0, 1.0), 20.0);
         assert_eq!(lerp(160.0, 20.0, 0.5), 90.0);
+    }
+
+    #[test]
+    fn lerp_is_summed_in_doubles() {
+        // sixteen frames into a wall slide. summed in f32 this comes out as 51.111107
+        assert_eq!(lerp(160.0, 20.0, 0.7777778), 51.11111);
     }
 
     #[test]
@@ -1019,6 +1026,21 @@ mod tests {
         );
 
         let mut s = air_dashing_down_at(LEDGE_X - 1, 10.0);
+        move_v(&mut s, &room, &room.initial, 4.0);
+        assert_eq!(
+            s.position,
+            IVec2 {
+                x: LEDGE_X + 1,
+                y: FLOOR_Y + 1
+            }
+        );
+    }
+
+    #[test]
+    fn downward_corner_correction_treats_a_tiny_speed_as_none() {
+        // drifting left by less than the slack, she can still slip right off the ledge
+        let room = room();
+        let mut s = air_dashing_down_at(LEDGE_X - 1, -0.005);
         move_v(&mut s, &room, &room.initial, 4.0);
         assert_eq!(
             s.position,

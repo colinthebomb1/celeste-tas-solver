@@ -74,6 +74,20 @@ fn rooms_load_their_jump_thrus() {
 }
 
 #[test]
+fn only_the_last_room_has_a_finish_trigger() {
+    let Some(chapter) = common::chapter_1a() else {
+        eprintln!("skipped. Celeste install could not be found, try setting CELESTE_DIR");
+        return;
+    };
+
+    for room in &chapter.rooms {
+        let expected = (room.name == "lvl_end")
+            .then(|| Rect::new(room.origin.x + 240, room.origin.y + 120, 64, 32));
+        assert_eq!(room.finish_trigger, expected, "{}", room.name);
+    }
+}
+
+#[test]
 fn rooms_load_their_dash_blocks() {
     let Some(chapter) = common::chapter_1a() else {
         eprintln!("skipped. Celeste install could not be found, try setting CELESTE_DIR");

@@ -1,7 +1,7 @@
 use super::climb::{climb_update, follow_hop_solid, try_grab, update_hop_wait};
 use super::collision::{
     can_stand, collides, correction_spiked, enters_jump_thru, fell_out, hitbox, on_ground,
-    spikes_block, spikes_kill, touches_jump_thru, touches_spikes,
+    spikes_block, spikes_kill, touches_finish, touches_jump_thru, touches_spikes,
 };
 use super::constants::*;
 use super::dash::{aim_vector, can_dash, dash_begin, dash_end, dash_launch, dashing, refill_dash};
@@ -19,7 +19,7 @@ use crate::level::room::Room;
 
 // one frame of her update
 pub fn step(mut player: Player, input: Input, room: &Room, entities: &Entities) -> Player {
-    if player.dead {
+    if player.dead || player.finished {
         return player;
     }
 
@@ -48,6 +48,10 @@ pub fn step(mut player: Player, input: Input, room: &Room, entities: &Entities) 
         frame.ground,
     );
     move_v(&mut player, room, entities, speed_y * DELTA_TIME);
+
+    if touches_finish(&player, room) {
+        player.finished = true;
+    }
 
     touch_springs_and_hazards(&mut player, room, entities);
 
@@ -347,6 +351,31 @@ mod tests {
     use super::*;
     use crate::player::fixtures::*;
     use crate::player::state::set_normal;
+
+    // 16 px square on the floor, with its left side at this x
+    fn finish_room(left: i32) -> Room {
+        let mut room = room();
+        room.finish_trigger = Some(crate::geom::Rect::new(left, FLOOR_Y - 16, 16, 16));
+        room
+    }
+
+    #[test]
+    fn touching_a_finish_trigger_ends_the_chapter() {
+        // she stands at x = 0, so her hitbox's right side is at x = 4
+        let touching = finish_room(3);
+        assert!(step(standing(), Input::default(), &touching, &touching.initial).finished);
+
+        let beside = finish_room(4);
+        assert!(!step(standing(), Input::default(), &beside, &beside.initial).finished);
+    }
+
+    #[test]
+    fn a_finished_player_does_not_change() {
+        let room = finish_room(3);
+        let done = step(standing(), Input::default(), &room, &room.initial);
+        assert!(done.finished);
+        assert_eq!(step(done, JUMP_RIGHT, &room, &room.initial), done);
+    }
 
     #[test]
     fn no_dash_refill_on_the_ground_while_touching_spikes() {

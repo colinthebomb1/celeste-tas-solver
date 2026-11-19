@@ -20,6 +20,8 @@ pub struct Room {
     // platforms she can jump up through and stand on
     pub jump_thrus: Vec<JumpThru>,
     pub springs: Vec<Spring>,
+    // touching this ends the chapter. only the last room has one
+    pub finish_trigger: Option<Rect>,
     // its blocks and crystals as they are when she enters
     pub initial: Entities,
 }
@@ -57,6 +59,7 @@ impl Room {
             spikes: Vec::new(),
             jump_thrus: Vec::new(),
             springs: Vec::new(),
+            finish_trigger: None,
             initial: Entities::default(),
         };
         room.set_size(width as i32 * TILE_SIZE, height as i32 * TILE_SIZE);

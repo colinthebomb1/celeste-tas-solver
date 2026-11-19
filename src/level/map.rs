@@ -5,6 +5,7 @@ use crate::entities::crumble_block::load_crumble_blocks;
 use crate::entities::crystal::load_crystals;
 use crate::entities::dash_block::load_dash_blocks;
 use crate::entities::falling_block::load_falling_blocks;
+use crate::entities::finish::load_finish_trigger;
 use crate::entities::jump_thru::load_jump_thrus;
 use crate::entities::spikes::load_spikes;
 use crate::entities::spring::load_springs;
@@ -15,7 +16,7 @@ use crate::level::room::{Chapter, Room};
 // adds one kind of entity from a level to its room. positions in the map are relative to the room's origin
 type Loader = fn(&Element, IVec2, &mut Room) -> Result<(), MapError>;
 
-const LOADERS: [Loader; 8] = [
+const LOADERS: [Loader; 9] = [
     load_spikes,
     load_jump_thrus,
     load_springs,
@@ -24,6 +25,7 @@ const LOADERS: [Loader; 8] = [
     load_crumble_blocks,
     load_falling_blocks,
     load_zippers,
+    load_finish_trigger,
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -99,11 +101,27 @@ pub(crate) fn entities_named<'a>(
     level: &'a Element,
     name: &'a str,
 ) -> impl Iterator<Item = &'a Element> {
+    named_in(level, "entities", name)
+}
+
+// the same for its "triggers" children
+pub(crate) fn triggers_named<'a>(
+    level: &'a Element,
+    name: &'a str,
+) -> impl Iterator<Item = &'a Element> {
+    named_in(level, "triggers", name)
+}
+
+fn named_in<'a>(
+    level: &'a Element,
+    group: &'a str,
+    name: &'a str,
+) -> impl Iterator<Item = &'a Element> {
     level
-        .child("entities")
+        .child(group)
         .into_iter()
-        .flat_map(|entities| &entities.children)
-        .filter(move |entity| entity.name == name)
+        .flat_map(|group| &group.children)
+        .filter(move |child| child.name == name)
 }
 
 pub struct MapReader<'file> {
@@ -343,7 +361,7 @@ mod tests {
     use crate::geom::Direction;
     use crate::geom::Rect;
 
-    const LOOKUP: [&str; 33] = [
+    const LOOKUP: [&str; 36] = [
         "Map",
         "levels",
         "level",
@@ -377,6 +395,9 @@ mod tests {
         "fallingBlock",
         "climbFall",
         "crumbleBlock",
+        "triggers",
+        "eventTrigger",
+        "event",
     ];
 
     fn string(s: &str) -> Vec<u8> {
@@ -713,6 +734,39 @@ mod tests {
     }
 
     fn map_with_entities(entities: &[Vec<u8>]) -> Element {
+        map_with("entities", entities)
+    }
+
+    fn event_trigger(event: &str) -> Vec<u8> {
+        element(
+            "eventTrigger",
+            &[
+                ("x", v_i16(240)),
+                ("y", v_i16(120)),
+                ("width", v_u8(64)),
+                ("height", v_u8(32)),
+                ("event", v_string(event)),
+            ],
+            &[],
+        )
+    }
+
+    #[test]
+    fn load_room_reads_the_finish_trigger_in_world_coordinates() {
+        let map = map_with("triggers", &[event_trigger("end_city")]);
+        let room = load_room(&map, "room_b").unwrap();
+        assert_eq!(room.finish_trigger, Some(Rect::new(560, -64, 64, 32)));
+    }
+
+    #[test]
+    fn other_event_triggers_do_not_end_the_chapter() {
+        let map = map_with("triggers", &[event_trigger("cancel_ch5_see_theo")]);
+        let room = load_room(&map, "room_b").unwrap();
+        assert_eq!(room.finish_trigger, None);
+    }
+
+    // one room at (320, -184) whose entities or triggers are these
+    fn map_with(group: &str, children: &[Vec<u8>]) -> Element {
         let room = element(
             "level",
             &[
@@ -722,7 +776,7 @@ mod tests {
             ],
             &[
                 element("solids", &[("innerText", v_rle(&[(1, '1')]))], &[]),
-                element("entities", &[], entities),
+                element(group, &[], children),
             ],
         );
         parse_map(&file(element(

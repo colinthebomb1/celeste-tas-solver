@@ -56,6 +56,10 @@ impl Sim {
 
 // one frame of the chapter, which may start or continue a room transition
 pub fn step_chapter(sim: &mut Sim, chapter: &Chapter, input: Input) {
+    if sim.player.finished {
+        return;
+    }
+
     let Some((transition, frames_left)) = sim.transition else {
         sim.player = step_room(
             sim.player,
@@ -173,6 +177,20 @@ mod tests {
             assert_eq!(sim.room, 0);
             assert_eq!(sim.player.position.x, 4);
         }
+    }
+
+    #[test]
+    fn nothing_changes_after_she_finishes_the_chapter() {
+        let mut chapter = two_rooms();
+        chapter.rooms[0].finish_trigger = Some(crate::geom::Rect::new(40, 160, 16, 16));
+        let mut sim = Sim::new(&chapter, 0, at(48, 176));
+
+        step_chapter(&mut sim, &chapter, RIGHT);
+        assert!(sim.player.finished);
+
+        let done = sim.clone();
+        step_chapter(&mut sim, &chapter, RIGHT);
+        assert_eq!(sim, done);
     }
 
     #[test]

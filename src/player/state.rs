@@ -83,6 +83,8 @@ pub struct Player {
     pub state: State,
     pub crouching: bool,
     pub dead: bool,
+    // she touched a finish trigger. the chapter is over, so she is no longer stepped
+    pub finished: bool,
     // a freeze stops the whole game, not only her. dashes, crystals and dash blocks start one
     pub freeze_timer: f32,
 
@@ -121,6 +123,7 @@ impl Player {
             state: State::Normal,
             crouching: false,
             dead: false,
+            finished: false,
             freeze_timer: 0.0,
             dashes: NORMAL_DASHES,
             stamina: CLIMB_MAX_STAMINA,

@@ -108,6 +108,11 @@ pub(crate) fn correction_spiked(player: &Player, room: &Room, dx: i32, dy: i32) 
     spikes_block(room, &hurtbox(player).shifted(dx, dy))
 }
 
+pub(crate) fn touches_finish(player: &Player, room: &Room) -> bool {
+    room.finish_trigger
+        .is_some_and(|trigger| trigger.overlaps(&hitbox(player, 0, 0)))
+}
+
 // any spikes, whichever way they point
 pub(crate) fn touches_spikes(player: &Player, room: &Room) -> bool {
     let her = hitbox(player, 0, 0);

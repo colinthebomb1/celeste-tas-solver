@@ -2,6 +2,7 @@ pub mod crumble_block;
 pub mod crystal;
 pub mod dash_block;
 pub mod falling_block;
+pub mod finish;
 pub mod jump_thru;
 pub mod solid;
 pub mod spikes;

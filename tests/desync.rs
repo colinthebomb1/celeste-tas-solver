@@ -313,6 +313,7 @@ fn chapter_1a() {
     let room = chapter.room_named("lvl_1").expect("no lvl_1");
     let mut sim = Sim::new(&chapter, room, start_state(&first_two_lines));
     let mut matched = 0;
+    let mut finished_on = None;
 
     for (frame, &row) in rows.iter().enumerate().skip(1) {
         let mid_transition = sim.in_transition();
@@ -336,8 +337,18 @@ fn chapter_1a() {
             break;
         }
         matched = frame;
+
+        if sim.player.finished && finished_on.is_none() {
+            finished_on = Some(frame);
+        }
     }
 
     eprintln!("chapter 1A: matched {matched} of {total} frames");
     assert_eq!(matched, total, "chapter 1A: desynced after frame {matched}");
+    // she touches the finish trigger on the last frame before the cutscene, and not sooner
+    assert_eq!(
+        finished_on,
+        Some(total),
+        "chapter 1A: finished on the wrong frame"
+    );
 }

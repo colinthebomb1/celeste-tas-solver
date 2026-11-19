@@ -1,6 +1,10 @@
-use super::*;
+use super::constants::*;
+use super::state::{Player, State};
+use crate::entities::Spikes;
+use crate::geom::{Direction, Rect};
+use crate::level::room::Room;
 
-pub fn hitbox_height(player: &Player) -> i32 {
+pub(crate) fn hitbox_height(player: &Player) -> i32 {
     if player.crouching {
         CROUCH_HITBOX_HEIGHT
     } else {
@@ -18,12 +22,12 @@ fn box_at_feet(player: &Player, height: i32) -> Rect {
     )
 }
 
-pub fn hitbox(player: &Player, dx: i32, dy: i32) -> Rect {
+pub(crate) fn hitbox(player: &Player, dx: i32, dy: i32) -> Rect {
     box_at_feet(player, hitbox_height(player)).shifted(dx, dy)
 }
 
 // same top as the hitbox, but it stops short of her feet
-pub fn hurtbox(player: &Player) -> Rect {
+pub(crate) fn hurtbox(player: &Player) -> Rect {
     let height = if player.crouching {
         CROUCH_HURTBOX_HEIGHT
     } else {
@@ -36,29 +40,29 @@ pub fn hurtbox(player: &Player) -> Rect {
 }
 
 // whether her hitbox would be inside something solid if she moved this far
-pub fn collides(player: &Player, room: &Room, dx: i32, dy: i32) -> bool {
+pub(crate) fn collides(player: &Player, room: &Room, dx: i32, dy: i32) -> bool {
     room.solid(&hitbox(player, dx, dy))
 }
 
 // like collides, but a jump-through under her also counts when she is moving down onto it
-pub fn blocked(player: &Player, room: &Room, dx: i32, dy: i32) -> bool {
+pub(crate) fn blocked(player: &Player, room: &Room, dx: i32, dy: i32) -> bool {
     collides(player, room, dx, dy) || (dy > 0 && enters_jump_thru(player, room, dx, dy))
 }
 
-pub fn on_ground(player: &Player, room: &Room) -> bool {
+pub(crate) fn on_ground(player: &Player, room: &Room) -> bool {
     player.speed.y >= 0.0 && blocked(player, room, 0, 1)
 }
 
-pub fn can_stand(player: &Player, room: &Room) -> bool {
+pub(crate) fn can_stand(player: &Player, room: &Room) -> bool {
     !player.crouching || !room.solid(&box_at_feet(player, HITBOX_HEIGHT))
 }
 
 // room to be crouched this far to the side
-pub fn crouch_free_at(player: &Player, room: &Room, dx: i32) -> bool {
+pub(crate) fn crouch_free_at(player: &Player, room: &Room, dx: i32) -> bool {
     !room.solid(&box_at_feet(player, CROUCH_HITBOX_HEIGHT).shifted(dx, 0))
 }
 
-pub fn spikes_kill(player: &Player, spikes: &Spikes) -> bool {
+pub(crate) fn spikes_kill(player: &Player, spikes: &Spikes) -> bool {
     let madeline_hurtbox = &hurtbox(player);
 
     if !spikes.hitbox.overlaps(madeline_hurtbox) {
@@ -78,18 +82,18 @@ pub fn spikes_kill(player: &Player, spikes: &Spikes) -> bool {
 }
 
 // top of hitbox is more than 4 px below the room's bottom edge
-pub fn fell_out(player: &Player, room: &Room) -> bool {
+pub(crate) fn fell_out(player: &Player, room: &Room) -> bool {
     player.position.y - HITBOX_HEIGHT > room.bottom() + 4
 }
 
-pub fn touches_jump_thru(player: &Player, room: &Room, dx: i32, dy: i32) -> bool {
+pub(crate) fn touches_jump_thru(player: &Player, room: &Room, dx: i32, dy: i32) -> bool {
     let moved = hitbox(player, dx, dy);
     room.jump_thrus
         .iter()
         .any(|jump_thru| jump_thru.hitbox.overlaps(&moved))
 }
 
-pub fn enters_jump_thru(player: &Player, room: &Room, dx: i32, dy: i32) -> bool {
+pub(crate) fn enters_jump_thru(player: &Player, room: &Room, dx: i32, dy: i32) -> bool {
     let now = hitbox(player, 0, 0);
     let moved = hitbox(player, dx, dy);
     room.jump_thrus
@@ -98,7 +102,7 @@ pub fn enters_jump_thru(player: &Player, room: &Room, dx: i32, dy: i32) -> bool 
 }
 
 // whether a moving block carries her along
-pub fn is_riding(player: &Player, solid: &Rect) -> bool {
+pub(crate) fn is_riding(player: &Player, solid: &Rect) -> bool {
     if player.dead {
         false
     } else if player.state == State::Climb {
@@ -113,7 +117,10 @@ pub fn is_riding(player: &Player, solid: &Rect) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::geom::{IVec2, Vec2};
     use crate::player::fixtures::*;
+    use crate::player::state::Input;
+    use crate::player::step::step;
 
     #[test]
     fn collide_at_uses_her_hitbox() {

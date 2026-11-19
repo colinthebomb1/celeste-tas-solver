@@ -1,4 +1,5 @@
-use super::*;
+use super::constants::*;
+use crate::geom::{IVec2, Vec2};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum State {
@@ -175,12 +176,12 @@ pub struct Frame {
     pub demodash_pressed: bool,
 }
 
-pub fn jump_pressed(player: &Player, input: Input) -> bool {
+pub(crate) fn jump_pressed(player: &Player, input: Input) -> bool {
     (!player.held.jump && input.jump) || (!player.held.jump2 && input.jump2)
 }
 
 // coming from another state resets her top fall speed
-pub fn set_normal(player: &mut Player) {
+pub(crate) fn set_normal(player: &mut Player) {
     if player.state != State::Normal {
         player.max_fall = MAX_FALL;
     }

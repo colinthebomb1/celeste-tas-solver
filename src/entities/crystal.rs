@@ -2,11 +2,14 @@ use crate::geom::IVec2;
 use crate::geom::Rect;
 use crate::level::map::{Element, MapError, entities};
 use crate::level::room::Room;
-use crate::player::{DELTA_TIME, Player, hurtbox, use_crystal};
+use crate::player::Player;
+use crate::player::collision::hurtbox;
+use crate::player::constants::DELTA_TIME;
+use crate::player::dash::use_crystal;
 
-pub const CRYSTAL_SIZE: i32 = 16;
-pub const CRYSTAL_RESPAWN_TIME: f32 = 2.5;
-pub const CRYSTAL_FREEZE_TIME: f32 = 0.05;
+const CRYSTAL_SIZE: i32 = 16;
+const CRYSTAL_RESPAWN_TIME: f32 = 2.5;
+const CRYSTAL_FREEZE_TIME: f32 = 0.05;
 
 // dash crystal
 #[derive(Debug, Clone, PartialEq)]
@@ -40,7 +43,11 @@ impl Crystal {
     }
 }
 
-pub fn load_crystals(level: &Element, origin: IVec2, room: &mut Room) -> Result<(), MapError> {
+pub(crate) fn load_crystals(
+    level: &Element,
+    origin: IVec2,
+    room: &mut Room,
+) -> Result<(), MapError> {
     for entity in entities(level, "refill") {
         let two_dashes = entity.bool("twoDash").unwrap_or(false);
         let one_use = entity.bool("oneUse").unwrap_or(false);
@@ -56,7 +63,7 @@ pub fn load_crystals(level: &Element, origin: IVec2, room: &mut Room) -> Result<
     Ok(())
 }
 
-pub fn update_crystals(room: &mut Room, player: &mut Player) {
+pub(crate) fn update_crystals(room: &mut Room, player: &mut Player) {
     for crystal in &mut room.crystals {
         let touching = crystal.active && !player.dead && crystal.hitbox.overlaps(&hurtbox(player));
 
@@ -79,7 +86,7 @@ pub fn update_crystals(room: &mut Room, player: &mut Player) {
 mod tests {
     use super::*;
     use crate::fixtures::at;
-    use crate::player::{CLIMB_MAX_STAMINA, CLIMB_TIRED_THRESHOLD};
+    use crate::player::constants::{CLIMB_MAX_STAMINA, CLIMB_TIRED_THRESHOLD};
 
     fn room_with_crystal(crystal: Crystal) -> Room {
         let mut room = Room::from_tiles(IVec2 { x: 0, y: 0 }, "0000\n0000\n0000\n0000");

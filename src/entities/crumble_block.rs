@@ -3,14 +3,16 @@ use crate::geom::IVec2;
 use crate::geom::Rect;
 use crate::level::map::{Element, MapError, entities};
 use crate::level::room::Room;
-use crate::player::{DELTA_TIME, Player, State, hitbox};
+use crate::player::collision::hitbox;
+use crate::player::constants::DELTA_TIME;
+use crate::player::{Player, State};
 
-pub const CRUMBLE_HEIGHT: i32 = 8;
-pub const CRUMBLE_SHAKE_TIME: f32 = 0.2;
-pub const CRUMBLE_SHAKES_ON_TOP: u8 = 1;
-pub const CRUMBLE_SHAKES_CLIMBING: u8 = 3;
-pub const CRUMBLE_HOLD_TIME: f32 = 0.4;
-pub const CRUMBLE_RESPAWN_TIME: f32 = 2.0;
+const CRUMBLE_HEIGHT: i32 = 8;
+const CRUMBLE_SHAKE_TIME: f32 = 0.2;
+const CRUMBLE_SHAKES_ON_TOP: u8 = 1;
+const CRUMBLE_SHAKES_CLIMBING: u8 = 3;
+const CRUMBLE_HOLD_TIME: f32 = 0.4;
+const CRUMBLE_RESPAWN_TIME: f32 = 2.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CrumbleStage {
@@ -45,7 +47,7 @@ impl Room {
     }
 }
 
-pub fn load_crumble_blocks(
+pub(crate) fn load_crumble_blocks(
     level: &Element,
     origin: IVec2,
     room: &mut Room,
@@ -61,7 +63,7 @@ pub fn load_crumble_blocks(
     Ok(())
 }
 
-pub fn update_crumble_blocks(room: &mut Room, player: &Player) {
+pub(crate) fn update_crumble_blocks(room: &mut Room, player: &Player) {
     let Room {
         crumble_blocks,
         solids,
@@ -77,7 +79,7 @@ fn standing_on(player: &Player, solid: &Solid) -> bool {
     !player.dead && hitbox(player, 0, 1).overlaps(&solid.rect)
 }
 
-fn climbing(player: &Player, solid: &Solid) -> bool {
+pub(crate) fn climbing(player: &Player, solid: &Solid) -> bool {
     !player.dead
         && player.state == State::Climb
         && hitbox(player, player.facing as i32, 0).overlaps(&solid.rect)

@@ -2,9 +2,10 @@ use crate::geom::IVec2;
 use crate::geom::Rect;
 use crate::geom::Vec2;
 use crate::level::room::Room;
-use crate::player::{
-    DELTA_TIME, Player, hitbox, is_riding, move_exact_h, move_exact_v, set_lift_speed,
-};
+use crate::player::Player;
+use crate::player::collision::{hitbox, is_riding};
+use crate::player::constants::DELTA_TIME;
+use crate::player::movement::{move_exact_h, move_exact_v, set_lift_speed};
 
 // something she can't pass through that isn't a ground tile
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -35,7 +36,7 @@ impl Solid {
 }
 
 // a solid only has lift speed on a frame where it moved
-pub fn reset_lift_speeds(room: &mut Room) {
+pub(crate) fn reset_lift_speeds(room: &mut Room) {
     for solid in &mut room.solids {
         solid.lift_speed = Vec2 { x: 0.0, y: 0.0 };
     }
@@ -50,18 +51,18 @@ fn whole_pixels(subpixel: &mut f32, amount: f32) -> i32 {
 }
 
 // adds a fraction of a pixel of sideways movement. returns the whole pixels it should now move
-pub fn advance_h(solid: &mut Solid, amount: f32) -> i32 {
+fn advance_h(solid: &mut Solid, amount: f32) -> i32 {
     solid.lift_speed.x = amount / DELTA_TIME;
     whole_pixels(&mut solid.subpixel.x, amount)
 }
 
-pub fn advance_v(solid: &mut Solid, amount: f32) -> i32 {
+pub(crate) fn advance_v(solid: &mut Solid, amount: f32) -> i32 {
     solid.lift_speed.y = amount / DELTA_TIME;
     whole_pixels(&mut solid.subpixel.y, amount)
 }
 
 // moves it so its top-left corner is at (x, y), sideways first
-pub fn move_solid_to(room: &mut Room, id: usize, player: &mut Player, x: f32, y: f32) {
+pub(crate) fn move_solid_to(room: &mut Room, id: usize, player: &mut Player, x: f32, y: f32) {
     let solid = &mut room.solids[id];
     let amount_x = x - (solid.rect.left as f32 + solid.subpixel.x);
     let pixels_x = advance_h(solid, amount_x);
@@ -78,7 +79,7 @@ pub fn move_solid_to(room: &mut Room, id: usize, player: &mut Player, x: f32, y:
 }
 
 // moves it by whole pixels along one axis. it carries her if she is riding it and pushes her if it runs into her
-pub fn move_solid(room: &mut Room, id: usize, player: &mut Player, dx: i32, dy: i32) {
+pub(crate) fn move_solid(room: &mut Room, id: usize, player: &mut Player, dx: i32, dy: i32) {
     let before = room.solids[id].rect;
     let riding = is_riding(player, &before);
 

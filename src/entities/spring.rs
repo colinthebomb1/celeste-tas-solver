@@ -3,8 +3,8 @@ use crate::geom::Rect;
 use crate::level::map::{Element, MapError, entities};
 use crate::level::room::Room;
 
-pub const SPRING_WIDTH: i32 = 16;
-pub const SPRING_HEIGHT: i32 = 6;
+const SPRING_WIDTH: i32 = 16;
+const SPRING_HEIGHT: i32 = 6;
 
 // a floor spring
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,7 +27,11 @@ impl Spring {
 }
 
 // only floor springs. the ones on walls are other entities
-pub fn load_springs(level: &Element, origin: IVec2, room: &mut Room) -> Result<(), MapError> {
+pub(crate) fn load_springs(
+    level: &Element,
+    origin: IVec2,
+    room: &mut Room,
+) -> Result<(), MapError> {
     for entity in entities(level, "spring") {
         room.springs.push(Spring::new(
             origin.x + entity.require("x")?,

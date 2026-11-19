@@ -3,13 +3,16 @@ use crate::geom::IVec2;
 use crate::geom::Rect;
 use crate::level::map::{Element, MapError, entities};
 use crate::level::room::Room;
-use crate::player::{DELTA_TIME, Player, approach, is_riding};
+use crate::player::Player;
+use crate::player::collision::is_riding;
+use crate::player::constants::DELTA_TIME;
+use crate::player::movement::approach;
 
-pub const ZIP_START_DELAY: f32 = 0.1;
-pub const ZIP_PAUSE: f32 = 0.5;
+const ZIP_START_DELAY: f32 = 0.1;
+const ZIP_PAUSE: f32 = 0.5;
 // progress per second, where 1.0 is the whole trip
-pub const ZIP_GO_RATE: f32 = 2.0;
-pub const ZIP_RETURN_RATE: f32 = 0.5;
+const ZIP_GO_RATE: f32 = 2.0;
+const ZIP_RETURN_RATE: f32 = 0.5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ZipStage {
@@ -61,7 +64,11 @@ impl Room {
     }
 }
 
-pub fn load_zippers(level: &Element, origin: IVec2, room: &mut Room) -> Result<(), MapError> {
+pub(crate) fn load_zippers(
+    level: &Element,
+    origin: IVec2,
+    room: &mut Room,
+) -> Result<(), MapError> {
     for entity in entities(level, "zipMover") {
         let node = entity.child("node").ok_or(MapError::MissingField("node"))?;
 
@@ -78,13 +85,13 @@ pub fn load_zippers(level: &Element, origin: IVec2, room: &mut Room) -> Result<(
     Ok(())
 }
 
-pub fn update_zippers(room: &mut Room, player: &mut Player) {
+pub(crate) fn update_zippers(room: &mut Room, player: &mut Player) {
     for index in 0..room.zippers.len() {
         update_zipper(room, index, player);
     }
 }
 
-pub fn is_ridden(room: &Room, index: usize, player: &Player) -> bool {
+fn is_ridden(room: &Room, index: usize, player: &Player) -> bool {
     is_riding(player, &room.solids[room.zippers[index].solid].rect)
 }
 
@@ -92,7 +99,7 @@ fn sine_in(t: f32) -> f32 {
     -(((std::f32::consts::FRAC_PI_2 * t) as f64).cos() as f32) + 1.0
 }
 
-fn lerp(from: i32, to: i32, amount: f32) -> f32 {
+pub(crate) fn lerp(from: i32, to: i32, amount: f32) -> f32 {
     from as f32 + (to - from) as f32 * amount
 }
 
@@ -186,7 +193,9 @@ mod tests {
     use super::*;
     use crate::fixtures::{at, idle, open_room};
     use crate::geom::Vec2;
-    use crate::player::{Input, LIFT_Y_CAP, liftboost};
+    use crate::player::Input;
+    use crate::player::constants::LIFT_Y_CAP;
+    use crate::player::movement::liftboost;
     use crate::sim::step_room;
 
     // an empty room with one block at (40, 120), 32 x 16, that travels 80 px up

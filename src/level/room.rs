@@ -3,8 +3,8 @@ use crate::entities::{
 };
 use crate::geom::{IVec2, Rect};
 
-pub const TILE_SIZE: i32 = 8;
-pub const SCREEN_HEIGHT: i32 = 180;
+const TILE_SIZE: i32 = 8;
+const SCREEN_HEIGHT: i32 = 180;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Room {

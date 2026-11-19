@@ -5,7 +5,7 @@ use crate::level::room::Room;
 
 // the game freezes this long when it breaks,
 // also when she leaves a room that still has one
-pub const DASH_BLOCK_FREEZE_TIME: f32 = 0.05;
+pub(crate) const DASH_BLOCK_FREEZE_TIME: f32 = 0.05;
 
 // a solid block that a dash breaks. broken means its solid is no longer collidable
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,7 +21,11 @@ impl Room {
     }
 }
 
-pub fn load_dash_blocks(level: &Element, origin: IVec2, room: &mut Room) -> Result<(), MapError> {
+pub(crate) fn load_dash_blocks(
+    level: &Element,
+    origin: IVec2,
+    room: &mut Room,
+) -> Result<(), MapError> {
     for entity in entities(level, "dashBlock") {
         room.add_dash_block(
             origin.x + entity.require("x")?,

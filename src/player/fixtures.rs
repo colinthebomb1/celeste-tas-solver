@@ -1,5 +1,12 @@
 // rooms, inputs and starting positions shared by the player tests
-use super::*;
+use super::constants::*;
+use super::dash::{aim_vector, dash_begin, dash_launch};
+use super::movement::set_lift_speed;
+use super::state::{Frame, Input, Player, State};
+use super::step::step;
+use crate::entities::Spikes;
+use crate::geom::{Direction, IVec2, Vec2};
+use crate::level::room::Room;
 
 pub(crate) const FLOOR_Y: i32 = 144;
 pub(crate) const LEDGE_X: i32 = 43;

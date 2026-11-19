@@ -1,4 +1,19 @@
-use super::*;
+use super::climb::{climb_update, follow_hop_solid, try_grab, update_hop_wait};
+use super::collision::{
+    can_stand, collides, enters_jump_thru, fell_out, on_ground, spikes_kill, touches_jump_thru,
+};
+use super::constants::*;
+use super::dash::{aim_vector, can_dash, dash_begin, dash_end, dash_launch, dashing};
+use super::jump::{
+    bounce_on_springs, can_super_dash, jump, jump_off_wall, super_dash, wall_slide_max_fall,
+};
+use super::movement::{
+    add_liftboost, approach, dash_jump_thru_nudge, liftboost, move_exact_v, move_h, move_v,
+    nudge_v, update_retention,
+};
+use super::state::{Frame, Input, Player, State, jump_pressed, track_buttons};
+use crate::geom::Vec2;
+use crate::level::room::Room;
 
 // one frame of her update
 pub fn step(mut player: Player, input: Input, room: &Room) -> Player {
@@ -301,6 +316,7 @@ fn normal_update(player: &mut Player, room: &Room, frame: Frame) {
 mod tests {
     use super::*;
     use crate::player::fixtures::*;
+    use crate::player::state::set_normal;
 
     #[test]
     fn not_on_ground_above_floor() {

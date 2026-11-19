@@ -1,6 +1,13 @@
-use super::*;
+use super::collision::{can_stand, collides, hitbox};
+use super::constants::*;
+use super::dash::{can_dash, dash_begin};
+use super::jump::{climb_jump, wall_kick};
+use super::movement::{add_liftboost, approach, move_exact_h, move_exact_v, sign};
+use super::state::{Frame, HopSolid, Input, Player, State, set_normal};
+use crate::geom::Rect;
+use crate::level::room::Room;
 
-pub fn is_tired(player: &Player) -> bool {
+fn is_tired(player: &Player) -> bool {
     let stamina = if player.wall.boost_timer > 0.0 {
         player.stamina + CLIMB_JUMP_COST
     } else {
@@ -10,7 +17,7 @@ pub fn is_tired(player: &Player) -> bool {
     stamina < CLIMB_TIRED_THRESHOLD
 }
 
-pub fn climb_check(player: &Player, room: &Room, dir: i8, dy: i32) -> bool {
+fn climb_check(player: &Player, room: &Room, dir: i8, dy: i32) -> bool {
     let reach = dir as i32 * CLIMB_CHECK_DIST;
     let her = hitbox(player, reach, 0);
     let in_bounds = her.left >= room.bounds.left && her.right() < room.bounds.right();
@@ -18,7 +25,7 @@ pub fn climb_check(player: &Player, room: &Room, dir: i8, dy: i32) -> bool {
     in_bounds && collides(player, room, reach, dy)
 }
 
-pub fn try_grab(player: &mut Player, room: &Room, input: Input) -> bool {
+pub(crate) fn try_grab(player: &mut Player, room: &Room, input: Input) -> bool {
     if !input.grab || is_tired(player) || player.crouching {
         return false;
     }
@@ -44,7 +51,7 @@ pub fn try_grab(player: &mut Player, room: &Room, input: Input) -> bool {
     false
 }
 
-pub fn climb_begin(player: &mut Player, room: &Room) {
+fn climb_begin(player: &mut Player, room: &Room) {
     player.crouching = false;
     player.auto_jump = false;
     player.speed.x = 0.0;
@@ -78,7 +85,7 @@ fn solid_in(room: &Room, rect: &Rect) -> Option<HopSolid> {
 }
 
 // she pops up over the ledge. the sideways push waits until the wall is out of her way
-pub fn climbhop(player: &mut Player, room: &Room) {
+fn climbhop(player: &mut Player, room: &Room) {
     if collides(player, room, player.facing as i32, 0) {
         player.climb.hop_solid = solid_in(room, &hitbox(player, player.facing as i32, 0));
         player.climb.hop_wait = player.facing;
@@ -128,7 +135,7 @@ pub(crate) fn update_hop_wait(player: &mut Player, room: &Room) {
 }
 
 // her hands are above the top of the wall
-pub fn slip_check(player: &Player, room: &Room, add_y: i32) -> bool {
+fn slip_check(player: &Player, room: &Room, add_y: i32) -> bool {
     let her = hitbox(player, 0, 0);
     let x = if player.facing == 1 {
         her.right()
@@ -240,6 +247,9 @@ pub(crate) fn climb_update(player: &mut Player, room: &Room, frame: Frame) {
 mod tests {
     use super::*;
     use crate::player::fixtures::*;
+
+    use crate::geom::{IVec2, Vec2};
+    use crate::player::step::step;
 
     #[test]
     fn step_climb_jumps_next_to_a_wall() {

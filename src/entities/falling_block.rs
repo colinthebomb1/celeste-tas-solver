@@ -3,15 +3,18 @@ use crate::geom::IVec2;
 use crate::geom::Rect;
 use crate::level::map::{Element, MapError, entities};
 use crate::level::room::Room;
-use crate::player::{DELTA_TIME, Player, approach, hitbox, is_riding};
+use crate::player::Player;
+use crate::player::collision::{hitbox, is_riding};
+use crate::player::constants::DELTA_TIME;
+use crate::player::movement::approach;
 
-pub const FALL_SHAKE_TIME: f32 = 0.2;
-pub const FALL_WAIT_TIME: f32 = 0.4;
-pub const FALL_MAX_SPEED: f32 = 160.0;
-pub const FALL_ACCEL: f32 = 500.0;
-pub const FALL_LAND_TIME: f32 = 0.2;
-pub const FALL_RECHECK_TIME: f32 = 0.1;
-pub const FALL_OUT_MARGIN: i32 = 16;
+const FALL_SHAKE_TIME: f32 = 0.2;
+const FALL_WAIT_TIME: f32 = 0.4;
+const FALL_MAX_SPEED: f32 = 160.0;
+const FALL_ACCEL: f32 = 500.0;
+const FALL_LAND_TIME: f32 = 0.2;
+const FALL_RECHECK_TIME: f32 = 0.1;
+const FALL_OUT_MARGIN: i32 = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FallStage {
@@ -50,7 +53,7 @@ impl Room {
     }
 }
 
-pub fn load_falling_blocks(
+pub(crate) fn load_falling_blocks(
     level: &Element,
     origin: IVec2,
     room: &mut Room,
@@ -70,13 +73,13 @@ pub fn load_falling_blocks(
     Ok(())
 }
 
-pub fn update_falling_blocks(room: &mut Room, player: &mut Player) {
+pub(crate) fn update_falling_blocks(room: &mut Room, player: &mut Player) {
     for index in 0..room.falling_blocks.len() {
         update_falling_block(room, index, player);
     }
 }
 
-fn rect(room: &Room, index: usize) -> Rect {
+pub(crate) fn rect(room: &Room, index: usize) -> Rect {
     room.solids[room.falling_blocks[index].solid].rect
 }
 

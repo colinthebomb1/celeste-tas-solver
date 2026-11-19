@@ -1,10 +1,13 @@
 use crate::entities::dash_block::DASH_BLOCK_FREEZE_TIME;
 use crate::geom::Direction;
 use crate::level::room::Chapter;
-use crate::player::{
-    CLIMB_MAX_STAMINA, DASH_COOLDOWN, HITBOX_WIDTH, JUMP_HOLD_TIME, JUMP_SPEED, MAX_DASHES, Player,
-    WALL_SLIDE_TIME, collides, hitbox_height, set_normal,
+use crate::player::Player;
+use crate::player::collision::{collides, hitbox_height};
+use crate::player::constants::{
+    CLIMB_MAX_STAMINA, DASH_COOLDOWN, HITBOX_WIDTH, JUMP_HOLD_TIME, JUMP_SPEED, MAX_DASHES,
+    WALL_SLIDE_TIME,
 };
+use crate::player::state::set_normal;
 
 pub const TRANSITION_FRAMES: usize = 40;
 // how far the game looks past her center for the next room

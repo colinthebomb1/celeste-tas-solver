@@ -1,6 +1,12 @@
-use super::*;
+use super::collision::{can_stand, collides, hitbox, hitbox_height, hurtbox};
+use super::constants::*;
+use super::dash::dashing;
+use super::movement::{add_liftboost, lerp, nudge_v, set_lift_speed};
+use super::state::{Frame, Input, Player, set_normal};
+use crate::geom::{Direction, Rect};
+use crate::level::room::Room;
 
-pub fn wall_slide_max_fall(player: &mut Player, room: &Room, input: Input) -> f32 {
+pub(crate) fn wall_slide_max_fall(player: &mut Player, room: &Room, input: Input) -> f32 {
     let mut max = player.max_fall;
     let into_wall = input.move_x == player.facing || (input.move_x == 0 && input.grab);
 
@@ -29,7 +35,7 @@ pub fn wall_slide_max_fall(player: &mut Player, room: &Room, input: Input) -> f3
     max
 }
 
-pub fn jump(player: &mut Player, input: Input) {
+pub(crate) fn jump(player: &mut Player, input: Input) {
     player.coyote_timer = 0.0;
     player.wall.slide_timer = WALL_SLIDE_TIME;
     player.jump_timer = JUMP_HOLD_TIME;
@@ -42,11 +48,11 @@ pub fn jump(player: &mut Player, input: Input) {
     player.dash.attack_timer = 0.0;
 }
 
-pub fn can_super_dash(player: &Player, room: &Room, jump_pressed: bool) -> bool {
+pub(crate) fn can_super_dash(player: &Player, room: &Room, jump_pressed: bool) -> bool {
     jump_pressed && player.coyote_timer > 0.0 && player.dash.dir.y == 0.0 && can_stand(player, room)
 }
 
-pub fn super_dash(player: &mut Player) {
+pub(crate) fn super_dash(player: &mut Player) {
     player.coyote_timer = 0.0;
     player.jump_timer = JUMP_HOLD_TIME;
     player.auto_jump = false;
@@ -68,11 +74,11 @@ pub fn super_dash(player: &mut Player) {
     set_normal(player);
 }
 
-pub fn wallbounce_ready(player: &Player) -> bool {
+fn wallbounce_ready(player: &Player) -> bool {
     player.dash.attack_timer > 0.0 && player.dash.dir.x == 0.0 && player.dash.dir.y == -1.0
 }
 
-pub fn wall_kick_check(player: &Player, room: &Room, dir: i8) -> bool {
+fn wall_kick_check(player: &Player, room: &Room, dir: i8) -> bool {
     let dir = dir as i32;
     let mut dist = WALL_KICK_REACH;
 
@@ -101,7 +107,7 @@ pub fn wall_kick_check(player: &Player, room: &Room, dir: i8) -> bool {
     collides(player, room, dir * dist, 0)
 }
 
-pub fn wall_kick(player: &mut Player, room: &Room, dir: i8, move_x: i8) {
+pub(crate) fn wall_kick(player: &mut Player, room: &Room, dir: i8, move_x: i8) {
     player.crouching = false;
     player.coyote_timer = 0.0;
     player.jump_timer = JUMP_HOLD_TIME;
@@ -133,7 +139,7 @@ pub fn wall_kick(player: &mut Player, room: &Room, dir: i8, move_x: i8) {
     set_normal(player);
 }
 
-pub fn wallbounce(player: &mut Player, dir: i8) {
+fn wallbounce(player: &mut Player, dir: i8) {
     player.crouching = false;
     player.coyote_timer = 0.0;
     player.jump_timer = WALLBOUNCE_JUMP_TIME;
@@ -149,7 +155,7 @@ pub fn wallbounce(player: &mut Player, dir: i8) {
     set_normal(player);
 }
 
-pub fn jump_off_wall(player: &mut Player, room: &Room, frame: Frame) -> bool {
+pub(crate) fn jump_off_wall(player: &mut Player, room: &Room, frame: Frame) -> bool {
     let input = frame.input;
 
     if !can_stand(player, room) {
@@ -179,7 +185,7 @@ pub fn jump_off_wall(player: &mut Player, room: &Room, frame: Frame) -> bool {
     true
 }
 
-pub fn can_climb_jump(player: &Player, room: &Room, input: Input) -> bool {
+fn can_climb_jump(player: &Player, room: &Room, input: Input) -> bool {
     let able = input.grab && player.stamina > 0.0;
 
     if wall_kick_check(player, room, 1) {
@@ -191,7 +197,7 @@ pub fn can_climb_jump(player: &Player, room: &Room, input: Input) -> bool {
     }
 }
 
-pub fn climb_jump(player: &mut Player, frame: Frame) {
+pub(crate) fn climb_jump(player: &mut Player, frame: Frame) {
     let Frame { input, ground, .. } = frame;
 
     if !ground {
@@ -208,7 +214,7 @@ pub fn climb_jump(player: &mut Player, frame: Frame) {
     set_normal(player);
 }
 
-pub fn spring_bounce(player: &mut Player, room: &Room, from_y: i32) {
+fn spring_bounce(player: &mut Player, room: &Room, from_y: i32) {
     nudge_v(player, room, (from_y - player.position.y) as f32);
 
     player.dashes = MAX_DASHES;
@@ -227,7 +233,7 @@ pub fn spring_bounce(player: &mut Player, room: &Room, from_y: i32) {
     player.jump_speed = SPRING_SPEED;
 }
 
-pub fn bounce_on_springs(player: &mut Player, room: &Room) {
+pub(crate) fn bounce_on_springs(player: &mut Player, room: &Room) {
     for spring in &room.springs {
         if player.speed.y >= 0.0 && spring.hitbox.overlaps(&hurtbox(player)) {
             spring_bounce(player, room, spring.hitbox.top);
@@ -238,7 +244,12 @@ pub fn bounce_on_springs(player: &mut Player, room: &Room) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::entities::Spikes;
+    use crate::geom::{IVec2, Vec2};
+    use crate::player::collision::on_ground;
     use crate::player::fixtures::*;
+    use crate::player::state::{State, jump_pressed};
+    use crate::player::step::step;
 
     #[test]
     fn jump_sets_speed_and_timers() {

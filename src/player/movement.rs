@@ -1,6 +1,11 @@
-use super::*;
+use super::collision::{blocked, collides, crouch_free_at, hitbox};
+use super::constants::*;
+use super::dash::dashing;
+use super::state::Player;
+use crate::geom::Vec2;
+use crate::level::room::Room;
 
-pub fn set_lift_speed(player: &mut Player, lift_speed: Vec2) {
+pub(crate) fn set_lift_speed(player: &mut Player, lift_speed: Vec2) {
     player.lift.speed = lift_speed;
 
     if lift_speed != NO_LIFT {
@@ -9,7 +14,7 @@ pub fn set_lift_speed(player: &mut Player, lift_speed: Vec2) {
     }
 }
 
-pub fn liftboost(player: &Player) -> Vec2 {
+pub(crate) fn liftboost(player: &Player) -> Vec2 {
     let lift = if player.lift.speed == NO_LIFT {
         player.lift.last_speed
     } else {
@@ -22,7 +27,7 @@ pub fn liftboost(player: &Player) -> Vec2 {
     }
 }
 
-pub fn move_exact_h(player: &mut Player, room: &Room, amount: i32) -> bool {
+pub(crate) fn move_exact_h(player: &mut Player, room: &Room, amount: i32) -> bool {
     let step = amount.signum();
     for _ in 0..amount.abs() {
         if collides(player, room, step, 0) {
@@ -34,7 +39,7 @@ pub fn move_exact_h(player: &mut Player, room: &Room, amount: i32) -> bool {
     false
 }
 
-pub fn move_exact_v(player: &mut Player, room: &Room, amount: i32) -> bool {
+pub(crate) fn move_exact_v(player: &mut Player, room: &Room, amount: i32) -> bool {
     let step = amount.signum();
     for _ in 0..amount.abs() {
         if blocked(player, room, 0, step) {
@@ -46,7 +51,7 @@ pub fn move_exact_v(player: &mut Player, room: &Room, amount: i32) -> bool {
     false
 }
 
-pub fn approach(value: f32, target: f32, max_move: f32) -> f32 {
+pub(crate) fn approach(value: f32, target: f32, max_move: f32) -> f32 {
     if value > target {
         (value - max_move).max(target)
     } else {
@@ -54,7 +59,7 @@ pub fn approach(value: f32, target: f32, max_move: f32) -> f32 {
     }
 }
 
-pub fn dash_corner_correction_h(player: &mut Player, room: &Room, ground: bool) -> bool {
+fn dash_corner_correction_h(player: &mut Player, room: &Room, ground: bool) -> bool {
     if !dashing(player) {
         return false;
     }
@@ -89,7 +94,7 @@ pub fn dash_corner_correction_h(player: &mut Player, room: &Room, ground: bool) 
 }
 
 // ground is whether she was on the ground at the start of the frame
-pub fn move_h(player: &mut Player, room: &Room, amount: f32, ground: bool) {
+pub(crate) fn move_h(player: &mut Player, room: &Room, amount: f32, ground: bool) {
     let new_subpixel = player.subpixel.x + amount;
     // C# Math.Round
     let movement_x = new_subpixel.round_ties_even() as i32;
@@ -117,7 +122,7 @@ pub fn move_h(player: &mut Player, room: &Room, amount: f32, ground: bool) {
     }
 }
 
-pub fn move_v(player: &mut Player, room: &Room, amount: f32) {
+pub(crate) fn move_v(player: &mut Player, room: &Room, amount: f32) {
     let new_subpixel = player.subpixel.y + amount;
     // C# Math.Round
     let movement_y = new_subpixel.round_ties_even() as i32;
@@ -160,7 +165,7 @@ pub fn move_v(player: &mut Player, room: &Room, amount: f32) {
     }
 }
 
-pub fn nudge_v(player: &mut Player, room: &Room, amount: f32) {
+pub(crate) fn nudge_v(player: &mut Player, room: &Room, amount: f32) {
     let new_subpixel = player.subpixel.y + amount;
     let movement_y = new_subpixel.round_ties_even() as i32;
     player.subpixel.y = new_subpixel - (movement_y as f32);
@@ -175,7 +180,7 @@ pub fn nudge_v(player: &mut Player, room: &Room, amount: f32) {
     }
 }
 
-pub fn dash_jump_thru_nudge(player: &mut Player, room: &Room) {
+pub(crate) fn dash_jump_thru_nudge(player: &mut Player, room: &Room) {
     for jump_thru in &room.jump_thrus {
         let depth = player.position.y - jump_thru.hitbox.top;
 
@@ -190,7 +195,7 @@ pub fn dash_jump_thru_nudge(player: &mut Player, room: &Room) {
     }
 }
 
-pub fn dash_corner_correction_down(player: &mut Player, room: &Room) -> bool {
+fn dash_corner_correction_down(player: &mut Player, room: &Room) -> bool {
     if !dashing(player) || player.dash.started_on_ground {
         return false;
     }
@@ -223,7 +228,7 @@ pub fn dash_corner_correction_down(player: &mut Player, room: &Room) -> bool {
     false
 }
 
-pub fn upward_corner_correction(player: &mut Player, room: &Room) -> bool {
+fn upward_corner_correction(player: &mut Player, room: &Room) -> bool {
     let slack = CORNER_CORRECTION_SPEED_SLACK;
     let reach = if player.dash.attack_timer > 0.0 && player.speed.x.abs() < slack {
         DASH_UPWARD_CORNER_CORRECTION
@@ -254,7 +259,7 @@ pub fn upward_corner_correction(player: &mut Player, room: &Room) -> bool {
     false
 }
 
-pub fn lerp(value1: f32, value2: f32, amount: f32) -> f32 {
+pub(crate) fn lerp(value1: f32, value2: f32, amount: f32) -> f32 {
     value1 * (1.0 - amount) + value2 * amount
 }
 
@@ -264,7 +269,7 @@ pub(crate) fn add_liftboost(player: &mut Player) {
     player.speed.y += boost.y;
 }
 
-pub fn update_retention(player: &mut Player, room: &Room) {
+pub(crate) fn update_retention(player: &mut Player, room: &Room) {
     if player.wall.retention_timer <= 0.0 {
         return;
     }
@@ -295,7 +300,12 @@ pub(crate) fn sign(v: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::geom::IVec2;
+    use crate::player::collision::on_ground;
     use crate::player::fixtures::*;
+    use crate::player::jump::jump;
+    use crate::player::state::Input;
+    use crate::player::step::step;
 
     #[test]
     fn approach_moves_toward_target() {

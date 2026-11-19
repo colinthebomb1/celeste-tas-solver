@@ -3,7 +3,7 @@ use crate::geom::Rect;
 use crate::level::map::{Element, MapError, entities};
 use crate::level::room::Room;
 
-pub const JUMP_THRU_HEIGHT: i32 = 5;
+const JUMP_THRU_HEIGHT: i32 = 5;
 
 // a platform she can jump up through and stand on. (x, y) is its top-left corner
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,7 +24,11 @@ impl JumpThru {
     }
 }
 
-pub fn load_jump_thrus(level: &Element, origin: IVec2, room: &mut Room) -> Result<(), MapError> {
+pub(crate) fn load_jump_thrus(
+    level: &Element,
+    origin: IVec2,
+    room: &mut Room,
+) -> Result<(), MapError> {
     for entity in entities(level, "jumpThru") {
         room.jump_thrus.push(JumpThru::new(
             origin.x + entity.require("x")?,

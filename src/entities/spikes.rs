@@ -49,7 +49,7 @@ const SPIKE_KINDS: [(&str, Direction, &str); 4] = [
     ("spikesRight", Direction::Right, "height"),
 ];
 
-pub fn load_spikes(level: &Element, origin: IVec2, room: &mut Room) -> Result<(), MapError> {
+pub(crate) fn load_spikes(level: &Element, origin: IVec2, room: &mut Room) -> Result<(), MapError> {
     for (name, direction, length) in SPIKE_KINDS {
         for entity in entities(level, name) {
             room.spikes.push(Spikes::new(

@@ -1,10 +1,15 @@
-use super::*;
+use super::collision::can_stand;
+use super::constants::*;
+use super::movement::sign;
+use super::state::{Frame, Input, Player, State, set_normal};
+use crate::geom::Vec2;
+use crate::level::room::Room;
 
 pub(crate) fn dashing(player: &Player) -> bool {
     matches!(player.state, State::DashStart | State::Dash { .. })
 }
 
-pub fn aim_vector(input: Input, facing: i8) -> Vec2 {
+pub(crate) fn aim_vector(input: Input, facing: i8) -> Vec2 {
     if input.move_x == 0 && input.move_y == 0 {
         Vec2 {
             x: facing as f32,
@@ -25,11 +30,11 @@ pub fn aim_vector(input: Input, facing: i8) -> Vec2 {
     }
 }
 
-pub fn can_dash(player: &Player, dash_pressed: bool) -> bool {
+pub(crate) fn can_dash(player: &Player, dash_pressed: bool) -> bool {
     dash_pressed && player.dash.cooldown <= 0.0 && player.dashes > 0
 }
 
-pub fn dash_begin(player: &mut Player, room: &Room, frame: Frame) {
+pub(crate) fn dash_begin(player: &mut Player, room: &Room, frame: Frame) {
     let Frame {
         input,
         ground,
@@ -58,7 +63,7 @@ pub fn dash_begin(player: &mut Player, room: &Room, frame: Frame) {
     player.state = State::DashStart
 }
 
-pub fn dash_launch(player: &mut Player, aim: Vec2, ground: bool) {
+pub(crate) fn dash_launch(player: &mut Player, aim: Vec2, ground: bool) {
     let mut new_speed_x = aim.x * DASH_SPEED;
     let new_speed_y = aim.y * DASH_SPEED;
 
@@ -92,7 +97,7 @@ pub fn dash_launch(player: &mut Player, aim: Vec2, ground: bool) {
     player.state = State::Dash { timer: DASH_TIME };
 }
 
-pub fn dash_end(player: &mut Player) {
+pub(crate) fn dash_end(player: &mut Player) {
     player.auto_jump = true;
 
     if player.dash.dir.y <= 0.0 {
@@ -107,7 +112,7 @@ pub fn dash_end(player: &mut Player) {
     set_normal(player);
 }
 
-pub fn use_crystal(player: &mut Player, two_dashes: bool) -> bool {
+pub(crate) fn use_crystal(player: &mut Player, two_dashes: bool) -> bool {
     let dashes = if two_dashes { TWO_DASHES } else { MAX_DASHES };
 
     if player.dashes < dashes || player.stamina < CLIMB_TIRED_THRESHOLD {
@@ -123,6 +128,7 @@ pub fn use_crystal(player: &mut Player, two_dashes: bool) -> bool {
 mod tests {
     use super::*;
     use crate::player::fixtures::*;
+    use crate::player::step::step;
 
     #[test]
     fn aim_defaults_to_facing() {

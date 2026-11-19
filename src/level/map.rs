@@ -95,7 +95,7 @@ impl Element {
 }
 
 // the entities with this name among a level's "entities" children
-pub fn entities<'a>(level: &'a Element, name: &'a str) -> impl Iterator<Item = &'a Element> {
+pub(crate) fn entities<'a>(level: &'a Element, name: &'a str) -> impl Iterator<Item = &'a Element> {
     level
         .child("entities")
         .into_iter()
@@ -177,7 +177,7 @@ impl<'file> MapReader<'file> {
 }
 
 // run length encoded text, pairs of (repeat count, character).
-pub fn decode_rle(bytes: &[u8]) -> String {
+fn decode_rle(bytes: &[u8]) -> String {
     let mut decoded_string = String::new();
 
     for pair in bytes.chunks(2) {
@@ -192,7 +192,7 @@ pub fn decode_rle(bytes: &[u8]) -> String {
     decoded_string
 }
 
-pub fn read_value(reader: &mut MapReader, lookup: &[String], kind: u8) -> Result<Value, MapError> {
+fn read_value(reader: &mut MapReader, lookup: &[String], kind: u8) -> Result<Value, MapError> {
     match kind {
         0 => Ok(Value::Bool(reader.read_u8()? != 0)),
         1 => Ok(Value::Int(reader.read_u8()? as i32)),
@@ -222,7 +222,7 @@ fn read_lookup(reader: &mut MapReader, lookup: &[String]) -> Result<String, MapE
 }
 
 // one element and its children recursively
-pub fn read_element(reader: &mut MapReader, lookup: &[String]) -> Result<Element, MapError> {
+fn read_element(reader: &mut MapReader, lookup: &[String]) -> Result<Element, MapError> {
     let name = read_lookup(reader, lookup)?;
     let mut attributes = HashMap::new();
     let mut children = Vec::new();
@@ -250,7 +250,7 @@ pub fn read_element(reader: &mut MapReader, lookup: &[String]) -> Result<Element
 }
 
 // read the root element of the map
-pub fn parse_map(bytes: &[u8]) -> Result<Element, MapError> {
+fn parse_map(bytes: &[u8]) -> Result<Element, MapError> {
     let mut reader = MapReader::new(bytes);
     let mut lookup = Vec::new();
 

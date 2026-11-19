@@ -3,7 +3,7 @@ use crate::entities::dash_block::DASH_BLOCK_FREEZE_TIME;
 use crate::geom::Direction;
 use crate::level::room::Chapter;
 use crate::player::Player;
-use crate::player::collision::{collides, hitbox_height};
+use crate::player::collision::{collides, hitbox};
 use crate::player::constants::{
     CLIMB_MAX_STAMINA, DASH_COOLDOWN, HITBOX_WIDTH, JUMP_HOLD_TIME, JUMP_SPEED, WALL_SLIDE_TIME,
 };
@@ -18,6 +18,10 @@ const VERTICAL_REACH: f32 = 12.0;
 // she is moved the way she is travelling until she is this far inside the new room
 const ENTRY_PAD: i32 = 4;
 const DOWN_ENTRY_PAD: i32 = 12;
+// with no room above, she can rise this far past the top before it stops her
+const TOP_MARGIN: i32 = 24;
+// no transition down while there is floor this close under her
+const DOWN_FLOOR_CHECK: i32 = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Transition {
@@ -27,23 +31,16 @@ pub struct Transition {
     pub direction: Direction,
 }
 
+// what happens when she reaches an edge of her room. a transition starts if there is a room to
+// go to. where there isn't, the left, right and top edges hold her in.
 // entities are those of the room she is in
-pub fn find_transition(
-    player: &Player,
+pub fn check_room_edges(
+    player: &mut Player,
     chapter: &Chapter,
     room: usize,
     entities: &Entities,
 ) -> Option<Transition> {
     let bounds = chapter.rooms[room].bounds;
-    let height = hitbox_height(player);
-
-    let left = player.position.x - HITBOX_WIDTH / 2;
-    let right = player.position.x + HITBOX_WIDTH / 2;
-    let top = player.position.y - height;
-    let bottom = player.position.y;
-    let center_x = player.position.x as f32;
-    let center_y = player.position.y as f32 - height as f32 / 2.0;
-
     let to = |x: f32, y: f32, direction: Direction| {
         chapter
             .room_at(x, y)
@@ -54,25 +51,58 @@ pub fn find_transition(
                 direction,
             })
     };
-    let beside = top >= bounds.top && bottom < bounds.bottom();
 
-    if left < bounds.left {
-        if beside {
-            return to(center_x - SIDE_REACH, center_y, Direction::Left);
+    let her = hitbox(player, 0, 0);
+    let (center_x, center_y) = center(player);
+    // a sideways transition needs her whole height inside the room's
+    let beside = her.top >= bounds.top && her.bottom() < bounds.bottom();
+
+    if her.left < bounds.left {
+        let next = to(center_x - SIDE_REACH, center_y, Direction::Left);
+        if beside && next.is_some() {
+            return next;
         }
-    } else if right > bounds.right() && beside {
-        return to(center_x + SIDE_REACH, center_y, Direction::Right);
+        player.position.x = bounds.left + HITBOX_WIDTH / 2;
+        player.speed.x = 0.0;
+    } else if her.right() > bounds.right() {
+        let next = to(center_x + SIDE_REACH, center_y, Direction::Right);
+        if beside && next.is_some() {
+            return next;
+        }
+        player.position.x = bounds.right() - HITBOX_WIDTH / 2;
+        player.speed.x = 0.0;
     }
+
+    // up and down are checked from where the sides left her
+    let her = hitbox(player, 0, 0);
+    let (center_x, center_y) = center(player);
 
     if center_y < bounds.top as f32 {
-        return to(center_x, center_y - VERTICAL_REACH, Direction::Up);
+        let next = to(center_x, center_y - VERTICAL_REACH, Direction::Up);
+        if next.is_some() {
+            return next;
+        }
+        if her.top < bounds.top - TOP_MARGIN {
+            player.position.y = bounds.top - TOP_MARGIN + her.height;
+            player.speed.y = 0.0;
+        }
     }
 
-    if bottom > bounds.bottom() && !collides(player, &chapter.rooms[room], entities, 0, 4) {
+    let floor_near = collides(player, &chapter.rooms[room], entities, 0, DOWN_FLOOR_CHECK);
+    if her.bottom() > bounds.bottom() && !floor_near {
         return to(center_x, center_y + VERTICAL_REACH, Direction::Down);
     }
 
     None
+}
+
+// the middle of her hitbox
+fn center(player: &Player) -> (f32, f32) {
+    let her = hitbox(player, 0, 0);
+    (
+        player.position.x as f32,
+        player.position.y as f32 - her.height as f32 / 2.0,
+    )
 }
 
 pub fn before_transition(player: &mut Player, direction: Direction) {
@@ -172,7 +202,95 @@ mod tests {
     }
 
     fn find(player: &Player, chapter: &Chapter, room: usize) -> Option<Transition> {
-        find_transition(player, chapter, room, &chapter.rooms[room].initial)
+        check(&mut player.clone(), chapter, room)
+    }
+
+    fn check(player: &mut Player, chapter: &Chapter, room: usize) -> Option<Transition> {
+        check_room_edges(player, chapter, room, &chapter.rooms[room].initial)
+    }
+
+    // one room at (100, 100), 32 px each way, with nothing around it
+    fn alone() -> Chapter {
+        let mut chapter = cross();
+        chapter.rooms.truncate(1);
+        chapter
+    }
+
+    #[test]
+    fn the_left_edge_holds_her_in_when_there_is_no_room_there() {
+        let chapter = alone();
+        let mut s = at(103, 120);
+        s.speed.x = -90.0;
+        s.subpixel.x = 0.25;
+
+        assert_eq!(check(&mut s, &chapter, CENTRE), None);
+        assert_eq!(s.position, IVec2 { x: 104, y: 120 });
+        assert_eq!(s.speed.x, 0.0);
+        assert_eq!(s.subpixel.x, 0.25);
+    }
+
+    #[test]
+    fn the_right_edge_holds_her_in_when_there_is_no_room_there() {
+        let chapter = alone();
+        let mut s = at(129, 120);
+        s.speed.x = 90.0;
+
+        assert_eq!(check(&mut s, &chapter, CENTRE), None);
+        assert_eq!(s.position, IVec2 { x: 128, y: 120 });
+        assert_eq!(s.speed.x, 0.0);
+    }
+
+    #[test]
+    fn inside_the_room_she_is_left_alone() {
+        let chapter = alone();
+        let mut s = at(104, 120);
+        s.speed.x = -90.0;
+
+        assert_eq!(check(&mut s, &chapter, CENTRE), None);
+        assert_eq!(s.position, IVec2 { x: 104, y: 120 });
+        assert_eq!(s.speed.x, -90.0);
+    }
+
+    #[test]
+    fn she_can_rise_24_px_above_a_room_with_nothing_over_it() {
+        let chapter = alone();
+
+        // the top of her hitbox is exactly 24 px above the room
+        let mut s = at(116, 87);
+        s.speed.y = -105.0;
+        assert_eq!(check(&mut s, &chapter, CENTRE), None);
+        assert_eq!(s.position.y, 87);
+        assert_eq!(s.speed.y, -105.0);
+
+        let mut s = at(116, 80);
+        s.speed.y = -105.0;
+        assert_eq!(check(&mut s, &chapter, CENTRE), None);
+        assert_eq!(s.position.y, 87);
+        assert_eq!(s.speed.y, 0.0);
+    }
+
+    #[test]
+    fn a_side_she_cannot_leave_by_holds_her_even_with_a_room_there() {
+        // too high to count as beside the room on the right
+        let chapter = cross();
+        let mut s = at(129, 110);
+        s.speed.x = 90.0;
+
+        assert_eq!(check(&mut s, &chapter, CENTRE), None);
+        assert_eq!(s.position.x, 128);
+        assert_eq!(s.speed.x, 0.0);
+    }
+
+    #[test]
+    fn up_is_still_checked_after_a_side_holds_her() {
+        let mut chapter = cross();
+        chapter.rooms.truncate(2);
+
+        // past the left edge with no room there, and high enough to leave upward
+        let mut s = at(103, 105);
+        let found = check(&mut s, &chapter, CENTRE);
+        assert_eq!(found.map(|t| t.direction), Some(Direction::Up));
+        assert_eq!(s.position.x, 104);
     }
 
     fn finish(player: &mut Player, chapter: &Chapter, transition: Transition) {

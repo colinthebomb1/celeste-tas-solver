@@ -6,7 +6,7 @@ use crate::entities::solid::reset_lift_speeds;
 use crate::entities::zipper::update_zippers;
 use crate::level::room::{Chapter, Room};
 use crate::level::transition::{
-    TRANSITION_FRAMES, Transition, before_transition, find_transition, finish_transition,
+    TRANSITION_FRAMES, Transition, before_transition, check_room_edges, finish_transition,
 };
 use crate::player::state::track_buttons;
 use crate::player::{Input, Player, step};
@@ -65,7 +65,7 @@ pub fn step_chapter(sim: &mut Sim, chapter: &Chapter, input: Input) {
         );
 
         if !sim.player.dead
-            && let Some(found) = find_transition(&sim.player, chapter, sim.room, &sim.entities)
+            && let Some(found) = check_room_edges(&mut sim.player, chapter, sim.room, &sim.entities)
         {
             before_transition(&mut sim.player, found.direction);
             sim.transition = Some((found, TRANSITION_FRAMES));
@@ -151,6 +151,28 @@ mod tests {
         assert_eq!(sim.room, 1);
         // 4 px inside the new room
         assert_eq!(sim.player.position, IVec2 { x: 92, y: 176 });
+    }
+
+    #[test]
+    fn an_edge_with_no_room_past_it_holds_her_in() {
+        let chapter = two_rooms();
+        let left = Input {
+            move_x: -1,
+            ..RIGHT
+        };
+        let mut sim = Sim::new(&chapter, 0, at(10, 176));
+        for _ in 0..30 {
+            step_chapter(&mut sim, &chapter, left);
+        }
+
+        // her hitbox is 8 px wide, so its left side is on the room's edge.
+        // the edge is not a wall: her speed builds up again until she next crosses it
+        for _ in 0..10 {
+            step_chapter(&mut sim, &chapter, left);
+            assert!(!sim.in_transition());
+            assert_eq!(sim.room, 0);
+            assert_eq!(sim.player.position.x, 4);
+        }
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use celeste_tas_solver::geom::IVec2;
 use celeste_tas_solver::geom::Vec2;
 use celeste_tas_solver::level::transition::{
-    TRANSITION_FRAMES, before_transition, find_transition, finish_transition,
+    TRANSITION_FRAMES, before_transition, check_room_edges, finish_transition,
 };
 use celeste_tas_solver::player::Player;
 
@@ -88,14 +88,15 @@ fn transitions_match_the_trace() {
             .expect("unknown room in the trace");
         let entities = &chapter.rooms[room].initial;
         let mut player = player(row);
-        let found = find_transition(&player, &chapter, room, entities);
+        let found = check_room_edges(&mut player, &chapter, room, entities);
 
         if !row.no_control {
             // the trace doesn't say whether she is crouching, and a crouching player leaves later
             let mut crouching = player;
             crouching.crouching = true;
             assert!(
-                found.is_none() || find_transition(&crouching, &chapter, room, entities).is_none(),
+                found.is_none()
+                    || check_room_edges(&mut crouching, &chapter, room, entities).is_none(),
                 "row {i}: a transition out of {} that the game didn't make",
                 row.room
             );

@@ -1,4 +1,4 @@
-use super::collision::{can_stand, collides, hitbox};
+use super::collision::{can_stand, collides, hitbox, spikes_block};
 use super::constants::*;
 use super::dash::{can_dash, dash_begin};
 use super::jump::{climb_jump, wall_kick};
@@ -210,7 +210,9 @@ pub(crate) fn climb_update(player: &mut Player, room: &Room, entities: &Entities
     let mut may_slip = !can_move || input.move_y == 0;
 
     if can_move && input.move_y == -1 {
-        let hop_blocked = collides(player, room, entities, 0, -CLIMBHOP_BLOCK_DIST);
+        let ahead = hitbox(player, player.facing as i32 * CLIMBHOP_SPIKE_REACH, 0);
+        let hop_blocked =
+            spikes_block(room, &ahead) || collides(player, room, entities, 0, -CLIMBHOP_BLOCK_DIST);
 
         if collides(player, room, entities, 0, -1)
             || (hop_blocked && slipping(player, room, entities, -1))
@@ -669,6 +671,16 @@ mod tests {
         assert_eq!(s.speed.x, 0.0);
         assert_eq!(s.climb.hop_wait, 1);
         assert_eq!(s.forced_move_timer, CLIMBHOP_FORCE_TIME);
+    }
+
+    #[test]
+    fn no_hop_onto_a_ledge_with_spikes_on_it() {
+        let mut room = partial_wall(6..23);
+        room.spikes.push(up_spikes(80, 48, 8));
+        let s = step(climbing(54), GRAB_UP, &room, &room.initial);
+
+        assert_eq!(s.state, State::Climb);
+        assert!(s.speed.y >= 0.0);
     }
 
     #[test]

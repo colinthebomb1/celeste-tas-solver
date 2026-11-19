@@ -96,6 +96,18 @@ pub(crate) fn fell_out(player: &Player, room: &Room) -> bool {
     hitbox(player, 0, 0).top > room.bottom() + 4
 }
 
+// spikes she is never eased into or onto
+pub(crate) fn spikes_block(room: &Room, rect: &Rect) -> bool {
+    room.spikes
+        .iter()
+        .any(|spikes| spikes.direction != Direction::Down && spikes.hitbox.overlaps(rect))
+}
+
+// whether a dash correction that moves her this far would put her hurtbox in spikes
+pub(crate) fn correction_spiked(player: &Player, room: &Room, dx: i32, dy: i32) -> bool {
+    spikes_block(room, &hurtbox(player).shifted(dx, dy))
+}
+
 // any spikes, whichever way they point
 pub(crate) fn touches_spikes(player: &Player, room: &Room) -> bool {
     let her = hitbox(player, 0, 0);
@@ -269,6 +281,17 @@ mod tests {
         let room = room();
         assert!(!fell_out(&crouching_at(60, 190), &room));
         assert!(fell_out(&crouching_at(60, 191), &room));
+    }
+
+    #[test]
+    fn spikes_block_unless_they_point_down() {
+        let mut room = room();
+        room.spikes.push(up_spikes(0, FLOOR_Y, 40));
+        room.spikes.push(Spikes::new(Direction::Down, 0, 20, 40));
+
+        assert!(spikes_block(&room, &Rect::new(10, FLOOR_Y - 2, 4, 4)));
+        assert!(!spikes_block(&room, &Rect::new(10, 20, 4, 4)));
+        assert!(!spikes_block(&room, &Rect::new(10, 60, 4, 4)));
     }
 
     #[test]

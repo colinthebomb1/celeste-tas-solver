@@ -950,6 +950,17 @@ mod tests {
     }
 
     #[test]
+    fn step_no_push_up_through_a_jump_thru_with_spikes_on_it() {
+        let spiked = spiked_platform_room();
+        let room = room();
+        let start = player_at(60, PLATFORM_Y + 3, 0.0, -50.0);
+        let with = step(start, Input::default(), &spiked, &spiked.initial);
+        let without = step(start, Input::default(), &room, &room.initial);
+        assert!(!with.dead);
+        assert_eq!(exact_y(&with), exact_y(&without));
+    }
+
+    #[test]
     fn step_no_push_when_falling_through_a_jump_thru() {
         let platform = platform_room();
         let room = room();

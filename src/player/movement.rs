@@ -1,4 +1,4 @@
-use super::collision::{blocked, collides, crouch_free_at, hitbox};
+use super::collision::{blocked, collides, correction_spiked, crouch_free_at, hitbox};
 use super::constants::*;
 use super::dash::{dashing, ultra};
 use super::state::Player;
@@ -90,7 +90,10 @@ fn dash_corner_correction_h(
     if player.speed.y == 0.0 && player.speed.x != 0.0 {
         for i in 1..=DASH_CORNER_CORRECTION {
             for dy in [i, -i] {
-                if !collides(player, room, entities, dir, dy) {
+                // free at this height, blocked one pixel nearer, and no spikes where she would end up
+                let fits = !collides(player, room, entities, dir, dy)
+                    && collides(player, room, entities, dir, dy - dy.signum());
+                if fits && !correction_spiked(player, room, dir, dy) {
                     for _ in 0..i {
                         if collides(player, room, entities, 0, dy.signum()) {
                             break;
@@ -185,7 +188,10 @@ pub(crate) fn dash_jump_thru_nudge(player: &mut Player, room: &Room, entities: &
     for jump_thru in &room.jump_thrus {
         let depth = player.position.y - jump_thru.hitbox.top;
 
-        if jump_thru.hitbox.overlaps(&hitbox(player, 0, 0)) && depth <= DASH_JUMP_THRU_NUDGE {
+        if jump_thru.hitbox.overlaps(&hitbox(player, 0, 0))
+            && depth <= DASH_JUMP_THRU_NUDGE
+            && !correction_spiked(player, room, 0, -depth)
+        {
             for _ in 0..depth {
                 if collides(player, room, entities, 0, -1) {
                     break;
@@ -878,6 +884,21 @@ mod tests {
     }
 
     #[test]
+    fn dash_corner_correction_not_onto_spikes() {
+        let room = spiked_floor();
+        let mut s = dashing_at(PIT_X, FLOOR_Y + 2, -240.0, 0.0);
+        move_h(&mut s, &room, &room.initial, -3.0, false);
+        assert_eq!(
+            s.position,
+            IVec2 {
+                x: PIT_X,
+                y: FLOOR_Y + 2
+            }
+        );
+        assert_eq!(s.speed.x, 0.0);
+    }
+
+    #[test]
     fn dash_corner_correction_reaches_four_pixels() {
         let room = room();
         let mut s = dashing_at(PIT_X, FLOOR_Y + 4, -240.0, 0.0);
@@ -1183,6 +1204,14 @@ mod tests {
         let mut s = player_at(60, PLATFORM_Y + 7, 0.0, 0.0);
         dash_jump_thru_nudge(&mut s, &room, &room.initial);
         assert_eq!(s.position.y, PLATFORM_Y + 7);
+    }
+
+    #[test]
+    fn dash_jump_thru_nudge_not_into_spikes() {
+        let room = spiked_platform_room();
+        let mut s = player_at(60, PLATFORM_Y + 6, 0.0, 0.0);
+        dash_jump_thru_nudge(&mut s, &room, &room.initial);
+        assert_eq!(s.position.y, PLATFORM_Y + 6);
     }
 
     #[test]

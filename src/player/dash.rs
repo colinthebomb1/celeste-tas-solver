@@ -649,6 +649,15 @@ mod tests {
     }
 
     #[test]
+    fn level_dash_clipping_a_jump_thru_with_spikes_on_it_is_not_lifted() {
+        let room = spiked_platform_room();
+        let mut s = dashing_at(60, PLATFORM_Y + 4, DASH_SPEED, 0.0);
+        s.dash.dir = Vec2 { x: 1.0, y: 0.0 };
+        s = step(s, Input::default(), &room, &room.initial);
+        assert_eq!(s.position.y, PLATFORM_Y + 4);
+    }
+
+    #[test]
     fn dash_up_through_a_jump_thru_is_not_lifted() {
         let room = platform_room();
         let mut s = dashing_at(60, PLATFORM_Y + 4, 0.0, -DASH_SPEED);
@@ -791,6 +800,17 @@ mod tests {
         s = step(s, Input::default(), &room, &room.initial);
         assert_eq!(s.position.y, FLOOR_Y);
         assert_eq!(s.subpixel.y, 0.0);
+    }
+
+    #[test]
+    fn no_floor_snap_onto_spikes() {
+        let room = spiked_floor();
+        let mut s = dashing_at(0, FLOOR_Y - 2, DASH_SPEED, 0.0);
+        s.dash.dir = Vec2 { x: 1.0, y: 0.0 };
+        s.dash.attack_timer = 0.2;
+        s = step(s, Input::default(), &room, &room.initial);
+        assert_eq!(s.position.y, FLOOR_Y - 2);
+        assert!(!s.dead);
     }
 
     #[test]

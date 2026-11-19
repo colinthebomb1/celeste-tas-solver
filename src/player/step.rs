@@ -1,7 +1,7 @@
 use super::climb::{climb_update, follow_hop_solid, try_grab, update_hop_wait};
 use super::collision::{
-    can_stand, collides, enters_jump_thru, fell_out, on_ground, spikes_kill, touches_jump_thru,
-    touches_spikes,
+    can_stand, collides, correction_spiked, enters_jump_thru, fell_out, hitbox, on_ground,
+    spikes_block, spikes_kill, touches_jump_thru, touches_spikes,
 };
 use super::constants::*;
 use super::dash::{aim_vector, can_dash, dash_begin, dash_end, dash_launch, dashing, refill_dash};
@@ -231,7 +231,12 @@ fn settle_before_moving(player: &mut Player, room: &Room, entities: &Entities, g
 
     // rising inside a jump-through lifts her through it
     let climbing_still = player.state == State::Climb && player.climb.last_move != -1;
-    if !ground && player.speed.y <= 0.0 && !climbing_still && touches_jump_thru(player, room, 0, 0)
+    let above = hitbox(player, 0, -JUMP_THRU_ASSIST_SPIKE_REACH);
+    if !ground
+        && player.speed.y <= 0.0
+        && !climbing_still
+        && touches_jump_thru(player, room, 0, 0)
+        && !spikes_block(room, &above)
     {
         nudge_v(player, room, entities, JUMP_THRU_ASSIST_SPEED * DELTA_TIME);
     }
@@ -239,7 +244,9 @@ fn settle_before_moving(player: &mut Player, room: &Room, entities: &Entities, g
     // a sideways dash just above the floor snaps down onto it
     if !ground && player.dash.attack_timer > 0.0 && player.dash.dir.y == 0.0 {
         let near = DASH_FLOOR_SNAP;
-        if collides(player, room, entities, 0, near) || enters_jump_thru(player, room, 0, near) {
+        let floor =
+            collides(player, room, entities, 0, near) || enters_jump_thru(player, room, 0, near);
+        if floor && !correction_spiked(player, room, 0, near) {
             move_exact_v(player, room, entities, near);
         }
     }

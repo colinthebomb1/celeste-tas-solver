@@ -88,6 +88,8 @@ pub(crate) const CLIMB_SLIP_SPEED: f32 = 30.0;
 pub(crate) const CLIMB_ACCEL: f32 = 900.0;
 // a ceiling this close stops her climbing over a ledge
 pub(crate) const CLIMBHOP_BLOCK_DIST: i32 = 6;
+// so do spikes this far ahead of her
+pub(crate) const CLIMBHOP_SPIKE_REACH: i32 = 8;
 pub(crate) const CLIMBHOP_Y: f32 = -120.0;
 pub(crate) const CLIMBHOP_X: f32 = 100.0;
 pub(crate) const CLIMBHOP_FORCE_TIME: f32 = 0.2;
@@ -113,3 +115,5 @@ pub(crate) const NO_LIFT: Vec2 = Vec2 { x: 0.0, y: 0.0 };
 pub(crate) const SPRING_SPEED: f32 = -185.0;
 pub(crate) const SPRING_JUMP_TIME: f32 = 0.2;
 pub(crate) const JUMP_THRU_ASSIST_SPEED: f32 = -40.0;
+// spikes this close above her stop the lift through a jump-through
+pub(crate) const JUMP_THRU_ASSIST_SPIKE_REACH: i32 = 2;

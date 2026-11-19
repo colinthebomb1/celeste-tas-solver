@@ -78,9 +78,20 @@ pub(crate) fn player_at(x: i32, y: i32, speed_x: f32, speed_y: f32) -> Player {
     s
 }
 
+// spikes pointing up, with their base along y
+pub(crate) fn up_spikes(x: i32, y: i32, width: i32) -> Spikes {
+    Spikes::new(Direction::Up, x, y, width)
+}
+
 pub(crate) fn spiked_floor() -> Room {
     let mut room = room();
-    room.spikes.push(Spikes::new(Direction::Up, 0, FLOOR_Y, 40));
+    room.spikes.push(up_spikes(0, FLOOR_Y, 40));
+    room
+}
+
+pub(crate) fn spiked_platform_room() -> Room {
+    let mut room = platform_room();
+    room.spikes.push(up_spikes(40, PLATFORM_Y, 40));
     room
 }
 

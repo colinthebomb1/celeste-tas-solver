@@ -82,14 +82,14 @@ fn rooms_load_their_dash_blocks() {
     let with_dash_blocks: Vec<&str> = chapter
         .rooms
         .iter()
-        .filter(|room| !room.dash_blocks.is_empty())
+        .filter(|room| !room.initial.dash_blocks.is_empty())
         .map(|room| room.name.as_str())
         .collect();
 
     assert_eq!(with_dash_blocks, ["lvl_5", "lvl_6", "lvl_6c", "lvl_7z"]);
     let lvl_6 = &chapter.rooms[chapter.room_named("lvl_6").unwrap()];
     assert_eq!(
-        lvl_6.solids[lvl_6.dash_blocks[0].solid].rect,
+        lvl_6.initial.solids[lvl_6.initial.dash_blocks[0].solid].rect,
         Rect::new(1544, -1096, 16, 24)
     );
 }
@@ -121,13 +121,16 @@ fn rooms_load_their_zippers() {
     };
     let lvl_5 = &chapter.rooms[chapter.room_named("lvl_5").unwrap()];
 
-    assert_eq!(lvl_5.zippers.len(), 1);
-    let zip = &lvl_5.zippers[0];
+    assert_eq!(lvl_5.initial.zippers.len(), 1);
+    let zip = &lvl_5.initial.zippers[0];
     assert_eq!(
         (zip.start, zip.target),
         (IVec2 { x: 1128, y: -760 }, IVec2 { x: 1128, y: -840 })
     );
-    assert_eq!(lvl_5.solids[zip.solid].rect, Rect::new(1128, -760, 32, 16));
+    assert_eq!(
+        lvl_5.initial.solids[zip.solid].rect,
+        Rect::new(1128, -760, 32, 16)
+    );
 }
 
 #[test]

@@ -62,7 +62,8 @@ pub(crate) fn aim(move_x: i8, move_y: i8, facing: i8) -> Vec2 {
 
 pub(crate) fn mid_dash(dir: Vec2) -> Player {
     let mut s = standing();
-    dash_begin(&mut s, &room(), frame(Input::default(), true));
+    let room = room();
+    dash_begin(&mut s, &room, &room.initial, frame(Input::default(), true));
     dash_launch(&mut s, dir, true);
     s
 }
@@ -99,7 +100,7 @@ pub(crate) fn dash_for(start: Player, frames: usize, input: Input) -> Player {
     let room = room();
     let mut s = start;
     for _ in 0..frames {
-        s = step(s, input, &room);
+        s = step(s, input, &room, &room.initial);
     }
     s
 }

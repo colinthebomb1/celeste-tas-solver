@@ -802,7 +802,7 @@ mod tests {
         let map = map_with_entities(&[element("dashBlock", &attributes, &[])]);
         let room = load_room(&map, "room_b").unwrap();
         assert_eq!(
-            room.solids[room.dash_blocks[0].solid].rect,
+            room.initial.solids[room.initial.dash_blocks[0].solid].rect,
             Rect::new(568, -72, 16, 24)
         );
     }
@@ -819,7 +819,7 @@ mod tests {
         let map = map_with_entities(&[plain, element("refill", &attributes, &[])]);
         let room = load_room(&map, "room_b").unwrap();
         assert_eq!(
-            room.crystals,
+            room.initial.crystals,
             vec![
                 Crystal::new(472, -112, false, false),
                 Crystal::new(328, -168, true, true)
@@ -843,15 +843,15 @@ mod tests {
         ]);
         let room = load_room(&map, "room_b").unwrap();
         assert_eq!(
-            room.solids[room.falling_blocks[0].solid].rect,
+            room.initial.solids[room.initial.falling_blocks[0].solid].rect,
             Rect::new(472, -24, 32, 24)
         );
         assert_eq!(
-            room.solids[room.falling_blocks[1].solid].rect,
+            room.initial.solids[room.initial.falling_blocks[1].solid].rect,
             Rect::new(472, -24, 32, 24)
         );
-        assert!(room.falling_blocks[0].climb_fall);
-        assert!(!room.falling_blocks[1].climb_fall);
+        assert!(room.initial.falling_blocks[0].climb_fall);
+        assert!(!room.initial.falling_blocks[1].climb_fall);
     }
 
     #[test]
@@ -859,7 +859,7 @@ mod tests {
         let map = map_with_entities(&[entity("crumbleBlock", 304, 64, Some(("width", 40)))]);
         let room = load_room(&map, "room_b").unwrap();
         assert_eq!(
-            room.solids[room.crumble_blocks[0].solid].rect,
+            room.initial.solids[room.initial.crumble_blocks[0].solid].rect,
             Rect::new(624, -120, 40, 8)
         );
     }
@@ -879,11 +879,11 @@ mod tests {
         let map = map_with_entities(&[zipper_entity(Some((104, 184)))]);
         let room = load_room(&map, "room_b").unwrap();
         assert_eq!(
-            room.solids[room.zippers[0].solid].rect,
+            room.initial.solids[room.initial.zippers[0].solid].rect,
             Rect::new(424, 80, 32, 16)
         );
-        assert_eq!(room.zippers[0].start, IVec2 { x: 424, y: 80 });
-        assert_eq!(room.zippers[0].target, IVec2 { x: 424, y: 0 });
+        assert_eq!(room.initial.zippers[0].start, IVec2 { x: 424, y: 80 });
+        assert_eq!(room.initial.zippers[0].target, IVec2 { x: 424, y: 0 });
     }
 
     #[test]

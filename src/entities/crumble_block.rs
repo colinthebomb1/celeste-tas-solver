@@ -2,7 +2,7 @@ use crate::entities::Solid;
 use crate::geom::IVec2;
 use crate::geom::Rect;
 use crate::level::map::{Element, MapError, entities};
-use crate::level::room::Room;
+use crate::level::room::{Room, RoomState};
 use crate::player::collision::hitbox;
 use crate::player::constants::DELTA_TIME;
 use crate::player::{Player, State};
@@ -33,7 +33,7 @@ pub struct CrumbleBlock {
     pub on_top: bool,
 }
 
-impl Room {
+impl RoomState {
     // (x, y) is its top-left corner
     pub fn add_crumble_block(&mut self, x: i32, y: i32, width: i32) {
         let solid = self.add_solid(Rect::new(x, y, width, CRUMBLE_HEIGHT));
@@ -53,7 +53,7 @@ pub(crate) fn load_crumble_blocks(
     room: &mut Room,
 ) -> Result<(), MapError> {
     for entity in entities(level, "crumbleBlock") {
-        room.add_crumble_block(
+        room.initial.add_crumble_block(
             origin.x + entity.require("x")?,
             origin.y + entity.require("y")?,
             entity.require("width")?,
@@ -63,12 +63,12 @@ pub(crate) fn load_crumble_blocks(
     Ok(())
 }
 
-pub(crate) fn update_crumble_blocks(room: &mut Room, player: &Player) {
-    let Room {
+pub(crate) fn update_crumble_blocks(state: &mut RoomState, player: &Player) {
+    let RoomState {
         crumble_blocks,
         solids,
         ..
-    } = room;
+    } = state;
 
     for block in crumble_blocks {
         update_crumble_block(block, &mut solids[block.solid], player);
@@ -151,15 +151,15 @@ mod tests {
     use super::*;
     use crate::fixtures::at;
 
-    // a room with one block, 40 px wide with its top at y = 64
-    fn block() -> Room {
-        let mut room = Room::from_tiles(IVec2 { x: 0, y: 0 }, "0000\n0000");
-        room.add_crumble_block(304, 64, 40);
-        room
+    // one block, 40 px wide with its top at y = 64
+    fn block() -> RoomState {
+        let mut state = RoomState::default();
+        state.add_crumble_block(304, 64, 40);
+        state
     }
 
-    fn solid(room: &Room) -> bool {
-        room.solids[room.crumble_blocks[0].solid].collidable
+    fn solid(state: &RoomState) -> bool {
+        state.solids[state.crumble_blocks[0].solid].collidable
     }
 
     fn on_top() -> Player {
@@ -179,10 +179,10 @@ mod tests {
     }
 
     // frames until it is no longer solid
-    fn frames_to_crumble(block: &mut Room, player: &Player) -> usize {
+    fn frames_to_crumble(state: &mut RoomState, player: &Player) -> usize {
         let mut frames = 0;
-        while solid(block) {
-            update_crumble_blocks(block, player);
+        while solid(state) {
+            update_crumble_blocks(state, player);
             frames += 1;
             assert!(frames < 1000);
         }
@@ -196,11 +196,12 @@ mod tests {
 
     #[test]
     fn it_is_solid_until_it_crumbles() {
-        let mut room = block();
-        assert!(room.solid_at(304, 64));
+        let mut block = block();
+        let corner = Rect::new(304, 64, 1, 1);
+        assert!(block.solid(&corner));
 
-        room.solids[0].collidable = false;
-        assert!(!room.solid_at(304, 64));
+        block.solids[0].collidable = false;
+        assert!(!block.solid(&corner));
     }
 
     #[test]

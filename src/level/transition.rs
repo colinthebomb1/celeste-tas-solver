@@ -1,6 +1,6 @@
 use crate::entities::dash_block::DASH_BLOCK_FREEZE_TIME;
 use crate::geom::Direction;
-use crate::level::room::Chapter;
+use crate::level::room::{Chapter, RoomState};
 use crate::player::Player;
 use crate::player::collision::{collides, hitbox_height};
 use crate::player::constants::{
@@ -25,7 +25,13 @@ pub struct Transition {
     pub direction: Direction,
 }
 
-pub fn find_transition(player: &Player, chapter: &Chapter, room: usize) -> Option<Transition> {
+// state is the state of the room she is in
+pub fn find_transition(
+    player: &Player,
+    chapter: &Chapter,
+    room: usize,
+    state: &RoomState,
+) -> Option<Transition> {
     let bounds = chapter.rooms[room].bounds;
     let height = hitbox_height(player);
 
@@ -60,7 +66,7 @@ pub fn find_transition(player: &Player, chapter: &Chapter, room: usize) -> Optio
         return to(center_x, center_y - VERTICAL_REACH, Direction::Up);
     }
 
-    if bottom > bounds.bottom() && !collides(player, &chapter.rooms[room], 0, 4) {
+    if bottom > bounds.bottom() && !collides(player, &chapter.rooms[room], state, 0, 4) {
         return to(center_x, center_y + VERTICAL_REACH, Direction::Down);
     }
 
@@ -88,7 +94,13 @@ pub fn before_transition(player: &mut Player, direction: Direction) {
     }
 }
 
-pub fn finish_transition(player: &mut Player, chapter: &Chapter, transition: Transition) {
+// state is the state of the room she is leaving
+pub fn finish_transition(
+    player: &mut Player,
+    chapter: &Chapter,
+    state: &RoomState,
+    transition: Transition,
+) {
     let bounds = chapter.rooms[transition.to].bounds;
 
     // she only moves if she isn't far enough in already
@@ -114,11 +126,10 @@ pub fn finish_transition(player: &mut Player, chapter: &Chapter, transition: Tra
     player.stamina = CLIMB_MAX_STAMINA;
 
     // the room she left is unloaded now, and every dash block still in it freezes the game
-    let left = &chapter.rooms[transition.from];
-    let left_a_dash_block = left
+    let left_a_dash_block = state
         .dash_blocks
         .iter()
-        .any(|block| left.solids[block.solid].collidable);
+        .any(|block| state.solids[block.solid].collidable);
     if left_a_dash_block {
         player.freeze_timer = player.freeze_timer.max(DASH_BLOCK_FREEZE_TIME);
     }
@@ -156,6 +167,15 @@ mod tests {
         }
     }
 
+    fn find(player: &Player, chapter: &Chapter, room: usize) -> Option<Transition> {
+        find_transition(player, chapter, room, &chapter.rooms[room].initial)
+    }
+
+    fn finish(player: &mut Player, chapter: &Chapter, transition: Transition) {
+        let state = &chapter.rooms[transition.from].initial;
+        finish_transition(player, chapter, state, transition);
+    }
+
     const CENTRE: usize = 0;
     const UP: usize = 1;
     const RIGHT: usize = 2;
@@ -164,14 +184,14 @@ mod tests {
 
     #[test]
     fn no_transition_inside_the_room() {
-        assert_eq!(find_transition(&at(116, 120), &cross(), CENTRE), None);
+        assert_eq!(find(&at(116, 120), &cross(), CENTRE), None);
     }
 
     #[test]
     fn right_when_her_hitbox_passes_the_edge() {
         let chapter = cross();
-        assert_eq!(find_transition(&at(128, 120), &chapter, CENTRE), None);
-        let found = find_transition(&at(129, 120), &chapter, CENTRE);
+        assert_eq!(find(&at(128, 120), &chapter, CENTRE), None);
+        let found = find(&at(129, 120), &chapter, CENTRE);
         assert_eq!(
             found,
             Some(Transition {
@@ -185,8 +205,8 @@ mod tests {
     #[test]
     fn left_when_her_hitbox_passes_the_edge() {
         let chapter = cross();
-        assert_eq!(find_transition(&at(104, 120), &chapter, CENTRE), None);
-        let found = find_transition(&at(103, 120), &chapter, CENTRE);
+        assert_eq!(find(&at(104, 120), &chapter, CENTRE), None);
+        let found = find(&at(103, 120), &chapter, CENTRE);
         assert_eq!(
             found,
             Some(Transition {
@@ -200,8 +220,8 @@ mod tests {
     #[test]
     fn up_when_her_centre_passes_the_edge() {
         let chapter = cross();
-        assert_eq!(find_transition(&at(116, 106), &chapter, CENTRE), None);
-        let found = find_transition(&at(116, 105), &chapter, CENTRE);
+        assert_eq!(find(&at(116, 106), &chapter, CENTRE), None);
+        let found = find(&at(116, 105), &chapter, CENTRE);
         assert_eq!(
             found,
             Some(Transition {
@@ -217,33 +237,30 @@ mod tests {
         let chapter = cross();
         let mut s = at(116, 103);
         s.crouching = true;
-        assert_eq!(find_transition(&s, &chapter, CENTRE), None);
+        assert_eq!(find(&s, &chapter, CENTRE), None);
         s.position.y = 102;
-        assert_eq!(
-            find_transition(&s, &chapter, CENTRE).map(|t| t.to),
-            Some(UP)
-        );
+        assert_eq!(find(&s, &chapter, CENTRE).map(|t| t.to), Some(UP));
     }
 
     #[test]
     fn down_when_her_feet_pass_the_edge() {
         let chapter = cross();
-        assert_eq!(find_transition(&at(116, 132), &chapter, CENTRE), None);
-        let found = find_transition(&at(116, 133), &chapter, CENTRE);
+        assert_eq!(find(&at(116, 132), &chapter, CENTRE), None);
+        let found = find(&at(116, 133), &chapter, CENTRE);
         assert_eq!(found.map(|t| t.direction), Some(Direction::Down));
     }
 
     #[test]
     fn no_transition_without_a_room_there() {
         let chapter = cross();
-        assert_eq!(find_transition(&at(116, 60), &chapter, UP), None);
-        assert_eq!(find_transition(&at(170, 120), &chapter, RIGHT), None);
+        assert_eq!(find(&at(116, 60), &chapter, UP), None);
+        assert_eq!(find(&at(170, 120), &chapter, RIGHT), None);
     }
 
     #[test]
     fn sideways_needs_her_whole_body_level_with_the_room() {
         let chapter = cross();
-        assert_eq!(find_transition(&at(129, 110), &chapter, CENTRE), None);
+        assert_eq!(find(&at(129, 110), &chapter, CENTRE), None);
     }
 
     #[test]
@@ -299,7 +316,7 @@ mod tests {
         let chapter = cross();
         let mut s = at(116, 105);
         s.subpixel = Vec2 { x: 0.25, y: -0.25 };
-        finish_transition(
+        finish(
             &mut s,
             &chapter,
             Transition {
@@ -316,7 +333,7 @@ mod tests {
     fn finish_right_places_her_against_the_new_rooms_left_edge() {
         let chapter = cross();
         let mut s = at(129, 120);
-        finish_transition(
+        finish(
             &mut s,
             &chapter,
             Transition {
@@ -332,7 +349,7 @@ mod tests {
     fn finish_left_and_down_use_their_own_distances() {
         let chapter = cross();
         let mut s = at(103, 120);
-        finish_transition(
+        finish(
             &mut s,
             &chapter,
             Transition {
@@ -344,7 +361,7 @@ mod tests {
         assert_eq!(s.position, IVec2 { x: 95, y: 120 });
 
         let mut s = at(116, 133);
-        finish_transition(
+        finish(
             &mut s,
             &chapter,
             Transition {
@@ -360,7 +377,7 @@ mod tests {
     fn finish_leaves_her_where_she_is_if_she_is_already_far_enough_in() {
         let chapter = cross();
         let mut s = at(116, 90);
-        finish_transition(
+        finish(
             &mut s,
             &chapter,
             Transition {
@@ -372,7 +389,7 @@ mod tests {
         assert_eq!(s.position, IVec2 { x: 116, y: 90 });
 
         let mut s = at(140, 120);
-        finish_transition(
+        finish(
             &mut s,
             &chapter,
             Transition {
@@ -387,7 +404,7 @@ mod tests {
     #[test]
     fn leaving_a_room_with_a_dash_block_freezes_the_game() {
         let mut chapter = cross();
-        chapter.rooms[CENTRE].add_dash_block(100, 100, 8, 8);
+        chapter.rooms[CENTRE].initial.add_dash_block(100, 100, 8, 8);
         let up = Transition {
             from: CENTRE,
             to: UP,
@@ -395,14 +412,14 @@ mod tests {
         };
 
         let mut s = at(116, 105);
-        finish_transition(&mut s, &chapter, up);
+        finish(&mut s, &chapter, up);
         assert_eq!(s.freeze_timer, DASH_BLOCK_FREEZE_TIME);
 
         // not if it was broken first, and not for a dash block in the room she enters
-        chapter.rooms[CENTRE].solids[0].collidable = false;
-        chapter.rooms[UP].add_dash_block(100, 68, 8, 8);
+        chapter.rooms[CENTRE].initial.solids[0].collidable = false;
+        chapter.rooms[UP].initial.add_dash_block(100, 68, 8, 8);
         let mut s = at(116, 105);
-        finish_transition(&mut s, &chapter, up);
+        finish(&mut s, &chapter, up);
         assert_eq!(s.freeze_timer, 0.0);
     }
 
@@ -418,7 +435,7 @@ mod tests {
         s.stamina = 20.0;
         s.coyote_timer = 0.05;
         s.wall.slide_timer = 0.3;
-        finish_transition(
+        finish(
             &mut s,
             &chapter,
             Transition {

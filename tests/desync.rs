@@ -141,7 +141,7 @@ fn assert_matches_trace_in(room_name: &str, name: &str, text: &str, inputs: &[In
         if frame >= rows.len() {
             break;
         }
-        player = step(player, input, &room);
+        player = step(player, input, &room, &room.initial);
         assert_eq!(
             observe(&player),
             game_row(rows[frame]),
@@ -292,7 +292,7 @@ fn community_lvl_1() {
 #[test]
 fn chapter_1a() {
     let text = include_str!("traces/community/1A_full.txt");
-    let Some(mut chapter) = common::chapter_1a() else {
+    let Some(chapter) = common::chapter_1a() else {
         eprintln!(
             "chapter 1A: skipped. Celeste install could not be found, try setting CELESTE_DIR"
         );
@@ -315,6 +315,7 @@ fn chapter_1a() {
 
     let mut player = start_state(&first_two_lines);
     let mut room = chapter.room_named("lvl_1").expect("no lvl_1");
+    let mut state = chapter.rooms[room].initial.clone();
     let mut matched = 0;
     let mut frame = 1;
 
@@ -334,13 +335,14 @@ fn chapter_1a() {
         player = step_room(
             player,
             input_from_row(rows[frame]),
-            &mut chapter.rooms[room],
+            &chapter.rooms[room],
+            &mut state,
         );
 
         let transition = if player.dead {
             None
         } else {
-            find_transition(&player, &chapter, room)
+            find_transition(&player, &chapter, room, &state)
         };
         if let Some(transition) = transition {
             before_transition(&mut player, transition.direction);
@@ -355,8 +357,9 @@ fn chapter_1a() {
 
         // nothing is simulated during a transition. the next row compared is the one where it ends
         if let Some(transition) = transition {
-            finish_transition(&mut player, &chapter, transition);
+            finish_transition(&mut player, &chapter, &state, transition);
             room = transition.to;
+            state = chapter.rooms[room].initial.clone();
 
             // buttons let go of during the transition count as presses afterwards
             let end = (frame + TRANSITION_FRAMES - 1).min(rows.len() - 1);

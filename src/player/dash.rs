@@ -3,7 +3,7 @@ use super::constants::*;
 use super::movement::sign;
 use super::state::{Frame, Input, Player, State, set_normal};
 use crate::geom::Vec2;
-use crate::level::room::Room;
+use crate::level::room::{Room, RoomState};
 
 pub(crate) fn dashing(player: &Player) -> bool {
     matches!(player.state, State::DashStart | State::Dash { .. })
@@ -34,7 +34,7 @@ pub(crate) fn can_dash(player: &Player, dash_pressed: bool) -> bool {
     dash_pressed && player.dash.cooldown <= 0.0 && player.dashes > 0
 }
 
-pub(crate) fn dash_begin(player: &mut Player, room: &Room, frame: Frame) {
+pub(crate) fn dash_begin(player: &mut Player, room: &Room, state: &RoomState, frame: Frame) {
     let Frame {
         input,
         ground,
@@ -54,7 +54,7 @@ pub(crate) fn dash_begin(player: &mut Player, room: &Room, frame: Frame) {
     player.dash.dir = Vec2 { x: 0.0, y: 0.0 };
 
     // holding down at the start of a dash crouchs
-    if !ground && player.crouching && can_stand(player, room) {
+    if !ground && player.crouching && can_stand(player, room, state) {
         player.crouching = false;
     } else if !player.crouching && (demodash_pressed || input.move_y == 1) {
         player.crouching = true;
@@ -164,10 +164,11 @@ mod tests {
 
     #[test]
     fn dash_begin_freezes_and_zeroes_speed() {
+        let room = room();
         let mut s = standing();
         s.speed = Vec2 { x: 90.0, y: 0.0 };
         s.wall.slide_timer = 0.3;
-        dash_begin(&mut s, &room(), frame(Input::default(), true));
+        dash_begin(&mut s, &room, &room.initial, frame(Input::default(), true));
         assert_eq!(s.state, State::DashStart);
         assert_eq!(s.dashes, MAX_DASHES - 1);
         assert_eq!(s.freeze_timer, DASH_FREEZE_TIME);
@@ -181,8 +182,9 @@ mod tests {
 
     #[test]
     fn dash_launch_sets_speed_and_starts_timer() {
+        let room = room();
         let mut s = standing();
-        dash_begin(&mut s, &room(), frame(Input::default(), true));
+        dash_begin(&mut s, &room, &room.initial, frame(Input::default(), true));
         dash_launch(&mut s, Vec2 { x: 0.0, y: -1.0 }, true);
         assert_eq!(
             s.speed,
@@ -197,38 +199,41 @@ mod tests {
 
     #[test]
     fn dash_launch_keeps_faster_speed_in_same_direction() {
+        let room = room();
         let mut s = standing();
         s.speed.x = 300.0;
-        dash_begin(&mut s, &room(), frame(Input::default(), true));
+        dash_begin(&mut s, &room, &room.initial, frame(Input::default(), true));
         dash_launch(&mut s, Vec2 { x: 1.0, y: 0.0 }, true);
         assert_eq!(s.speed.x, 300.0);
 
         let mut s = standing();
         s.speed.x = -300.0;
-        dash_begin(&mut s, &room(), frame(Input::default(), true));
+        dash_begin(&mut s, &room, &room.initial, frame(Input::default(), true));
         dash_launch(&mut s, Vec2 { x: 1.0, y: 0.0 }, true);
         assert_eq!(s.speed.x, DASH_SPEED);
     }
 
     #[test]
     fn dash_launch_up_drops_horizontal_speed() {
+        let room = room();
         let mut s = standing();
         s.speed.x = 300.0;
-        dash_begin(&mut s, &room(), frame(Input::default(), true));
+        dash_begin(&mut s, &room, &room.initial, frame(Input::default(), true));
         dash_launch(&mut s, Vec2 { x: 0.0, y: -1.0 }, true);
         assert_eq!(s.speed.x, 0.0);
     }
 
     #[test]
     fn dash_launch_turns_to_face_horizontal_dashes() {
+        let room = room();
         let mut s = standing();
-        dash_begin(&mut s, &room(), frame(Input::default(), true));
+        dash_begin(&mut s, &room, &room.initial, frame(Input::default(), true));
         dash_launch(&mut s, Vec2 { x: -1.0, y: 0.0 }, true);
         assert_eq!(s.facing, -1);
 
         let mut s = standing();
         s.facing = -1;
-        dash_begin(&mut s, &room(), frame(Input::default(), true));
+        dash_begin(&mut s, &room, &room.initial, frame(Input::default(), true));
         dash_launch(&mut s, Vec2 { x: 0.0, y: -1.0 }, true);
         assert_eq!(s.facing, -1);
     }
@@ -276,32 +281,41 @@ mod tests {
 
     #[test]
     fn dash_refills_on_ground_after_refill_cooldown() {
+        let room = room();
         let mut s = standing();
         s.dashes = 0;
-        s = step(s, Input::default(), &room());
+        s = step(s, Input::default(), &room, &room.initial);
         assert_eq!(s.dashes, MAX_DASHES);
     }
 
     #[test]
     fn dash_does_not_refill_during_refill_cooldown() {
+        let room = room();
         let mut s = standing();
         s.dashes = 0;
         s.dash.refill_cooldown = DASH_REFILL_COOLDOWN;
-        s = step(s, Input::default(), &room());
+        s = step(s, Input::default(), &room, &room.initial);
         assert_eq!(s.dashes, 0);
     }
 
     #[test]
     fn dash_does_not_refill_in_air() {
+        let room = room();
         let mut s = at_rest();
         s.dashes = 0;
-        s = step(s, Input::default(), &room());
+        s = step(s, Input::default(), &room, &room.initial);
         assert_eq!(s.dashes, 0);
     }
 
     #[test]
     fn step_super_dashes_out_of_a_dash() {
-        let s = step(dash_for(standing(), 5, DASH_RIGHT), JUMP_RIGHT, &room());
+        let room = room();
+        let s = step(
+            dash_for(standing(), 5, DASH_RIGHT),
+            JUMP_RIGHT,
+            &room,
+            &room.initial,
+        );
         assert_eq!(s.state, State::Normal);
         assert_eq!(
             s.speed,
@@ -314,7 +328,13 @@ mod tests {
 
     #[test]
     fn step_super_dashes_on_the_launch_frame() {
-        let s = step(dash_for(standing(), 4, DASH_RIGHT), JUMP_RIGHT, &room());
+        let room = room();
+        let s = step(
+            dash_for(standing(), 4, DASH_RIGHT),
+            JUMP_RIGHT,
+            &room,
+            &room.initial,
+        );
         assert_eq!(s.state, State::Normal);
         assert_eq!(
             s.speed,
@@ -327,7 +347,13 @@ mod tests {
 
     #[test]
     fn step_super_dashes_on_the_last_dash_frame() {
-        let s = step(dash_for(standing(), 14, DASH_RIGHT), JUMP_RIGHT, &room());
+        let room = room();
+        let s = step(
+            dash_for(standing(), 14, DASH_RIGHT),
+            JUMP_RIGHT,
+            &room,
+            &room.initial,
+        );
         assert_eq!(s.state, State::Normal);
         assert_eq!(
             s.speed,
@@ -340,7 +366,13 @@ mod tests {
 
     #[test]
     fn step_no_super_dash_in_the_air() {
-        let s = step(dash_for(at_rest(), 5, DASH_RIGHT), JUMP_RIGHT, &room());
+        let room = room();
+        let s = step(
+            dash_for(at_rest(), 5, DASH_RIGHT),
+            JUMP_RIGHT,
+            &room,
+            &room.initial,
+        );
         assert!(matches!(s.state, State::Dash { .. }));
         assert_eq!(
             s.speed,
@@ -353,6 +385,7 @@ mod tests {
 
     #[test]
     fn step_no_super_dash_out_of_an_up_dash() {
+        let room = room();
         let up_dash = Input {
             move_x: 0,
             move_y: -1,
@@ -362,7 +395,12 @@ mod tests {
             grab: false,
             demodash: false,
         };
-        let s = step(dash_for(standing(), 5, up_dash), JUMP_RIGHT, &room());
+        let s = step(
+            dash_for(standing(), 5, up_dash),
+            JUMP_RIGHT,
+            &room,
+            &room.initial,
+        );
         assert!(matches!(s.state, State::Dash { .. }));
         assert_eq!(
             s.speed,
@@ -375,29 +413,33 @@ mod tests {
 
     #[test]
     fn dash_begin_crouches_when_down_is_held() {
+        let room = room();
         let mut s = standing();
-        dash_begin(&mut s, &room(), frame(DOWN, true));
+        dash_begin(&mut s, &room, &room.initial, frame(DOWN, true));
         assert!(s.crouching);
     }
 
     #[test]
     fn dash_begin_stays_standing_without_down() {
+        let room = room();
         let mut s = standing();
-        dash_begin(&mut s, &room(), frame(Input::default(), true));
+        dash_begin(&mut s, &room, &room.initial, frame(Input::default(), true));
         assert!(!s.crouching);
     }
 
     #[test]
     fn dash_begin_stays_crouched_on_the_ground() {
+        let room = room();
         let mut s = crouching_at(0, FLOOR_Y);
-        dash_begin(&mut s, &room(), frame(Input::default(), true));
+        dash_begin(&mut s, &room, &room.initial, frame(Input::default(), true));
         assert!(s.crouching);
     }
 
     #[test]
     fn dash_begin_stands_up_in_the_air() {
+        let room = room();
         let mut s = crouching_at(0, 64);
-        dash_begin(&mut s, &room(), frame(Input::default(), false));
+        dash_begin(&mut s, &room, &room.initial, frame(Input::default(), false));
         assert!(!s.crouching);
     }
 
@@ -460,8 +502,14 @@ mod tests {
 
     #[test]
     fn step_hyper_from_a_down_dash() {
+        let room = room();
         let down_dash = Input { dash: true, ..DOWN };
-        let s = step(dash_for(standing(), 4, down_dash), JUMP_RIGHT, &room());
+        let s = step(
+            dash_for(standing(), 4, down_dash),
+            JUMP_RIGHT,
+            &room,
+            &room.initial,
+        );
         assert_eq!(s.state, State::Normal);
         assert_eq!(
             s.speed,
@@ -475,20 +523,22 @@ mod tests {
 
     #[test]
     fn dash_begin_remembers_whether_it_started_on_the_ground() {
+        let room = room();
         let mut s = standing();
-        dash_begin(&mut s, &room(), frame(Input::default(), true));
+        dash_begin(&mut s, &room, &room.initial, frame(Input::default(), true));
         assert!(s.dash.started_on_ground);
 
         let mut s = at_rest();
         s.dash.started_on_ground = true;
-        dash_begin(&mut s, &room(), frame(Input::default(), false));
+        dash_begin(&mut s, &room, &room.initial, frame(Input::default(), false));
         assert!(!s.dash.started_on_ground);
     }
 
     #[test]
     fn dash_attack_runs_from_the_start_of_a_dash() {
+        let room = room();
         let mut s = standing();
-        dash_begin(&mut s, &room(), frame(Input::default(), true));
+        dash_begin(&mut s, &room, &room.initial, frame(Input::default(), true));
         assert_eq!(s.dash.attack_timer, DASH_ATTACK_TIME);
 
         let s = dash_for(standing(), 6, DASH_RIGHT);
@@ -497,7 +547,9 @@ mod tests {
 
     #[test]
     fn step_wallbounce_after_an_upward_dash() {
-        let s = step(bouncing_at(WALL_X - 4), JUMP, &room());
+        let room = room();
+        let left_wall = left_wall_room();
+        let s = step(bouncing_at(WALL_X - 4), JUMP, &room, &room.initial);
         assert_eq!(
             s.speed,
             Vec2 {
@@ -506,7 +558,12 @@ mod tests {
             }
         );
 
-        let s = step(bouncing_at(LEFT_WALL_X + 4), JUMP, &left_wall_room());
+        let s = step(
+            bouncing_at(LEFT_WALL_X + 4),
+            JUMP,
+            &left_wall,
+            &left_wall.initial,
+        );
         assert_eq!(
             s.speed,
             Vec2 {
@@ -518,18 +575,20 @@ mod tests {
 
     #[test]
     fn step_no_wallbounce_once_the_dash_attack_is_over() {
+        let room = room();
         let mut s = bouncing_at(WALL_X - 4);
         s.dash.attack_timer = 0.0;
-        s = step(s, JUMP, &room());
+        s = step(s, JUMP, &room, &room.initial);
         assert_eq!(s.speed.x, 0.0);
     }
 
     #[test]
     fn step_wall_kicks_out_of_a_sideways_dash() {
+        let room = room();
         let mut s = dashing_at(WALL_X - 2, 100, -DASH_SPEED, 0.0);
         s.dash.dir = Vec2 { x: -1.0, y: 0.0 };
         s.facing = -1;
-        s = step(s, JUMP, &room());
+        s = step(s, JUMP, &room, &room.initial);
         assert_eq!(s.state, State::Normal);
         assert_eq!(
             s.speed,
@@ -556,26 +615,30 @@ mod tests {
 
     #[test]
     fn level_dash_clipping_a_jump_thru_is_lifted_onto_it() {
+        let room = platform_room();
         let mut s = dashing_at(60, PLATFORM_Y + 4, DASH_SPEED, 0.0);
         s.dash.dir = Vec2 { x: 1.0, y: 0.0 };
-        s = step(s, Input::default(), &platform_room());
+        s = step(s, Input::default(), &room, &room.initial);
         assert_eq!(s.position.y, PLATFORM_Y);
     }
 
     #[test]
     fn dash_up_through_a_jump_thru_is_not_lifted() {
+        let room = platform_room();
         let mut s = dashing_at(60, PLATFORM_Y + 4, 0.0, -DASH_SPEED);
         s.dash.dir = Vec2 { x: 0.0, y: -1.0 };
-        let with = step(s, Input::default(), &platform_room());
+        let with = step(s, Input::default(), &room, &room.initial);
         assert_eq!(with.position.y, PLATFORM_Y + 4 - 5);
     }
 
     #[test]
     fn dash_begin_from_the_demodash_button_crouches() {
+        let room = room();
         let mut s = standing();
         dash_begin(
             &mut s,
-            &room(),
+            &room,
+            &room.initial,
             Frame {
                 demodash_pressed: true,
                 ..frame(Input::default(), true)
@@ -586,7 +649,8 @@ mod tests {
         let mut s = at_rest();
         dash_begin(
             &mut s,
-            &room(),
+            &room,
+            &room.initial,
             Frame {
                 demodash_pressed: true,
                 ..frame(Input::default(), false)
@@ -597,7 +661,8 @@ mod tests {
 
     #[test]
     fn step_demodash_starts_a_crouched_dash() {
-        let s = step(standing(), DEMODASH, &room());
+        let room = room();
+        let s = step(standing(), DEMODASH, &room, &room.initial);
         assert_eq!(s.state, State::DashStart);
         assert!(s.crouching);
         assert_eq!(s.dashes, 0);
@@ -626,6 +691,7 @@ mod tests {
 
     #[test]
     fn step_demodash_then_jump_is_a_hyper() {
+        let room = room();
         let s = step(
             dash_for(
                 standing(),
@@ -636,7 +702,8 @@ mod tests {
                 },
             ),
             JUMP_RIGHT,
-            &room(),
+            &room,
+            &room.initial,
         );
         assert_eq!(
             s.speed,
@@ -650,15 +717,17 @@ mod tests {
 
     #[test]
     fn step_holding_the_demodash_button_does_not_dash_again() {
+        let room = room();
         let mut s = standing();
         s.held.demodash = true;
-        s = step(s, DEMODASH, &room());
+        s = step(s, DEMODASH, &room, &room.initial);
         assert_eq!(s.state, State::Normal);
         assert!(!s.crouching);
     }
 
     #[test]
     fn step_normal_dash_while_demodash_is_held_does_not_crouch() {
+        let room = room();
         let mut s = standing();
         s.held.demodash = true;
         s = step(
@@ -667,7 +736,8 @@ mod tests {
                 dash: true,
                 ..DEMODASH
             },
-            &room(),
+            &room,
+            &room.initial,
         );
         assert_eq!(s.state, State::DashStart);
         assert!(!s.crouching);
@@ -675,34 +745,42 @@ mod tests {
 
     #[test]
     fn step_dash_start_adds_liftboost_to_the_speed_it_remembers() {
-        let s = step(lifted(standing(), 60.0, 0.0), DASH_RIGHT, &room());
+        let room = room();
+        let s = step(
+            lifted(standing(), 60.0, 0.0),
+            DASH_RIGHT,
+            &room,
+            &room.initial,
+        );
         assert_eq!(s.dash.speed_before.x, 60.0);
     }
 
     #[test]
     fn level_dash_just_above_a_floor_snaps_down_onto_it() {
+        let room = room();
         let mut s = dashing_at(0, FLOOR_Y - 2, DASH_SPEED, 0.0);
         s.dash.dir = Vec2 { x: 1.0, y: 0.0 };
         s.dash.attack_timer = 0.2;
         s.subpixel.y = 0.25;
-        s = step(s, Input::default(), &room());
+        s = step(s, Input::default(), &room, &room.initial);
         assert_eq!(s.position.y, FLOOR_Y);
         assert_eq!(s.subpixel.y, 0.0);
     }
 
     #[test]
     fn no_floor_snap_from_three_pixels_up_or_in_a_diagonal_dash() {
+        let room = room();
         let mut s = dashing_at(0, FLOOR_Y - 3, DASH_SPEED, 0.0);
         s.dash.dir = Vec2 { x: 1.0, y: 0.0 };
         s.dash.attack_timer = 0.2;
-        s = step(s, Input::default(), &room());
+        s = step(s, Input::default(), &room, &room.initial);
         assert_eq!(s.position.y, FLOOR_Y - 3);
 
         let d = 1.0 / 2f32.sqrt();
         let mut s = dashing_at(0, FLOOR_Y - 2, 0.0, 0.0);
         s.dash.dir = Vec2 { x: d, y: -d };
         s.dash.attack_timer = 0.2;
-        s = step(s, Input::default(), &room());
+        s = step(s, Input::default(), &room, &room.initial);
         assert_eq!(s.position.y, FLOOR_Y - 2);
     }
 
@@ -718,6 +796,7 @@ mod tests {
 
     #[test]
     fn dashing_cancels_the_wait_for_the_sideways_push() {
+        let room = room();
         let mut s = player_at(WALL_X, 100, 0.0, -50.0);
         s.climb.hop_wait = 1;
         s.climb.hop_speed = CLIMBHOP_X;
@@ -727,7 +806,8 @@ mod tests {
                 dash: true,
                 ..Input::default()
             },
-            &room(),
+            &room,
+            &room.initial,
         );
 
         assert_eq!(s.state, State::DashStart);

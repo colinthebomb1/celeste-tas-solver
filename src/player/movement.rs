@@ -3,7 +3,7 @@ use super::constants::*;
 use super::dash::dashing;
 use super::state::Player;
 use crate::geom::Vec2;
-use crate::level::room::Room;
+use crate::level::room::{Room, RoomState};
 
 pub(crate) fn set_lift_speed(player: &mut Player, lift_speed: Vec2) {
     player.lift.speed = lift_speed;
@@ -27,10 +27,15 @@ pub(crate) fn liftboost(player: &Player) -> Vec2 {
     }
 }
 
-pub(crate) fn move_exact_h(player: &mut Player, room: &Room, amount: i32) -> bool {
+pub(crate) fn move_exact_h(
+    player: &mut Player,
+    room: &Room,
+    state: &RoomState,
+    amount: i32,
+) -> bool {
     let step = amount.signum();
     for _ in 0..amount.abs() {
-        if collides(player, room, step, 0) {
+        if collides(player, room, state, step, 0) {
             player.subpixel.x = 0.0;
             return true;
         }
@@ -39,10 +44,15 @@ pub(crate) fn move_exact_h(player: &mut Player, room: &Room, amount: i32) -> boo
     false
 }
 
-pub(crate) fn move_exact_v(player: &mut Player, room: &Room, amount: i32) -> bool {
+pub(crate) fn move_exact_v(
+    player: &mut Player,
+    room: &Room,
+    state: &RoomState,
+    amount: i32,
+) -> bool {
     let step = amount.signum();
     for _ in 0..amount.abs() {
-        if blocked(player, room, 0, step) {
+        if blocked(player, room, state, 0, step) {
             player.subpixel.y = 0.0;
             return true;
         }
@@ -59,14 +69,19 @@ pub(crate) fn approach(value: f32, target: f32, max_move: f32) -> f32 {
     }
 }
 
-fn dash_corner_correction_h(player: &mut Player, room: &Room, ground: bool) -> bool {
+fn dash_corner_correction_h(
+    player: &mut Player,
+    room: &Room,
+    state: &RoomState,
+    ground: bool,
+) -> bool {
     if !dashing(player) {
         return false;
     }
 
     let dir = sign(player.speed.x) as i32;
 
-    if ground && crouch_free_at(player, room, dir) {
+    if ground && crouch_free_at(player, room, state, dir) {
         player.crouching = true;
         return true;
     }
@@ -74,14 +89,14 @@ fn dash_corner_correction_h(player: &mut Player, room: &Room, ground: bool) -> b
     if player.speed.y == 0.0 && player.speed.x != 0.0 {
         for i in 1..=DASH_CORNER_CORRECTION {
             for dy in [i, -i] {
-                if !collides(player, room, dir, dy) {
+                if !collides(player, room, state, dir, dy) {
                     for _ in 0..i {
-                        if collides(player, room, 0, dy.signum()) {
+                        if collides(player, room, state, 0, dy.signum()) {
                             break;
                         }
                         player.position.y += dy.signum();
                     }
-                    if !collides(player, room, dir, 0) {
+                    if !collides(player, room, state, dir, 0) {
                         player.position.x += dir;
                     }
                     return true;
@@ -94,7 +109,13 @@ fn dash_corner_correction_h(player: &mut Player, room: &Room, ground: bool) -> b
 }
 
 // ground is whether she was on the ground at the start of the frame
-pub(crate) fn move_h(player: &mut Player, room: &Room, amount: f32, ground: bool) {
+pub(crate) fn move_h(
+    player: &mut Player,
+    room: &Room,
+    state: &RoomState,
+    amount: f32,
+    ground: bool,
+) {
     let new_subpixel = player.subpixel.x + amount;
     // C# Math.Round
     let movement_x = new_subpixel.round_ties_even() as i32;
@@ -102,8 +123,8 @@ pub(crate) fn move_h(player: &mut Player, room: &Room, amount: f32, ground: bool
 
     let step = movement_x.signum();
     for _ in 0..movement_x.abs() {
-        if collides(player, room, step, 0) {
-            if dash_corner_correction_h(player, room, ground) {
+        if collides(player, room, state, step, 0) {
+            if dash_corner_correction_h(player, room, state, ground) {
                 player.subpixel.x = 0.0;
                 return;
             }
@@ -122,7 +143,7 @@ pub(crate) fn move_h(player: &mut Player, room: &Room, amount: f32, ground: bool
     }
 }
 
-pub(crate) fn move_v(player: &mut Player, room: &Room, amount: f32) {
+pub(crate) fn move_v(player: &mut Player, room: &Room, state: &RoomState, amount: f32) {
     let new_subpixel = player.subpixel.y + amount;
     // C# Math.Round
     let movement_y = new_subpixel.round_ties_even() as i32;
@@ -130,11 +151,11 @@ pub(crate) fn move_v(player: &mut Player, room: &Room, amount: f32) {
 
     let step = movement_y.signum();
     for _ in 0..movement_y.abs() {
-        if blocked(player, room, 0, step) {
+        if blocked(player, room, state, 0, step) {
             player.subpixel.y = 0.0;
 
             if player.speed.y < 0.0 {
-                if upward_corner_correction(player, room) {
+                if upward_corner_correction(player, room, state) {
                     return;
                 }
 
@@ -142,7 +163,7 @@ pub(crate) fn move_v(player: &mut Player, room: &Room, amount: f32) {
                     player.jump_timer = 0.0;
                 }
             } else if player.speed.y > 0.0 {
-                if dash_corner_correction_down(player, room) {
+                if dash_corner_correction_down(player, room, state) {
                     return;
                 }
 
@@ -165,14 +186,14 @@ pub(crate) fn move_v(player: &mut Player, room: &Room, amount: f32) {
     }
 }
 
-pub(crate) fn nudge_v(player: &mut Player, room: &Room, amount: f32) {
+pub(crate) fn nudge_v(player: &mut Player, room: &Room, state: &RoomState, amount: f32) {
     let new_subpixel = player.subpixel.y + amount;
     let movement_y = new_subpixel.round_ties_even() as i32;
     player.subpixel.y = new_subpixel - (movement_y as f32);
 
     let step = movement_y.signum();
     for _ in 0..movement_y.abs() {
-        if blocked(player, room, 0, step) {
+        if blocked(player, room, state, 0, step) {
             player.subpixel.y = 0.0;
             return;
         }
@@ -180,13 +201,13 @@ pub(crate) fn nudge_v(player: &mut Player, room: &Room, amount: f32) {
     }
 }
 
-pub(crate) fn dash_jump_thru_nudge(player: &mut Player, room: &Room) {
+pub(crate) fn dash_jump_thru_nudge(player: &mut Player, room: &Room, state: &RoomState) {
     for jump_thru in &room.jump_thrus {
         let depth = player.position.y - jump_thru.hitbox.top;
 
         if jump_thru.hitbox.overlaps(&hitbox(player, 0, 0)) && depth <= DASH_H_JUMP_THRU_NUDGE {
             for _ in 0..depth {
-                if collides(player, room, 0, -1) {
+                if collides(player, room, state, 0, -1) {
                     break;
                 }
                 player.position.y -= 1;
@@ -195,7 +216,7 @@ pub(crate) fn dash_jump_thru_nudge(player: &mut Player, room: &Room) {
     }
 }
 
-fn dash_corner_correction_down(player: &mut Player, room: &Room) -> bool {
+fn dash_corner_correction_down(player: &mut Player, room: &Room, state: &RoomState) -> bool {
     if !dashing(player) || player.dash.started_on_ground {
         return false;
     }
@@ -210,14 +231,14 @@ fn dash_corner_correction_down(player: &mut Player, room: &Room) -> bool {
 
     for dir in dirs {
         for i in 1..=DASH_CORNER_CORRECTION {
-            if !blocked(player, room, dir * i, 1) {
+            if !blocked(player, room, state, dir * i, 1) {
                 for _ in 0..i {
-                    if collides(player, room, dir, 0) {
+                    if collides(player, room, state, dir, 0) {
                         break;
                     }
                     player.position.x += dir;
                 }
-                if !blocked(player, room, 0, 1) {
+                if !blocked(player, room, state, 0, 1) {
                     player.position.y += 1;
                 }
                 return true;
@@ -228,7 +249,7 @@ fn dash_corner_correction_down(player: &mut Player, room: &Room) -> bool {
     false
 }
 
-fn upward_corner_correction(player: &mut Player, room: &Room) -> bool {
+fn upward_corner_correction(player: &mut Player, room: &Room, state: &RoomState) -> bool {
     let slack = CORNER_CORRECTION_SPEED_SLACK;
     let reach = if player.dash.attack_timer > 0.0 && player.speed.x.abs() < slack {
         DASH_UPWARD_CORNER_CORRECTION
@@ -238,7 +259,7 @@ fn upward_corner_correction(player: &mut Player, room: &Room) -> bool {
 
     if player.speed.x <= slack {
         for i in 1..=reach {
-            if !collides(player, room, -i, -1) {
+            if !collides(player, room, state, -i, -1) {
                 player.position.x -= i;
                 player.position.y -= 1;
                 return true;
@@ -248,7 +269,7 @@ fn upward_corner_correction(player: &mut Player, room: &Room) -> bool {
 
     if player.speed.x >= -slack {
         for i in 1..=reach {
-            if !collides(player, room, i, -1) {
+            if !collides(player, room, state, i, -1) {
                 player.position.x += i;
                 player.position.y -= 1;
                 return true;
@@ -269,7 +290,7 @@ pub(crate) fn add_liftboost(player: &mut Player) {
     player.speed.y += boost.y;
 }
 
-pub(crate) fn update_retention(player: &mut Player, room: &Room) {
+pub(crate) fn update_retention(player: &mut Player, room: &Room, state: &RoomState) {
     if player.wall.retention_timer <= 0.0 {
         return;
     }
@@ -278,7 +299,7 @@ pub(crate) fn update_retention(player: &mut Player, room: &Room) {
 
     if sign(player.speed.x) == -dir {
         player.wall.retention_timer = 0.0;
-    } else if !collides(player, room, dir as i32, 0) {
+    } else if !collides(player, room, state, dir as i32, 0) {
         player.speed.x = player.wall.retained_speed;
         player.wall.retention_timer = 0.0;
     } else {
@@ -327,56 +348,62 @@ mod tests {
 
     #[test]
     fn move_h_small_amount_only_changes_subpixel() {
+        let room = room();
         let mut s = at_rest();
-        move_h(&mut s, &room(), 0.25, false);
+        move_h(&mut s, &room, &room.initial, 0.25, false);
         assert_eq!(s.position.x, 0);
         assert_eq!(s.subpixel.x, 0.25);
     }
 
     #[test]
     fn move_h_rounds_to_whole_pixels() {
+        let room = room();
         let mut s = at_rest();
-        move_h(&mut s, &room(), 0.75, false);
+        move_h(&mut s, &room, &room.initial, 0.75, false);
         assert_eq!(s.position.x, 1);
         assert_eq!(s.subpixel.x, -0.25);
 
-        move_h(&mut s, &room(), -2.0, false);
+        move_h(&mut s, &room, &room.initial, -2.0, false);
         assert_eq!(s.position.x, -1);
         assert_eq!(s.subpixel.x, -0.25);
     }
 
     #[test]
     fn move_h_ties_round_to_even_like_csharp() {
+        let room = room();
         let mut s = at_rest();
-        move_h(&mut s, &room(), 0.5, false);
+        move_h(&mut s, &room, &room.initial, 0.5, false);
         assert_eq!(s.position.x, 0);
         assert_eq!(s.subpixel.x, 0.5);
 
-        move_h(&mut s, &room(), 1.0, false);
+        move_h(&mut s, &room, &room.initial, 1.0, false);
         assert_eq!(s.position.x, 2);
         assert_eq!(s.subpixel.x, -0.5);
     }
 
     #[test]
     fn on_ground_when_standing_on_floor() {
-        assert!(on_ground(&standing(), &room()));
+        let room = room();
+        assert!(on_ground(&standing(), &room, &room.initial));
     }
 
     #[test]
     fn move_v_moves_up_freely() {
+        let room = room();
         let mut s = standing();
-        move_v(&mut s, &room(), -1.75);
+        move_v(&mut s, &room, &room.initial, -1.75);
         assert_eq!(s.position.y, FLOOR_Y - 2);
         assert_eq!(s.subpixel.y, 0.25);
     }
 
     #[test]
     fn move_v_stops_at_floor() {
+        let room = room();
         let mut s = standing();
         s.position.y = FLOOR_Y - 2;
         s.subpixel.y = 0.3;
         s.speed.y = 160.0;
-        move_v(&mut s, &room(), 2.6);
+        move_v(&mut s, &room, &room.initial, 2.6);
         assert_eq!(s.position.y, FLOOR_Y);
         assert_eq!(s.subpixel.y, 0.0);
         assert_eq!(s.speed.y, 0.0);
@@ -384,11 +411,12 @@ mod tests {
 
     #[test]
     fn move_h_stops_at_wall() {
+        let room = room();
         let mut s = at_rest();
         s.position.x = WALL_X - 1;
         s.subpixel.x = 0.3;
         s.speed.x = 90.0;
-        move_h(&mut s, &room(), 1.5, false);
+        move_h(&mut s, &room, &room.initial, 1.5, false);
         assert_eq!(s.position.x, WALL_X);
         assert_eq!(s.subpixel.x, 0.0);
         assert_eq!(s.speed.x, 0.0);
@@ -396,10 +424,11 @@ mod tests {
 
     #[test]
     fn move_h_reaching_wall_exactly_is_not_a_collision() {
+        let room = room();
         let mut s = at_rest();
         s.position.x = WALL_X - 1;
         s.speed.x = 90.0;
-        move_h(&mut s, &room(), 1.25, false);
+        move_h(&mut s, &room, &room.initial, 1.25, false);
         assert_eq!(s.position.x, WALL_X);
         assert_eq!(s.subpixel.x, 0.25);
         assert_eq!(s.speed.x, 90.0);
@@ -414,31 +443,34 @@ mod tests {
 
     #[test]
     fn move_v_falls_through_floor_level_past_ledge() {
+        let room = room();
         let mut s = standing();
         s.position.x = LEDGE_X + 1;
         s.speed.y = 60.0;
-        move_v(&mut s, &room(), 1.0);
+        move_v(&mut s, &room, &room.initial, 1.0);
         assert_eq!(s.position.y, FLOOR_Y + 1);
         assert_eq!(s.speed.y, 60.0);
     }
 
     #[test]
     fn move_h_blocked_by_side_of_ledge() {
+        let room = room();
         let mut s = at_rest();
         s.position = IVec2 {
             x: LEDGE_X + 1,
             y: FLOOR_Y + 5,
         };
         s.speed.x = -90.0;
-        move_h(&mut s, &room(), -3.0, false);
+        move_h(&mut s, &room, &room.initial, -3.0, false);
         assert_eq!(s.position.x, LEDGE_X + 1);
         assert_eq!(s.speed.x, 0.0);
     }
 
     #[test]
     fn move_h_into_a_wall_remembers_her_speed() {
+        let room = room();
         let mut s = player_at(WALL_X - 1, 100, 120.0, 0.0);
-        move_h(&mut s, &room(), 3.0, false);
+        move_h(&mut s, &room, &room.initial, 3.0, false);
         assert_eq!(s.speed.x, 0.0);
         assert_eq!(s.wall.retained_speed, 120.0);
         assert_eq!(s.wall.retention_timer, RETENTION_TIME);
@@ -446,10 +478,11 @@ mod tests {
 
     #[test]
     fn move_h_keeps_the_first_speed_while_the_timer_runs() {
+        let room = room();
         let mut s = player_at(WALL_X - 1, 100, 50.0, 0.0);
         s.wall.retained_speed = 200.0;
         s.wall.retention_timer = 0.03;
-        move_h(&mut s, &room(), 3.0, false);
+        move_h(&mut s, &room, &room.initial, 3.0, false);
         assert_eq!(s.speed.x, 0.0);
         assert_eq!(s.wall.retained_speed, 200.0);
         assert_eq!(s.wall.retention_timer, 0.03);
@@ -457,31 +490,35 @@ mod tests {
 
     #[test]
     fn move_h_without_a_collision_retains_nothing() {
+        let room = room();
         let mut s = player_at(0, 100, 120.0, 0.0);
-        move_h(&mut s, &room(), 3.0, false);
+        move_h(&mut s, &room, &room.initial, 3.0, false);
         assert_eq!(s.wall.retention_timer, 0.0);
     }
 
     #[test]
     fn retention_gives_the_speed_back_once_the_wall_is_gone() {
+        let room = room();
         let mut s = retaining(WALL_X - 1, 0.0, 120.0);
-        update_retention(&mut s, &room());
+        update_retention(&mut s, &room, &room.initial);
         assert_eq!(s.speed.x, 120.0);
         assert_eq!(s.wall.retention_timer, 0.0);
     }
 
     #[test]
     fn retention_waits_while_the_wall_is_still_there() {
+        let room = room();
         let mut s = retaining(WALL_X, 0.0, 120.0);
-        update_retention(&mut s, &room());
+        update_retention(&mut s, &room, &room.initial);
         assert_eq!(s.speed.x, 0.0);
         assert_eq!(s.wall.retention_timer, 0.03 - DELTA_TIME);
     }
 
     #[test]
     fn retention_is_cancelled_by_moving_the_other_way() {
+        let room = room();
         let mut s = retaining(WALL_X - 1, -10.0, 120.0);
-        update_retention(&mut s, &room());
+        update_retention(&mut s, &room, &room.initial);
         assert_eq!(s.speed.x, -10.0);
         assert_eq!(s.wall.retention_timer, 0.0);
     }
@@ -490,31 +527,34 @@ mod tests {
     fn retention_works_to_the_left() {
         let room = left_wall_room();
         let mut s = retaining(LEFT_WALL_X, 0.0, -120.0);
-        update_retention(&mut s, &room);
+        update_retention(&mut s, &room, &room.initial);
         assert_eq!(s.speed.x, 0.0);
 
         let mut s = retaining(LEFT_WALL_X + 1, 0.0, -120.0);
-        update_retention(&mut s, &room);
+        update_retention(&mut s, &room, &room.initial);
         assert_eq!(s.speed.x, -120.0);
     }
 
     #[test]
     fn retention_does_nothing_once_the_timer_is_out() {
+        let room = room();
         let mut s = retaining(WALL_X - 1, 0.0, 120.0);
         s.wall.retention_timer = 0.0;
-        update_retention(&mut s, &room());
+        update_retention(&mut s, &room, &room.initial);
         assert_eq!(s.speed.x, 0.0);
     }
 
     #[test]
     fn step_running_into_a_wall_starts_retention() {
+        let room = room();
         let s = step(
             player_at(WALL_X, 100, 90.0, 0.0),
             Input {
                 move_x: 1,
                 ..Default::default()
             },
-            &room(),
+            &room,
+            &room.initial,
         );
         assert_eq!(s.speed.x, 0.0);
         assert_eq!(s.wall.retained_speed, 90.0);
@@ -524,77 +564,126 @@ mod tests {
     #[test]
     fn collides_uses_the_shorter_hitbox_when_crouching() {
         let room = tunnel_room();
-        assert!(!collides(&crouching_at(40, FLOOR_Y), &room, 0, 0));
-        assert!(collides(&player_at(40, FLOOR_Y, 0.0, 0.0), &room, 0, 0));
-        assert!(collides(&crouching_at(40, FLOOR_Y), &room, 0, 1));
-        assert!(collides(&crouching_at(40, FLOOR_Y), &room, 0, -3));
+        assert!(!collides(
+            &crouching_at(40, FLOOR_Y),
+            &room,
+            &room.initial,
+            0,
+            0
+        ));
+        assert!(collides(
+            &player_at(40, FLOOR_Y, 0.0, 0.0),
+            &room,
+            &room.initial,
+            0,
+            0
+        ));
+        assert!(collides(
+            &crouching_at(40, FLOOR_Y),
+            &room,
+            &room.initial,
+            0,
+            1
+        ));
+        assert!(collides(
+            &crouching_at(40, FLOOR_Y),
+            &room,
+            &room.initial,
+            0,
+            -3
+        ));
     }
 
     #[test]
     fn step_crouches_when_down_is_held_on_the_ground() {
-        assert!(step(standing(), DOWN, &room()).crouching);
+        let room = room();
+        assert!(step(standing(), DOWN, &room, &room.initial).crouching);
     }
 
     #[test]
     fn step_does_not_crouch_in_the_air() {
-        assert!(!step(at_rest(), DOWN, &room()).crouching);
+        let room = room();
+        assert!(!step(at_rest(), DOWN, &room, &room.initial).crouching);
     }
 
     #[test]
     fn step_stands_up_when_down_is_released() {
-        assert!(!step(crouching_at(0, FLOOR_Y), Input::default(), &room()).crouching);
+        let room = room();
+        assert!(
+            !step(
+                crouching_at(0, FLOOR_Y),
+                Input::default(),
+                &room,
+                &room.initial
+            )
+            .crouching
+        );
     }
 
     #[test]
     fn step_stays_crouched_while_down_is_held() {
-        assert!(step(crouching_at(0, FLOOR_Y), DOWN, &room()).crouching);
+        let room = room();
+        assert!(step(crouching_at(0, FLOOR_Y), DOWN, &room, &room.initial).crouching);
     }
 
     #[test]
     fn step_stays_crouched_under_a_low_ceiling() {
-        assert!(step(crouching_at(40, FLOOR_Y), Input::default(), &tunnel_room()).crouching);
+        let room = tunnel_room();
+        assert!(
+            step(
+                crouching_at(40, FLOOR_Y),
+                Input::default(),
+                &room,
+                &room.initial
+            )
+            .crouching
+        );
     }
 
     #[test]
     fn step_crouching_on_the_ground_uses_crouch_friction() {
+        let room = room();
         let mut s = crouching_at(0, FLOOR_Y);
         s.speed.x = 90.0;
-        s = step(s, Input { move_x: 1, ..DOWN }, &room());
+        s = step(s, Input { move_x: 1, ..DOWN }, &room, &room.initial);
         assert_eq!(s.speed.x, approach(90.0, 0.0, CROUCH_FRICTION * DELTA_TIME));
     }
 
     #[test]
     fn step_stands_up_when_falling() {
+        let room = room();
         let mut s = crouching_at(0, 64);
         s.speed.y = 50.0;
-        assert!(!step(s, Input::default(), &room()).crouching);
+        assert!(!step(s, Input::default(), &room, &room.initial).crouching);
     }
 
     #[test]
     fn step_stands_up_when_falling_even_with_down_held() {
+        let room = room();
         let mut s = crouching_at(0, 64);
         s.speed.y = 50.0;
-        assert!(!step(s, DOWN, &room()).crouching);
+        assert!(!step(s, DOWN, &room, &room.initial).crouching);
     }
 
     #[test]
     fn step_stays_crouched_while_rising() {
+        let room = room();
         let mut s = crouching_at(0, 64);
         s.speed.y = -100.0;
-        assert!(step(s, Input::default(), &room()).crouching);
+        assert!(step(s, Input::default(), &room, &room.initial).crouching);
     }
 
     #[test]
     fn step_wallboost_happens_the_frame_after_the_press() {
         let room = room();
-        let mut s = step(wallboosting(), LEFT, &room);
+        let mut s = step(wallboosting(), LEFT, &room, &room.initial);
         assert_eq!(s.stamina, 50.0);
         assert_eq!(
             s.speed.x,
             approach(0.0, -MAX_RUN, RUN_ACCEL * DELTA_TIME * AIR_MULT)
         );
 
-        s = step(s, Input::default(), &room);
+        s = step(s, Input::default(), &room, &room.initial);
         assert_eq!(s.stamina, 50.0 + CLIMB_JUMP_COST);
         assert_eq!(s.wall.boost_timer, 0.0);
         assert_eq!(
@@ -605,9 +694,10 @@ mod tests {
 
     #[test]
     fn move_v_up_into_a_corner_slides_around_it() {
+        let room = ceiling_room();
         let mut s = rising_at(50, 0.0);
         s.subpixel.y = 0.25;
-        move_v(&mut s, &ceiling_room(), -4.0);
+        move_v(&mut s, &room, &room.initial, -4.0);
         assert_eq!(
             s.position,
             IVec2 {
@@ -623,7 +713,7 @@ mod tests {
     fn corner_correction_reaches_four_pixels() {
         let room = ceiling_room();
         let mut s = rising_at(48, 0.0);
-        move_v(&mut s, &room, -1.0);
+        move_v(&mut s, &room, &room.initial, -1.0);
         assert_eq!(
             s.position,
             IVec2 {
@@ -633,7 +723,7 @@ mod tests {
         );
 
         let mut s = rising_at(47, 0.0);
-        move_v(&mut s, &room, -1.0);
+        move_v(&mut s, &room, &room.initial, -1.0);
         assert_eq!(
             s.position,
             IVec2 {
@@ -649,7 +739,7 @@ mod tests {
         let room = ceiling_room();
         let mut s = rising_at(47, 0.0);
         s.dash.attack_timer = DASH_ATTACK_TIME;
-        move_v(&mut s, &room, -1.0);
+        move_v(&mut s, &room, &room.initial, -1.0);
         assert_eq!(
             s.position,
             IVec2 {
@@ -660,7 +750,7 @@ mod tests {
 
         let mut s = rising_at(46, 0.0);
         s.dash.attack_timer = DASH_ATTACK_TIME;
-        move_v(&mut s, &room, -1.0);
+        move_v(&mut s, &room, &room.initial, -1.0);
         assert_eq!(
             s.position,
             IVec2 {
@@ -672,9 +762,10 @@ mod tests {
 
     #[test]
     fn corner_correction_reaches_four_pixels_in_a_dash_with_sideways_speed() {
+        let room = ceiling_room();
         let mut s = rising_at(47, 10.0);
         s.dash.attack_timer = DASH_ATTACK_TIME;
-        move_v(&mut s, &ceiling_room(), -1.0);
+        move_v(&mut s, &room, &room.initial, -1.0);
         assert_eq!(
             s.position,
             IVec2 {
@@ -686,8 +777,9 @@ mod tests {
 
     #[test]
     fn corner_correction_slides_left_too() {
+        let room = ceiling_room();
         let mut s = rising_at(14, 0.0);
-        move_v(&mut s, &ceiling_room(), -1.0);
+        move_v(&mut s, &room, &room.initial, -1.0);
         assert_eq!(
             s.position,
             IVec2 {
@@ -701,7 +793,7 @@ mod tests {
     fn corner_correction_only_slides_the_way_she_is_moving() {
         let room = ceiling_room();
         let mut s = rising_at(50, -10.0);
-        move_v(&mut s, &room, -1.0);
+        move_v(&mut s, &room, &room.initial, -1.0);
         assert_eq!(
             s.position,
             IVec2 {
@@ -712,7 +804,7 @@ mod tests {
         assert_eq!(s.speed.y, 0.0);
 
         let mut s = rising_at(14, 10.0);
-        move_v(&mut s, &room, -1.0);
+        move_v(&mut s, &room, &room.initial, -1.0);
         assert_eq!(
             s.position,
             IVec2 {
@@ -722,7 +814,7 @@ mod tests {
         );
 
         let mut s = rising_at(50, 10.0);
-        move_v(&mut s, &room, -1.0);
+        move_v(&mut s, &room, &room.initial, -1.0);
         assert_eq!(
             s.position,
             IVec2 {
@@ -734,34 +826,38 @@ mod tests {
 
     #[test]
     fn ceiling_bonk_ends_the_variable_jump() {
+        let room = ceiling_room();
         let mut s = rising_at(32, 0.0);
         s.jump_timer = 0.1;
-        move_v(&mut s, &ceiling_room(), -1.0);
+        move_v(&mut s, &room, &room.initial, -1.0);
         assert_eq!(s.speed.y, 0.0);
         assert_eq!(s.jump_timer, 0.0);
     }
 
     #[test]
     fn ceiling_bonk_at_the_start_of_a_jump_keeps_the_variable_jump() {
+        let room = ceiling_room();
         let mut s = rising_at(32, 0.0);
         s.jump_timer = 0.18;
-        move_v(&mut s, &ceiling_room(), -1.0);
+        move_v(&mut s, &room, &room.initial, -1.0);
         assert_eq!(s.speed.y, 0.0);
         assert_eq!(s.jump_timer, 0.18);
     }
 
     #[test]
     fn corner_correction_keeps_the_variable_jump() {
+        let room = ceiling_room();
         let mut s = rising_at(50, 0.0);
         s.jump_timer = 0.1;
-        move_v(&mut s, &ceiling_room(), -1.0);
+        move_v(&mut s, &room, &room.initial, -1.0);
         assert_eq!(s.jump_timer, 0.1);
     }
 
     #[test]
     fn landing_does_not_corner_correct() {
+        let room = room();
         let mut s = player_at(LEDGE_X, FLOOR_Y, 0.0, 100.0);
-        move_v(&mut s, &room(), 2.0);
+        move_v(&mut s, &room, &room.initial, 2.0);
         assert_eq!(
             s.position,
             IVec2 {
@@ -774,9 +870,10 @@ mod tests {
 
     #[test]
     fn dash_into_a_ledge_just_below_its_top_pops_up_onto_it() {
+        let room = room();
         let mut s = dashing_at(PIT_X, FLOOR_Y + 2, -240.0, 0.0);
         s.subpixel.x = 0.25;
-        move_h(&mut s, &room(), -3.0, false);
+        move_h(&mut s, &room, &room.initial, -3.0, false);
         assert_eq!(
             s.position,
             IVec2 {
@@ -791,8 +888,9 @@ mod tests {
 
     #[test]
     fn dash_corner_correction_reaches_four_pixels() {
+        let room = room();
         let mut s = dashing_at(PIT_X, FLOOR_Y + 4, -240.0, 0.0);
-        move_h(&mut s, &room(), -3.0, false);
+        move_h(&mut s, &room, &room.initial, -3.0, false);
         assert_eq!(
             s.position,
             IVec2 {
@@ -802,7 +900,7 @@ mod tests {
         );
 
         let mut s = dashing_at(PIT_X, FLOOR_Y + 5, -240.0, 0.0);
-        move_h(&mut s, &room(), -3.0, false);
+        move_h(&mut s, &room, &room.initial, -3.0, false);
         assert_eq!(
             s.position,
             IVec2 {
@@ -815,8 +913,9 @@ mod tests {
 
     #[test]
     fn dash_corner_correction_needs_a_dash() {
+        let room = room();
         let mut s = player_at(PIT_X, FLOOR_Y + 2, -240.0, 0.0);
-        move_h(&mut s, &room(), -3.0, false);
+        move_h(&mut s, &room, &room.initial, -3.0, false);
         assert_eq!(
             s.position,
             IVec2 {
@@ -829,8 +928,9 @@ mod tests {
 
     #[test]
     fn dash_corner_correction_needs_a_level_dash() {
+        let room = room();
         let mut s = dashing_at(PIT_X, FLOOR_Y + 2, -170.0, -170.0);
-        move_h(&mut s, &room(), -3.0, false);
+        move_h(&mut s, &room, &room.initial, -3.0, false);
         assert_eq!(
             s.position,
             IVec2 {
@@ -845,28 +945,30 @@ mod tests {
     fn ground_dash_into_a_low_gap_crouches() {
         let room = tunnel_room();
         let mut s = dashing_at(20, FLOOR_Y, 240.0, 0.0);
-        move_h(&mut s, &room, 4.0, true);
+        move_h(&mut s, &room, &room.initial, 4.0, true);
         assert!(s.crouching);
         assert_eq!(s.position.x, 20);
         assert_eq!(s.speed.x, 240.0);
 
-        move_h(&mut s, &room, 4.0, true);
+        move_h(&mut s, &room, &room.initial, 4.0, true);
         assert_eq!(s.position.x, 24);
     }
 
     #[test]
     fn air_dash_into_a_low_gap_does_not_crouch() {
+        let room = tunnel_room();
         let mut s = dashing_at(20, FLOOR_Y, 240.0, 0.0);
-        move_h(&mut s, &tunnel_room(), 4.0, false);
+        move_h(&mut s, &room, &room.initial, 4.0, false);
         assert!(!s.crouching);
         assert_eq!(s.speed.x, 0.0);
     }
 
     #[test]
     fn air_dash_down_onto_a_ledge_edge_slips_off() {
+        let room = room();
         let mut s = air_dashing_down_at(LEDGE_X - 1, 0.0);
         s.subpixel.y = 0.25;
-        move_v(&mut s, &room(), 4.0);
+        move_v(&mut s, &room, &room.initial, 4.0);
         assert_eq!(
             s.position,
             IVec2 {
@@ -880,8 +982,9 @@ mod tests {
 
     #[test]
     fn downward_corner_correction_reaches_four_pixels() {
+        let room = room();
         let mut s = air_dashing_down_at(LEDGE_X - 3, 0.0);
-        move_v(&mut s, &room(), 4.0);
+        move_v(&mut s, &room, &room.initial, 4.0);
         assert_eq!(
             s.position,
             IVec2 {
@@ -891,7 +994,7 @@ mod tests {
         );
 
         let mut s = air_dashing_down_at(LEDGE_X - 4, 0.0);
-        move_v(&mut s, &room(), 4.0);
+        move_v(&mut s, &room, &room.initial, 4.0);
         assert_eq!(
             s.position,
             IVec2 {
@@ -904,8 +1007,9 @@ mod tests {
 
     #[test]
     fn downward_corner_correction_only_slips_the_way_she_is_moving() {
+        let room = room();
         let mut s = air_dashing_down_at(LEDGE_X - 1, -10.0);
-        move_v(&mut s, &room(), 4.0);
+        move_v(&mut s, &room, &room.initial, 4.0);
         assert_eq!(
             s.position,
             IVec2 {
@@ -915,7 +1019,7 @@ mod tests {
         );
 
         let mut s = air_dashing_down_at(LEDGE_X - 1, 10.0);
-        move_v(&mut s, &room(), 4.0);
+        move_v(&mut s, &room, &room.initial, 4.0);
         assert_eq!(
             s.position,
             IVec2 {
@@ -927,9 +1031,10 @@ mod tests {
 
     #[test]
     fn downward_corner_correction_not_for_ground_dashes_or_falls() {
+        let room = room();
         let mut s = air_dashing_down_at(LEDGE_X - 1, 0.0);
         s.dash.started_on_ground = true;
-        move_v(&mut s, &room(), 4.0);
+        move_v(&mut s, &room, &room.initial, 4.0);
         assert_eq!(
             s.position,
             IVec2 {
@@ -939,7 +1044,7 @@ mod tests {
         );
 
         let mut s = player_at(LEDGE_X - 1, FLOOR_Y - 1, 0.0, 240.0);
-        move_v(&mut s, &room(), 4.0);
+        move_v(&mut s, &room, &room.initial, 4.0);
         assert_eq!(
             s.position,
             IVec2 {
@@ -952,10 +1057,11 @@ mod tests {
 
     #[test]
     fn landing_after_a_down_diagonal_dash_slides() {
+        let room = room();
         let d = 1.0 / 2f32.sqrt();
         let mut s = player_at(0, FLOOR_Y - 1, 100.0, 200.0);
         s.dash.dir = Vec2 { x: d, y: d };
-        move_v(&mut s, &room(), 4.0);
+        move_v(&mut s, &room, &room.initial, 4.0);
         assert_eq!(s.position.y, FLOOR_Y);
         assert_eq!(
             s.speed,
@@ -970,15 +1076,17 @@ mod tests {
 
     #[test]
     fn landing_after_a_straight_down_dash_does_not_slide() {
+        let room = room();
         let mut s = player_at(0, FLOOR_Y - 1, 100.0, 200.0);
         s.dash.dir = Vec2 { x: 0.0, y: 1.0 };
-        move_v(&mut s, &room(), 4.0);
+        move_v(&mut s, &room, &room.initial, 4.0);
         assert_eq!(s.speed, Vec2 { x: 100.0, y: 0.0 });
         assert!(!s.crouching);
     }
 
     #[test]
     fn jumps_and_collisions_end_the_dash_attack() {
+        let room = room();
         let mut s = standing();
         s.dash.attack_timer = 0.1;
         jump(&mut s, Input::default());
@@ -986,17 +1094,18 @@ mod tests {
 
         let mut s = player_at(WALL_X, 100, 90.0, 0.0);
         s.dash.attack_timer = 0.1;
-        move_h(&mut s, &room(), 3.0, false);
+        move_h(&mut s, &room, &room.initial, 3.0, false);
         assert_eq!(s.dash.attack_timer, 0.0);
 
         let mut s = player_at(0, FLOOR_Y, 0.0, 100.0);
         s.dash.attack_timer = 0.1;
-        move_v(&mut s, &room(), 3.0);
+        move_v(&mut s, &room, &room.initial, 3.0);
         assert_eq!(s.dash.attack_timer, 0.0);
     }
 
     #[test]
     fn step_forced_direction_overrides_her_input() {
+        let room = room();
         let mut s = player_at(40, 100, -WALL_KICK_SPEED, -100.0);
         s.facing = -1;
         s.forced_move = -1;
@@ -1007,7 +1116,8 @@ mod tests {
                 move_x: 1,
                 ..Input::default()
             },
-            &room(),
+            &room,
+            &room.initial,
         );
         assert_eq!(s.facing, -1);
         assert_eq!(
@@ -1023,32 +1133,36 @@ mod tests {
 
     #[test]
     fn falling_onto_a_jump_thru_lands_on_it() {
+        let room = platform_room();
         let mut s = player_at(60, PLATFORM_Y - 2, 0.0, 100.0);
-        move_v(&mut s, &platform_room(), 5.0);
+        move_v(&mut s, &room, &room.initial, 5.0);
         assert_eq!(s.position.y, PLATFORM_Y);
         assert_eq!(s.speed.y, 0.0);
     }
 
     #[test]
     fn rising_goes_through_a_jump_thru() {
+        let room = platform_room();
         let mut s = player_at(60, PLATFORM_Y + 15, 0.0, -100.0);
-        move_v(&mut s, &platform_room(), -20.0);
+        move_v(&mut s, &room, &room.initial, -20.0);
         assert_eq!(s.position.y, PLATFORM_Y - 5);
         assert_eq!(s.speed.y, -100.0);
     }
 
     #[test]
     fn falling_while_inside_a_jump_thru_keeps_falling() {
+        let room = platform_room();
         let mut s = player_at(60, PLATFORM_Y + 2, 0.0, 100.0);
-        move_v(&mut s, &platform_room(), 5.0);
+        move_v(&mut s, &room, &room.initial, 5.0);
         assert_eq!(s.position.y, PLATFORM_Y + 7);
         assert_eq!(s.speed.y, 100.0);
     }
 
     #[test]
     fn jump_thrus_do_not_block_sideways_movement() {
+        let room = platform_room();
         let mut s = player_at(30, PLATFORM_Y + 2, 100.0, 0.0);
-        move_h(&mut s, &platform_room(), 20.0, false);
+        move_h(&mut s, &room, &room.initial, 20.0, false);
         assert_eq!(s.position.x, 50);
         assert_eq!(s.speed.x, 100.0);
     }
@@ -1057,11 +1171,11 @@ mod tests {
     fn dash_jump_thru_nudge_reaches_six_pixels() {
         let room = platform_room();
         let mut s = player_at(60, PLATFORM_Y + 6, 0.0, 0.0);
-        dash_jump_thru_nudge(&mut s, &room);
+        dash_jump_thru_nudge(&mut s, &room, &room.initial);
         assert_eq!(s.position.y, PLATFORM_Y);
 
         let mut s = player_at(60, PLATFORM_Y + 7, 0.0, 0.0);
-        dash_jump_thru_nudge(&mut s, &room);
+        dash_jump_thru_nudge(&mut s, &room, &room.initial);
         assert_eq!(s.position.y, PLATFORM_Y + 7);
     }
 
@@ -1093,10 +1207,10 @@ mod tests {
         let room = room();
         let mut s = lifted(standing(), 0.0, -70.0);
         for _ in 0..9 {
-            s = step(s, Input::default(), &room);
+            s = step(s, Input::default(), &room, &room.initial);
         }
         assert_eq!(liftboost(&s).y, -70.0);
-        s = step(s, Input::default(), &room);
+        s = step(s, Input::default(), &room, &room.initial);
         assert_eq!(liftboost(&s).y, 0.0);
     }
 }

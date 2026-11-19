@@ -2,7 +2,7 @@ use super::constants::*;
 use super::state::{Player, State};
 use crate::entities::Spikes;
 use crate::geom::{Direction, Rect};
-use crate::level::room::Room;
+use crate::level::room::{Room, RoomState};
 
 pub(crate) fn hitbox_height(player: &Player) -> i32 {
     if player.crouching {
@@ -40,26 +40,29 @@ pub(crate) fn hurtbox(player: &Player) -> Rect {
 }
 
 // whether her hitbox would be inside something solid if she moved this far
-pub(crate) fn collides(player: &Player, room: &Room, dx: i32, dy: i32) -> bool {
-    room.solid(&hitbox(player, dx, dy))
+pub(crate) fn collides(player: &Player, room: &Room, state: &RoomState, dx: i32, dy: i32) -> bool {
+    room.solid(state, &hitbox(player, dx, dy))
 }
 
 // like collides, but a jump-through under her also counts when she is moving down onto it
-pub(crate) fn blocked(player: &Player, room: &Room, dx: i32, dy: i32) -> bool {
-    collides(player, room, dx, dy) || (dy > 0 && enters_jump_thru(player, room, dx, dy))
+pub(crate) fn blocked(player: &Player, room: &Room, state: &RoomState, dx: i32, dy: i32) -> bool {
+    collides(player, room, state, dx, dy) || (dy > 0 && enters_jump_thru(player, room, dx, dy))
 }
 
-pub(crate) fn on_ground(player: &Player, room: &Room) -> bool {
-    player.speed.y >= 0.0 && blocked(player, room, 0, 1)
+pub(crate) fn on_ground(player: &Player, room: &Room, state: &RoomState) -> bool {
+    player.speed.y >= 0.0 && blocked(player, room, state, 0, 1)
 }
 
-pub(crate) fn can_stand(player: &Player, room: &Room) -> bool {
-    !player.crouching || !room.solid(&box_at_feet(player, HITBOX_HEIGHT))
+pub(crate) fn can_stand(player: &Player, room: &Room, state: &RoomState) -> bool {
+    !player.crouching || !room.solid(state, &box_at_feet(player, HITBOX_HEIGHT))
 }
 
 // room to be crouched this far to the side
-pub(crate) fn crouch_free_at(player: &Player, room: &Room, dx: i32) -> bool {
-    !room.solid(&box_at_feet(player, CROUCH_HITBOX_HEIGHT).shifted(dx, 0))
+pub(crate) fn crouch_free_at(player: &Player, room: &Room, state: &RoomState, dx: i32) -> bool {
+    !room.solid(
+        state,
+        &box_at_feet(player, CROUCH_HITBOX_HEIGHT).shifted(dx, 0),
+    )
 }
 
 pub(crate) fn spikes_kill(player: &Player, spikes: &Spikes) -> bool {
@@ -125,7 +128,8 @@ mod tests {
     #[test]
     fn collide_at_uses_her_hitbox() {
         let room = room();
-        let inside = |x: i32, y: i32| collides(&player_at(x, y, 0.0, 0.0), &room, 0, 0);
+        let inside =
+            |x: i32, y: i32| collides(&player_at(x, y, 0.0, 0.0), &room, &room.initial, 0, 0);
 
         assert!(!inside(0, FLOOR_Y));
         assert!(inside(0, FLOOR_Y + 1));
@@ -138,9 +142,10 @@ mod tests {
 
     #[test]
     fn auto_jump_cleared_on_ground() {
+        let room = room();
         let mut s = standing();
         s.auto_jump = true;
-        s = step(s, Input::default(), &room());
+        s = step(s, Input::default(), &room, &room.initial);
         assert!(!s.auto_jump);
     }
     #[test]
@@ -210,7 +215,8 @@ mod tests {
 
     #[test]
     fn step_kills_on_spikes() {
-        let s = step(standing(), Input::default(), &spiked_floor());
+        let room = spiked_floor();
+        let s = step(standing(), Input::default(), &room, &room.initial);
         assert!(s.dead);
         assert_eq!(s.speed, Vec2 { x: 0.0, y: 0.0 });
     }
@@ -219,16 +225,17 @@ mod tests {
     fn step_kills_on_the_frame_she_lands_on_spikes() {
         let room = spiked_floor();
         let mut s = player_at(0, FLOOR_Y - 5, 0.0, 160.0);
-        s = step(s, Input::default(), &room);
+        s = step(s, Input::default(), &room, &room.initial);
         assert!(!s.dead);
-        s = step(s, Input::default(), &room);
+        s = step(s, Input::default(), &room, &room.initial);
         assert!(s.dead);
         assert_eq!(s.position.y, FLOOR_Y);
     }
 
     #[test]
     fn no_spikes_no_death() {
-        let s = step(standing(), Input::default(), &room());
+        let room = room();
+        let s = step(standing(), Input::default(), &room, &room.initial);
         assert!(!s.dead);
     }
 
@@ -243,17 +250,24 @@ mod tests {
 
     #[test]
     fn can_stand_when_not_crouching() {
-        assert!(can_stand(&player_at(40, FLOOR_Y, 0.0, 0.0), &tunnel_room()));
+        let room = tunnel_room();
+        assert!(can_stand(
+            &player_at(40, FLOOR_Y, 0.0, 0.0),
+            &room,
+            &room.initial
+        ));
     }
 
     #[test]
     fn can_stand_with_room_overhead() {
-        assert!(can_stand(&crouching_at(8, FLOOR_Y), &tunnel_room()));
+        let room = tunnel_room();
+        assert!(can_stand(&crouching_at(8, FLOOR_Y), &room, &room.initial));
     }
 
     #[test]
     fn can_stand_not_under_a_low_ceiling() {
-        assert!(!can_stand(&crouching_at(40, FLOOR_Y), &tunnel_room()));
+        let room = tunnel_room();
+        assert!(!can_stand(&crouching_at(40, FLOOR_Y), &room, &room.initial));
     }
 
     #[test]
@@ -273,11 +287,12 @@ mod tests {
     fn crouch_free_at_checks_the_crouching_hitbox() {
         let room = tunnel_room();
         let s = player_at(20, FLOOR_Y, 0.0, 0.0);
-        assert!(crouch_free_at(&s, &room, 1));
-        assert!(collides(&s, &room, 1, 0));
+        assert!(crouch_free_at(&s, &room, &room.initial, 1));
+        assert!(collides(&s, &room, &room.initial, 1, 0));
         assert!(!crouch_free_at(
             &player_at(20, FLOOR_Y - 4, 0.0, 0.0),
             &room,
+            &room.initial,
             1
         ));
     }

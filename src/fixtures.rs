@@ -1,6 +1,6 @@
 // helpers shared by the unit tests
 use crate::geom::{IVec2, Vec2};
-use crate::level::room::Room;
+use crate::level::room::{Room, RoomState};
 use crate::player::{Input, Player};
 use crate::sim::step_room;
 
@@ -21,8 +21,8 @@ pub fn floor_room() -> Room {
 }
 
 // runs the room for some frames with no buttons held
-pub fn idle(room: &mut Room, player: Player, frames: usize) -> Player {
+pub fn idle(room: &Room, state: &mut RoomState, player: Player, frames: usize) -> Player {
     (0..frames).fold(player, |player, _| {
-        step_room(player, Input::default(), room)
+        step_room(player, Input::default(), room, state)
     })
 }

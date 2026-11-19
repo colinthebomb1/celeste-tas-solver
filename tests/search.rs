@@ -1,5 +1,5 @@
 use celeste_tas_solver::player::Input;
-use celeste_tas_solver::search::{Outcome, play};
+use celeste_tas_solver::search::{Outcome, improve, play};
 use celeste_tas_solver::sim::Sim;
 
 mod common;
@@ -37,7 +37,8 @@ fn the_tas_leaves_room_1_on_its_frame() {
     assert_eq!(
         play(&chapter, &start, &inputs),
         Outcome::LeftRoom {
-            frames: TAS_FRAMES_IN_ROOM_1
+            frames: TAS_FRAMES_IN_ROOM_1,
+            to: chapter.room_named("lvl_2").expect("no lvl_2"),
         }
     );
 }
@@ -62,4 +63,24 @@ fn doing_nothing_in_room_1_gets_nowhere() {
 
     let idle = vec![Input::default(); 300];
     assert_eq!(play(&chapter, &start, &idle), Outcome::RanOut);
+}
+
+// run with: cargo test --test search improving -- --nocapture
+#[test]
+fn improving_the_tas_in_room_1_never_makes_it_slower() {
+    let Some((chapter, start, inputs)) = room_1() else {
+        eprintln!("skipped. Celeste install could not be found, try setting CELESTE_DIR");
+        return;
+    };
+
+    let improved = improve(&chapter, &start, &inputs[..TAS_FRAMES_IN_ROOM_1]);
+
+    let room_2 = chapter.room_named("lvl_2").expect("no lvl_2");
+    match play(&chapter, &start, &improved) {
+        Outcome::LeftRoom { frames, to } if to == room_2 => {
+            eprintln!("room 1: the TAS takes {TAS_FRAMES_IN_ROOM_1} frames, improve got {frames}");
+            assert!(frames <= TAS_FRAMES_IN_ROOM_1);
+        }
+        other => panic!("she did not go into room 2: {other:?}"),
+    }
 }

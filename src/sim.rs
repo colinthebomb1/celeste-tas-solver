@@ -52,6 +52,11 @@ impl Sim {
     pub fn in_transition(&self) -> bool {
         self.transition.is_some()
     }
+
+    // the room a transition under way leads to
+    pub fn entering(&self) -> Option<usize> {
+        self.transition.map(|(transition, _)| transition.to)
+    }
 }
 
 // one frame of the chapter, which may start or continue a room transition
@@ -134,7 +139,15 @@ mod tests {
         let mut sim = Sim::new(&chapter, 0, at(40, 176));
         step_chapter(&mut sim, &chapter, RIGHT);
         assert!(!sim.in_transition());
+        assert_eq!(sim.entering(), None);
         assert_eq!(sim.room, 0);
+    }
+
+    #[test]
+    fn a_transition_knows_the_room_it_leads_to() {
+        let chapter = two_rooms();
+        let sim = at_the_start_of_a_transition(&chapter);
+        assert_eq!(sim.entering(), Some(1));
     }
 
     #[test]

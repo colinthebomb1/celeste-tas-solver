@@ -6,7 +6,7 @@ use super::collision::{
 use super::constants::*;
 use super::dash::{aim_vector, can_dash, dash_begin, dash_end, dash_launch, dashing, refill_dash};
 use super::jump::{
-    bounce_on_springs, can_super_dash, jump, jump_off_wall, super_dash, wall_slide_max_fall,
+    bounce_on_springs, can_super, jump, jump_off_wall, super_or_hyper, update_wall_slide,
 };
 use super::movement::{
     add_liftboost, approach, dash_jump_thru_nudge, liftboost, move_exact_v, move_h, move_v,
@@ -33,8 +33,9 @@ pub fn step(mut player: Player, input: Input, room: &Room, entities: &Entities) 
 
     frame.ground = on_ground(&player, room, entities);
 
-    run_timers(&mut player, room, frame.ground);
-    apply_input(&mut player, room, entities, &mut frame);
+    run_timers_and_refills(&mut player, room, frame.ground);
+    apply_input(&mut player, &mut frame);
+    continue_moves(&mut player, room, entities);
     update_state(&mut player, room, entities, frame);
     settle_before_moving(&mut player, room, entities, frame.ground);
 
@@ -48,7 +49,7 @@ pub fn step(mut player: Player, input: Input, room: &Room, entities: &Entities) 
     );
     move_v(&mut player, room, entities, speed_y * DELTA_TIME);
 
-    touch_hazards(&mut player, room, entities);
+    touch_springs_and_hazards(&mut player, room, entities);
 
     player.was_on_ground = frame.ground;
     player
@@ -76,7 +77,7 @@ fn read_buttons(player: &mut Player, input: Input) -> Frame {
     frame
 }
 
-fn run_timers(player: &mut Player, room: &Room, ground: bool) {
+fn run_timers_and_refills(player: &mut Player, room: &Room, ground: bool) {
     player.climb.trigger_dir = 0;
 
     if player.wall.slide_dir != 0 {
@@ -117,7 +118,7 @@ fn run_timers(player: &mut Player, room: &Room, ground: bool) {
 }
 
 // works out the direction she is really moving and facing this frame
-fn apply_input(player: &mut Player, room: &Room, entities: &Entities, frame: &mut Frame) {
+fn apply_input(player: &mut Player, frame: &mut Frame) {
     let real = frame.input;
 
     if player.forced_move_timer > 0.0 {
@@ -127,8 +128,6 @@ fn apply_input(player: &mut Player, room: &Room, entities: &Entities, frame: &mu
         player.climb.hop_solid = None;
     }
 
-    follow_hop_solid(player, room, entities);
-
     player.move_x = frame.input.move_x;
 
     if frame.input.move_x != 0 && player.state != State::Climb {
@@ -136,7 +135,11 @@ fn apply_input(player: &mut Player, room: &Room, entities: &Entities, frame: &mu
     }
 
     frame.aim = aim_vector(real, player.facing);
+}
 
+// carries on with things that began on an earlier frame
+fn continue_moves(player: &mut Player, room: &Room, entities: &Entities) {
+    follow_hop_solid(player, room, entities);
     update_retention(player, room, entities);
     update_hop_wait(player, room, entities);
     tick(&mut player.jump_timer);
@@ -207,8 +210,8 @@ fn walk_off_liftboost(player: &mut Player, ground: bool) {
 }
 
 fn jump_out_of_dash(player: &mut Player, room: &Room, entities: &Entities, frame: Frame) -> bool {
-    if can_super_dash(player, room, entities, frame.jump_pressed) {
-        super_dash(player);
+    if can_super(player, room, entities, frame.jump_pressed) {
+        super_or_hyper(player);
         true
     } else {
         frame.jump_pressed && jump_off_wall(player, room, entities, frame)
@@ -235,7 +238,7 @@ fn settle_before_moving(player: &mut Player, room: &Room, entities: &Entities, g
 
     // a sideways dash just above the floor snaps down onto it
     if !ground && player.dash.attack_timer > 0.0 && player.dash.dir.y == 0.0 {
-        let near = DASH_V_FLOOR_SNAP_DIST;
+        let near = DASH_FLOOR_SNAP;
         if collides(player, room, entities, 0, near) || enters_jump_thru(player, room, 0, near) {
             move_exact_v(player, room, entities, near);
         }
@@ -251,7 +254,7 @@ fn settle_before_moving(player: &mut Player, room: &Room, entities: &Entities, g
     }
 }
 
-fn touch_hazards(player: &mut Player, room: &Room, entities: &Entities) {
+fn touch_springs_and_hazards(player: &mut Player, room: &Room, entities: &Entities) {
     let spiked = room.spikes.iter().any(|spikes| spikes_kill(player, spikes));
     if !spiked {
         bounce_on_springs(player, room, entities);
@@ -279,13 +282,17 @@ fn normal_update(player: &mut Player, room: &Room, entities: &Entities, frame: F
         player.crouching = true;
     }
 
-    let mult = if ground { GROUND_MULT } else { AIR_MULT };
+    let mult = if ground {
+        GROUND_ACCEL_MULT
+    } else {
+        AIR_ACCEL_MULT
+    };
     let move_x = input.move_x as f32;
     let target = MAX_RUN * move_x;
 
     let max_move_x =
         if player.speed.x.abs() > MAX_RUN && (player.speed.x.signum() as i8) == input.move_x {
-            RUN_REDUCE * DELTA_TIME * mult
+            RUN_DECEL * DELTA_TIME * mult
         } else {
             RUN_ACCEL * DELTA_TIME * mult
         };
@@ -300,8 +307,8 @@ fn normal_update(player: &mut Player, room: &Room, entities: &Entities, frame: F
     player.max_fall = approach(player.max_fall, fall_limit, FASTFALL_ACCEL * DELTA_TIME);
 
     if !ground {
-        let max_fall = wall_slide_max_fall(player, room, entities, input);
-        let grav_mult = if player.speed.y.abs() < HALF_GRAV_THRESHOLD
+        let max_fall = update_wall_slide(player, room, entities, input);
+        let grav_mult = if player.speed.y.abs() < HALF_GRAVITY_THRESHOLD
             && (input.jump_down() || player.auto_jump)
         {
             0.5
@@ -338,18 +345,18 @@ mod tests {
     fn no_dash_refill_on_the_ground_while_touching_spikes() {
         let mut s = standing();
         s.dashes = 0;
-        run_timers(&mut s, &spiked_floor(), true);
+        run_timers_and_refills(&mut s, &spiked_floor(), true);
         assert_eq!(s.dashes, 0);
 
-        run_timers(&mut s, &room(), true);
-        assert_eq!(s.dashes, MAX_DASHES);
+        run_timers_and_refills(&mut s, &room(), true);
+        assert_eq!(s.dashes, NORMAL_DASHES);
     }
 
     #[test]
     fn standing_on_the_ground_keeps_a_second_dash() {
         let mut s = standing();
         s.dashes = TWO_DASHES;
-        run_timers(&mut s, &room(), true);
+        run_timers_and_refills(&mut s, &room(), true);
         assert_eq!(s.dashes, TWO_DASHES);
     }
 

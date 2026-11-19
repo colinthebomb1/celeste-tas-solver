@@ -145,7 +145,7 @@ mod tests {
     use crate::geom::Vec2;
     use crate::level::room::Room;
     use crate::player::State;
-    use crate::player::constants::{MAX_DASHES, TWO_DASHES};
+    use crate::player::constants::{NORMAL_DASHES, TWO_DASHES};
 
     const OPEN: &str = "0000\n0000\n0000\n0000";
 
@@ -468,7 +468,7 @@ mod tests {
             },
         );
         assert_eq!(s.speed, Vec2 { x: 233.0, y: -25.0 });
-        assert_eq!(s.dashes, MAX_DASHES);
+        assert_eq!(s.dashes, NORMAL_DASHES);
         assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
         assert_eq!(s.coyote_timer, 0.0);
         assert_eq!(s.wall.slide_timer, WALL_SLIDE_TIME);

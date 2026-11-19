@@ -120,7 +120,7 @@ impl Player {
             crouching: false,
             dead: false,
             freeze_timer: 0.0,
-            dashes: MAX_DASHES,
+            dashes: NORMAL_DASHES,
             stamina: CLIMB_MAX_STAMINA,
             max_fall: MAX_FALL,
             coyote_timer: 0.0,

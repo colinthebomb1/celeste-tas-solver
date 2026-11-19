@@ -102,12 +102,12 @@ pub(crate) fn dash_end(player: &mut Player) {
     player.auto_jump = true;
 
     if player.dash.dir.y <= 0.0 {
-        player.speed.x = player.dash.dir.x * END_DASH_SPEED;
-        player.speed.y = player.dash.dir.y * END_DASH_SPEED;
+        player.speed.x = player.dash.dir.x * DASH_END_SPEED;
+        player.speed.y = player.dash.dir.y * DASH_END_SPEED;
     }
 
     if player.speed.y < 0.0 {
-        player.speed.y *= END_DASH_UP_MULT;
+        player.speed.y *= DASH_END_UP_MULT;
     }
 
     set_normal(player);
@@ -115,11 +115,15 @@ pub(crate) fn dash_end(player: &mut Player) {
 
 // never lowers her count, so a second dash from a two-dash crystal is kept
 pub(crate) fn refill_dash(player: &mut Player) {
-    player.dashes = player.dashes.max(MAX_DASHES);
+    player.dashes = player.dashes.max(NORMAL_DASHES);
 }
 
 pub(crate) fn use_crystal(player: &mut Player, two_dashes: bool) -> bool {
-    let dashes = if two_dashes { TWO_DASHES } else { MAX_DASHES };
+    let dashes = if two_dashes {
+        TWO_DASHES
+    } else {
+        NORMAL_DASHES
+    };
 
     if player.dashes < dashes || player.stamina < CLIMB_TIRED_THRESHOLD {
         player.dashes = dashes;
@@ -139,7 +143,7 @@ mod tests {
         let mut s = standing();
         s.dashes = 0;
         refill_dash(&mut s);
-        assert_eq!(s.dashes, MAX_DASHES);
+        assert_eq!(s.dashes, NORMAL_DASHES);
 
         s.dashes = TWO_DASHES;
         refill_dash(&mut s);
@@ -188,7 +192,7 @@ mod tests {
         s.wall.slide_timer = 0.3;
         dash_begin(&mut s, &room, &room.initial, frame(Input::default(), true));
         assert_eq!(s.state, State::DashStart);
-        assert_eq!(s.dashes, MAX_DASHES - 1);
+        assert_eq!(s.dashes, NORMAL_DASHES - 1);
         assert_eq!(s.freeze_timer, DASH_FREEZE_TIME);
         assert_eq!(s.dash.cooldown, DASH_COOLDOWN);
         assert_eq!(s.dash.refill_cooldown, DASH_REFILL_COOLDOWN);
@@ -265,7 +269,7 @@ mod tests {
         assert_eq!(
             s.speed,
             Vec2 {
-                x: END_DASH_SPEED,
+                x: DASH_END_SPEED,
                 y: 0.0
             }
         );
@@ -279,7 +283,7 @@ mod tests {
             s.speed,
             Vec2 {
                 x: 0.0,
-                y: -END_DASH_SPEED * END_DASH_UP_MULT
+                y: -DASH_END_SPEED * DASH_END_UP_MULT
             }
         );
     }
@@ -303,7 +307,7 @@ mod tests {
         let mut s = standing();
         s.dashes = 0;
         s = step(s, Input::default(), &room, &room.initial);
-        assert_eq!(s.dashes, MAX_DASHES);
+        assert_eq!(s.dashes, NORMAL_DASHES);
     }
 
     #[test]

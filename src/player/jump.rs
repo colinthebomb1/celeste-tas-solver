@@ -8,7 +8,8 @@ use crate::entities::Entities;
 use crate::geom::{Direction, Rect};
 use crate::level::room::Room;
 
-pub(crate) fn wall_slide_max_fall(
+// starts or keeps up a wall slide. returns her top fall speed for this frame
+pub(crate) fn update_wall_slide(
     player: &mut Player,
     room: &Room,
     entities: &Entities,
@@ -47,7 +48,7 @@ pub(crate) fn jump(player: &mut Player, input: Input) {
     player.coyote_timer = 0.0;
     player.wall.slide_timer = WALL_SLIDE_TIME;
     player.jump_timer = JUMP_HOLD_TIME;
-    player.speed.x += JUMP_H_BOOST * input.move_x as f32;
+    player.speed.x += JUMP_X_BOOST * input.move_x as f32;
     player.speed.y = JUMP_SPEED;
     add_liftboost(player);
     player.jump_speed = player.speed.y;
@@ -56,7 +57,7 @@ pub(crate) fn jump(player: &mut Player, input: Input) {
     player.dash.attack_timer = 0.0;
 }
 
-pub(crate) fn can_super_dash(
+pub(crate) fn can_super(
     player: &Player,
     room: &Room,
     entities: &Entities,
@@ -68,7 +69,7 @@ pub(crate) fn can_super_dash(
         && can_stand(player, room, entities)
 }
 
-pub(crate) fn super_dash(player: &mut Player) {
+pub(crate) fn super_or_hyper(player: &mut Player) {
     player.coyote_timer = 0.0;
     player.jump_timer = JUMP_HOLD_TIME;
     player.auto_jump = false;
@@ -90,15 +91,15 @@ pub(crate) fn super_dash(player: &mut Player) {
     set_normal(player);
 }
 
-fn wallbounce_ready(player: &Player) -> bool {
+fn can_wallbounce(player: &Player) -> bool {
     player.dash.attack_timer > 0.0 && player.dash.dir.x == 0.0 && player.dash.dir.y == -1.0
 }
 
-fn wall_kick_check(player: &Player, room: &Room, entities: &Entities, dir: i8) -> bool {
+fn can_wall_kick(player: &Player, room: &Room, entities: &Entities, dir: i8) -> bool {
     let dir = dir as i32;
     let mut dist = WALL_KICK_REACH;
 
-    if wallbounce_ready(player) {
+    if can_wallbounce(player) {
         let facing_her = if dir > 0 {
             Direction::Left
         } else {
@@ -184,9 +185,9 @@ pub(crate) fn jump_off_wall(
         return false;
     }
 
-    let wall = if wall_kick_check(player, room, entities, 1) {
+    let wall = if can_wall_kick(player, room, entities, 1) {
         1
-    } else if wall_kick_check(player, room, entities, -1) {
+    } else if can_wall_kick(player, room, entities, -1) {
         -1
     } else {
         return false;
@@ -198,7 +199,7 @@ pub(crate) fn jump_off_wall(
         wallbounce(player, -wall);
     } else if can_climb_jump(player, room, entities, input) {
         climb_jump(player, frame);
-    } else if wallbounce_ready(player) {
+    } else if can_wallbounce(player) {
         wallbounce(player, -wall);
     } else {
         wall_kick(player, entities, -wall, input.move_x);
@@ -210,9 +211,9 @@ pub(crate) fn jump_off_wall(
 fn can_climb_jump(player: &Player, room: &Room, entities: &Entities, input: Input) -> bool {
     let able = input.grab && player.stamina > 0.0;
 
-    if wall_kick_check(player, room, entities, 1) {
+    if can_wall_kick(player, room, entities, 1) {
         player.facing == 1 && able
-    } else if wall_kick_check(player, room, entities, -1) {
+    } else if can_wall_kick(player, room, entities, -1) {
         player.facing == -1 && able
     } else {
         false
@@ -310,7 +311,7 @@ mod tests {
     fn wall_slide_starts_at_full_timer() {
         let room = room();
         let mut s = falling_against_wall();
-        let max = wall_slide_max_fall(
+        let max = update_wall_slide(
             &mut s,
             &room,
             &room.initial,
@@ -329,7 +330,7 @@ mod tests {
         let room = room();
         let mut s = falling_against_wall();
         s.wall.slide_timer = WALL_SLIDE_TIME * 0.5;
-        let max = wall_slide_max_fall(
+        let max = update_wall_slide(
             &mut s,
             &room,
             &room.initial,
@@ -347,7 +348,7 @@ mod tests {
         let room = room();
         let mut s = falling_against_wall();
         assert_eq!(
-            wall_slide_max_fall(
+            update_wall_slide(
                 &mut s,
                 &room,
                 &room.initial,
@@ -368,7 +369,7 @@ mod tests {
         let mut s = falling_against_wall();
         s.speed.y = -50.0;
         assert_eq!(
-            wall_slide_max_fall(
+            update_wall_slide(
                 &mut s,
                 &room,
                 &room.initial,
@@ -389,7 +390,7 @@ mod tests {
         let mut s = falling_against_wall();
         s.position.x = WALL_X - 5;
         assert_eq!(
-            wall_slide_max_fall(
+            update_wall_slide(
                 &mut s,
                 &room,
                 &room.initial,
@@ -416,51 +417,46 @@ mod tests {
                 ..Default::default()
             },
         );
-        assert_eq!(s.speed.x, 90.0 + JUMP_H_BOOST);
+        assert_eq!(s.speed.x, 90.0 + JUMP_X_BOOST);
     }
 
     #[test]
-    fn can_super_dash_during_a_horizontal_dash() {
+    fn can_super_during_a_horizontal_dash() {
         let room = room();
-        assert!(can_super_dash(&dashing_right(), &room, &room.initial, true));
+        assert!(can_super(&dashing_right(), &room, &room.initial, true));
     }
 
     #[test]
-    fn can_super_dash_needs_a_jump_press() {
+    fn can_super_needs_a_jump_press() {
         let room = room();
-        assert!(!can_super_dash(
-            &dashing_right(),
-            &room,
-            &room.initial,
-            false
-        ));
+        assert!(!can_super(&dashing_right(), &room, &room.initial, false));
     }
 
     #[test]
-    fn can_super_dash_needs_coyote_time() {
+    fn can_super_needs_coyote_time() {
         let room = room();
         let mut s = dashing_right();
         s.coyote_timer = 0.0;
-        assert!(!can_super_dash(&s, &room, &room.initial, true));
+        assert!(!can_super(&s, &room, &room.initial, true));
     }
 
     #[test]
-    fn can_super_dash_not_in_a_vertical_or_diagonal_dash() {
+    fn can_super_not_in_a_vertical_or_diagonal_dash() {
         let room = room();
         let d = 1.0 / 2f32.sqrt();
         let mut s = dashing_right();
         s.dash.dir = Vec2 { x: 0.0, y: -1.0 };
-        assert!(!can_super_dash(&s, &room, &room.initial, true));
+        assert!(!can_super(&s, &room, &room.initial, true));
         s.dash.dir = Vec2 { x: d, y: -d };
-        assert!(!can_super_dash(&s, &room, &room.initial, true));
+        assert!(!can_super(&s, &room, &room.initial, true));
         s.dash.dir = Vec2 { x: 0.0, y: 1.0 };
-        assert!(!can_super_dash(&s, &room, &room.initial, true));
+        assert!(!can_super(&s, &room, &room.initial, true));
     }
 
     #[test]
-    fn super_dash_launches_the_way_she_faces() {
+    fn super_or_hyper_launches_the_way_she_faces() {
         let mut s = dashing_right();
-        super_dash(&mut s);
+        super_or_hyper(&mut s);
         assert_eq!(
             s.speed,
             Vec2 {
@@ -471,7 +467,7 @@ mod tests {
 
         let mut s = dashing_right();
         s.facing = -1;
-        super_dash(&mut s);
+        super_or_hyper(&mut s);
         assert_eq!(
             s.speed,
             Vec2 {
@@ -482,11 +478,11 @@ mod tests {
     }
 
     #[test]
-    fn super_dash_ends_the_dash_and_starts_a_variable_jump() {
+    fn super_or_hyper_ends_the_dash_and_starts_a_variable_jump() {
         let mut s = dashing_right();
         s.auto_jump = true;
         s.wall.slide_timer = 0.5;
-        super_dash(&mut s);
+        super_or_hyper(&mut s);
         assert_eq!(s.state, State::Normal);
         assert_eq!(s.coyote_timer, 0.0);
         assert_eq!(s.jump_timer, JUMP_HOLD_TIME);
@@ -550,21 +546,21 @@ mod tests {
     }
 
     #[test]
-    fn wall_kick_check_reaches_two_pixels_of_gap() {
+    fn can_wall_kick_reaches_two_pixels_of_gap() {
         let room = room();
-        assert!(wall_kick_check(
+        assert!(can_wall_kick(
             &player_at(WALL_X, 100, 0.0, 0.0),
             &room,
             &room.initial,
             1
         ));
-        assert!(wall_kick_check(
+        assert!(can_wall_kick(
             &player_at(WALL_X - 2, 100, 0.0, 0.0),
             &room,
             &room.initial,
             1
         ));
-        assert!(!wall_kick_check(
+        assert!(!can_wall_kick(
             &player_at(WALL_X - 3, 100, 0.0, 0.0),
             &room,
             &room.initial,
@@ -573,8 +569,8 @@ mod tests {
     }
 
     #[test]
-    fn wall_kick_check_only_on_the_side_asked() {
-        assert!(!wall_kick_check(
+    fn can_wall_kick_only_on_the_side_asked() {
+        assert!(!can_wall_kick(
             &player_at(WALL_X, 100, 0.0, 0.0),
             &room(),
             &room().initial,
@@ -582,25 +578,25 @@ mod tests {
         ));
 
         let room = left_wall_room();
-        assert!(wall_kick_check(
+        assert!(can_wall_kick(
             &player_at(LEFT_WALL_X, 100, 0.0, 0.0),
             &room,
             &room.initial,
             -1
         ));
-        assert!(wall_kick_check(
+        assert!(can_wall_kick(
             &player_at(LEFT_WALL_X + 2, 100, 0.0, 0.0),
             &room,
             &room.initial,
             -1
         ));
-        assert!(!wall_kick_check(
+        assert!(!can_wall_kick(
             &player_at(LEFT_WALL_X + 3, 100, 0.0, 0.0),
             &room,
             &room.initial,
             -1
         ));
-        assert!(!wall_kick_check(
+        assert!(!can_wall_kick(
             &player_at(LEFT_WALL_X, 100, 0.0, 0.0),
             &room,
             &room.initial,
@@ -698,7 +694,7 @@ mod tests {
         assert_eq!(
             s.speed,
             Vec2 {
-                x: JUMP_H_BOOST,
+                x: JUMP_X_BOOST,
                 y: JUMP_SPEED
             }
         );
@@ -715,10 +711,10 @@ mod tests {
     }
 
     #[test]
-    fn super_dash_while_crouching_is_a_hyper() {
+    fn super_or_hyper_while_crouching_is_a_hyper() {
         let mut s = dashing_right();
         s.crouching = true;
-        super_dash(&mut s);
+        super_or_hyper(&mut s);
         assert_eq!(
             s.speed,
             Vec2 {
@@ -731,15 +727,15 @@ mod tests {
     }
 
     #[test]
-    fn can_super_dash_needs_room_to_stand_up() {
+    fn can_super_needs_room_to_stand_up() {
         let room = tunnel_room();
         let mut s = crouching_at(40, FLOOR_Y);
         s.state = State::Dash { timer: DASH_TIME };
         s.dash.dir = Vec2 { x: 1.0, y: 0.0 };
         s.coyote_timer = COYOTE_TIME;
-        assert!(!can_super_dash(&s, &room, &room.initial, true));
+        assert!(!can_super(&s, &room, &room.initial, true));
         s.position.x = 8;
-        assert!(can_super_dash(&s, &room, &room.initial, true));
+        assert!(can_super(&s, &room, &room.initial, true));
     }
 
     #[test]
@@ -789,7 +785,7 @@ mod tests {
 
         let mut s = dashing_right();
         s.wall.boost_timer = 0.1;
-        super_dash(&mut s);
+        super_or_hyper(&mut s);
         assert_eq!(s.wall.boost_timer, 0.0);
     }
 
@@ -839,21 +835,21 @@ mod tests {
     }
 
     #[test]
-    fn wall_kick_check_reaches_further_for_a_wallbounce() {
+    fn can_wall_kick_reaches_further_for_a_wallbounce() {
         let room = room();
-        assert!(wall_kick_check(
+        assert!(can_wall_kick(
             &bouncing_at(WALL_X - 4),
             &room,
             &room.initial,
             1
         ));
-        assert!(!wall_kick_check(
+        assert!(!can_wall_kick(
             &bouncing_at(WALL_X - 5),
             &room,
             &room.initial,
             1
         ));
-        assert!(!wall_kick_check(
+        assert!(!can_wall_kick(
             &player_at(WALL_X - 4, 100, 0.0, 0.0),
             &room,
             &room.initial,
@@ -862,17 +858,17 @@ mod tests {
     }
 
     #[test]
-    fn wall_kick_check_is_short_again_when_the_wall_has_spikes() {
+    fn can_wall_kick_is_short_again_when_the_wall_has_spikes() {
         let mut room = room();
         room.spikes
             .push(Spikes::new(Direction::Left, WALL_X + 4, 88, 16));
-        assert!(!wall_kick_check(
+        assert!(!can_wall_kick(
             &bouncing_at(WALL_X - 4),
             &room,
             &room.initial,
             1
         ));
-        assert!(wall_kick_check(
+        assert!(can_wall_kick(
             &bouncing_at(WALL_X - 2),
             &room,
             &room.initial,
@@ -1019,7 +1015,7 @@ mod tests {
         assert_eq!(s.jump_speed, JUMP_SPEED - 70.0);
 
         let mut s = lifted(dashing_right(), 0.0, -70.0);
-        super_dash(&mut s);
+        super_or_hyper(&mut s);
         assert_eq!(
             s.speed,
             Vec2 {
@@ -1053,7 +1049,7 @@ mod tests {
     fn hyper_halves_the_lift_too() {
         let mut s = lifted(dashing_right(), 0.0, -70.0);
         s.crouching = true;
-        super_dash(&mut s);
+        super_or_hyper(&mut s);
         assert_eq!(s.speed.y, (JUMP_SPEED - 70.0) * HYPER_Y_MULT);
     }
 
@@ -1103,7 +1099,7 @@ mod tests {
             move_x: 1,
             ..Default::default()
         };
-        let max = wall_slide_max_fall(&mut s, &room, &room.initial, toward);
+        let max = update_wall_slide(&mut s, &room, &room.initial, toward);
         assert_eq!(max, s.max_fall);
         assert_eq!(s.wall.slide_dir, 0);
     }
@@ -1135,7 +1131,7 @@ mod tests {
         assert_eq!(s.jump_speed, SPRING_SPEED);
         assert_eq!(s.jump_timer, SPRING_JUMP_TIME);
         assert_eq!(s.state, State::Normal);
-        assert_eq!(s.dashes, MAX_DASHES);
+        assert_eq!(s.dashes, NORMAL_DASHES);
         assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
         assert_eq!(s.dash.attack_timer, 0.0);
         assert_eq!(s.coyote_timer, 0.0);
@@ -1238,7 +1234,7 @@ mod tests {
     fn no_wall_slide_while_holding_down() {
         let room = room();
         let mut s = player_at(WALL_X, 100, 0.0, 50.0);
-        let max = wall_slide_max_fall(&mut s, &room, &room.initial, Input { move_x: 1, ..DOWN });
+        let max = update_wall_slide(&mut s, &room, &room.initial, Input { move_x: 1, ..DOWN });
         assert_eq!(max, MAX_FALL);
         assert_eq!(s.wall.slide_dir, 0);
     }
@@ -1247,7 +1243,7 @@ mod tests {
     fn wall_slide_with_grab_held_and_no_direction() {
         let room = room();
         let mut s = player_at(WALL_X, 100, 0.0, 50.0);
-        let max = wall_slide_max_fall(
+        let max = update_wall_slide(
             &mut s,
             &room,
             &room.initial,
@@ -1265,7 +1261,7 @@ mod tests {
         let room = room();
         let mut s = crouching_at(WALL_X, 100);
         s.speed.y = 50.0;
-        wall_slide_max_fall(
+        update_wall_slide(
             &mut s,
             &room,
             &room.initial,

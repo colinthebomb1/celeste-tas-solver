@@ -206,7 +206,7 @@ pub(crate) fn dash_jump_thru_nudge(player: &mut Player, room: &Room, entities: &
     for jump_thru in &room.jump_thrus {
         let depth = player.position.y - jump_thru.hitbox.top;
 
-        if jump_thru.hitbox.overlaps(&hitbox(player, 0, 0)) && depth <= DASH_H_JUMP_THRU_NUDGE {
+        if jump_thru.hitbox.overlaps(&hitbox(player, 0, 0)) && depth <= DASH_JUMP_THRU_NUDGE {
             for _ in 0..depth {
                 if collides(player, room, entities, 0, -1) {
                     break;
@@ -688,7 +688,7 @@ mod tests {
         assert_eq!(s.stamina, 50.0);
         assert_eq!(
             s.speed.x,
-            approach(0.0, -MAX_RUN, RUN_ACCEL * DELTA_TIME * AIR_MULT)
+            approach(0.0, -MAX_RUN, RUN_ACCEL * DELTA_TIME * AIR_ACCEL_MULT)
         );
 
         s = step(s, Input::default(), &room, &room.initial);
@@ -696,7 +696,11 @@ mod tests {
         assert_eq!(s.wall.boost_timer, 0.0);
         assert_eq!(
             s.speed.x,
-            approach(-WALL_KICK_SPEED, 0.0, RUN_ACCEL * DELTA_TIME * AIR_MULT)
+            approach(
+                -WALL_KICK_SPEED,
+                0.0,
+                RUN_ACCEL * DELTA_TIME * AIR_ACCEL_MULT
+            )
         );
     }
 
@@ -1148,7 +1152,7 @@ mod tests {
             approach(
                 -WALL_KICK_SPEED,
                 -MAX_RUN,
-                RUN_REDUCE * DELTA_TIME * AIR_MULT
+                RUN_DECEL * DELTA_TIME * AIR_ACCEL_MULT
             )
         );
         assert_eq!(s.forced_move_timer, 0.1 - DELTA_TIME);

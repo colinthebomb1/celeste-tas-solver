@@ -20,13 +20,13 @@ fn is_tired(player: &Player) -> bool {
 
 // walls within 2 px of the room's sides can't be climbed or slid down
 pub(crate) fn climb_in_bounds(player: &Player, room: &Room, dir: i8) -> bool {
-    let her = hitbox(player, dir as i32 * CLIMB_CHECK_DIST, 0);
+    let her = hitbox(player, dir as i32 * GRAB_REACH, 0);
 
     her.left >= room.bounds.left && her.right() < room.bounds.right()
 }
 
-fn climb_check(player: &Player, room: &Room, entities: &Entities, dir: i8, dy: i32) -> bool {
-    let reach = dir as i32 * CLIMB_CHECK_DIST;
+fn can_climb(player: &Player, room: &Room, entities: &Entities, dir: i8, dy: i32) -> bool {
+    let reach = dir as i32 * GRAB_REACH;
 
     climb_in_bounds(player, room, dir) && collides(player, room, entities, reach, dy)
 }
@@ -44,15 +44,15 @@ pub(crate) fn try_grab(
         return false;
     }
 
-    if climb_check(player, room, entities, player.facing, 0) {
+    if can_climb(player, room, entities, player.facing, 0) {
         climb_begin(player, room, entities);
         return true;
     }
 
     if input.move_y < 1 {
-        for up in 1..=CLIMB_UP_CHECK_DIST {
+        for up in 1..=GRAB_REACH_UP {
             if !collides(player, room, entities, 0, -up)
-                && climb_check(player, room, entities, player.facing, -up)
+                && can_climb(player, room, entities, player.facing, -up)
             {
                 move_exact_v(player, room, entities, -up);
                 climb_begin(player, room, entities);
@@ -68,14 +68,14 @@ fn climb_begin(player: &mut Player, room: &Room, entities: &Entities) {
     player.crouching = false;
     player.auto_jump = false;
     player.speed.x = 0.0;
-    player.speed.y *= CLIMB_GRAB_Y_MULT;
+    player.speed.y *= GRAB_Y_MULT;
     player.wall.slide_timer = WALL_SLIDE_TIME;
-    player.climb.no_move_timer = CLIMB_NO_MOVE_TIME;
+    player.climb.no_move_timer = GRAB_PAUSE_TIME;
     player.wall.boost_timer = 0.0;
     player.climb.last_move = 0;
 
     // pull her against the wall
-    for _ in 0..CLIMB_CHECK_DIST {
+    for _ in 0..GRAB_REACH {
         if collides(player, room, entities, player.facing as i32, 0) {
             break;
         }
@@ -148,7 +148,7 @@ pub(crate) fn update_hop_wait(player: &mut Player, room: &Room, entities: &Entit
 }
 
 // her hands are above the top of the wall
-fn slip_check(player: &Player, room: &Room, entities: &Entities, add_y: i32) -> bool {
+fn slipping(player: &Player, room: &Room, entities: &Entities, add_y: i32) -> bool {
     let her = hitbox(player, 0, 0);
     let x = if player.facing == 1 {
         her.right()
@@ -213,11 +213,11 @@ pub(crate) fn climb_update(player: &mut Player, room: &Room, entities: &Entities
         let hop_blocked = collides(player, room, entities, 0, -CLIMBHOP_BLOCK_DIST);
 
         if collides(player, room, entities, 0, -1)
-            || (hop_blocked && slip_check(player, room, entities, -1))
+            || (hop_blocked && slipping(player, room, entities, -1))
         {
             player.speed.y = player.speed.y.max(0.0);
             may_slip = true;
-        } else if slip_check(player, room, entities, 0) {
+        } else if slipping(player, room, entities, 0) {
             climbhop(player, room, entities);
             return;
         } else {
@@ -233,7 +233,7 @@ pub(crate) fn climb_update(player: &mut Player, room: &Room, entities: &Entities
 
     player.climb.last_move = sign(target) as i8;
 
-    if may_slip && slip_check(player, room, entities, 0) {
+    if may_slip && slipping(player, room, entities, 0) {
         target = CLIMB_SLIP_SPEED;
     }
     player.speed.y = approach(player.speed.y, target, CLIMB_ACCEL * DELTA_TIME);
@@ -423,8 +423,8 @@ mod tests {
 
         assert_eq!(s.state, State::Climb);
         assert_eq!(s.speed.x, 0.0);
-        assert_eq!(s.speed.y, 30.0 * CLIMB_GRAB_Y_MULT);
-        assert_eq!(s.climb.no_move_timer, CLIMB_NO_MOVE_TIME);
+        assert_eq!(s.speed.y, 30.0 * GRAB_Y_MULT);
+        assert_eq!(s.climb.no_move_timer, GRAB_PAUSE_TIME);
     }
 
     #[test]
@@ -521,7 +521,7 @@ mod tests {
     fn she_cannot_move_along_the_wall_right_after_grabbing() {
         let room = room();
         let mut s = climbing(100);
-        s.climb.no_move_timer = CLIMB_NO_MOVE_TIME;
+        s.climb.no_move_timer = GRAB_PAUSE_TIME;
         s = step(s, GRAB_UP, &room, &room.initial);
 
         assert_eq!(s.speed.y, 0.0);
@@ -639,12 +639,12 @@ mod tests {
     }
 
     #[test]
-    fn slip_check_is_true_with_her_hands_above_the_wall() {
+    fn slipping_is_true_with_her_hands_above_the_wall() {
         // the wall's top edge is y = 48
         let room = partial_wall(6..23);
-        assert!(slip_check(&climbing(54), &room, &room.initial, 0));
-        assert!(!slip_check(&climbing(55), &room, &room.initial, 0));
-        assert!(!slip_check(&climbing(100), &room, &room.initial, 0));
+        assert!(slipping(&climbing(54), &room, &room.initial, 0));
+        assert!(!slipping(&climbing(55), &room, &room.initial, 0));
+        assert!(!slipping(&climbing(100), &room, &room.initial, 0));
     }
 
     #[test]

@@ -9,7 +9,5 @@ pub(crate) mod movement;
 pub(crate) mod state;
 pub(crate) mod step;
 
-pub use state::{
-    Climb, Dash, Frame, Held, HopSolid, Input, Lift, Player, State, Wall, track_buttons,
-};
+pub use state::{Climb, Dash, Frame, Held, HopSolid, Input, Lift, Player, State, Wall};
 pub use step::step;

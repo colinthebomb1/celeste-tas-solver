@@ -1,10 +1,7 @@
 use celeste_tas_solver::geom::IVec2;
 use celeste_tas_solver::geom::Vec2;
-use celeste_tas_solver::level::transition::{
-    TRANSITION_FRAMES, before_transition, find_transition, finish_transition,
-};
-use celeste_tas_solver::player::{Input, Player, State, step, track_buttons};
-use celeste_tas_solver::sim::step_room;
+use celeste_tas_solver::player::{Input, Player, State, step};
+use celeste_tas_solver::sim::{Sim, step_chapter};
 use celeste_tas_solver::trace::parse_trace;
 
 mod common;
@@ -313,71 +310,32 @@ fn chapter_1a() {
         .map(|line| format!("{line}\n"))
         .collect();
 
-    let mut player = start_state(&first_two_lines);
-    let mut room = chapter.room_named("lvl_1").expect("no lvl_1");
-    let mut entities = chapter.rooms[room].initial.clone();
+    let room = chapter.room_named("lvl_1").expect("no lvl_1");
+    let mut sim = Sim::new(&chapter, room, start_state(&first_two_lines));
     let mut matched = 0;
-    let mut frame = 1;
 
-    let desync = |frame: usize, room: &str, player: &Player| {
-        eprintln!(
-            "chapter 1A: desync on frame {frame} in {} (tas line {}, inputs {}, time {})\n  simulator: {:?}\n  game:      {:?}",
-            room,
-            column(rows[frame], 0).trim(),
-            column(rows[frame], 1).trim(),
-            column(rows[frame], 3).trim(),
-            observe(player),
-            game_row(rows[frame]),
-        );
-    };
+    for (frame, &row) in rows.iter().enumerate().skip(1) {
+        let mid_transition = sim.in_transition();
+        step_chapter(&mut sim, &chapter, input_from_row(row));
 
-    while frame < rows.len() {
-        player = step_room(
-            player,
-            input_from_row(rows[frame]),
-            &chapter.rooms[room],
-            &mut entities,
-        );
-
-        let transition = if player.dead {
-            None
-        } else {
-            find_transition(&player, &chapter, room, &entities)
-        };
-        if let Some(transition) = transition {
-            before_transition(&mut player, transition.direction);
+        // she isn't simulated during a transition. the next row compared is the one where it ends
+        if mid_transition && sim.in_transition() {
+            continue;
         }
 
-        if observe(&player) != game_row(rows[frame]) {
-            desync(frame, &chapter.rooms[room].name, &player);
+        if observe(&sim.player) != game_row(row) {
+            eprintln!(
+                "chapter 1A: desync on frame {frame} in {} (tas line {}, inputs {}, time {})\n  simulator: {:?}\n  game:      {:?}",
+                chapter.rooms[sim.room].name,
+                column(row, 0).trim(),
+                column(row, 1).trim(),
+                column(row, 3).trim(),
+                observe(&sim.player),
+                game_row(row),
+            );
             break;
         }
         matched = frame;
-        frame += 1;
-
-        // nothing is simulated during a transition. the next row compared is the one where it ends
-        if let Some(transition) = transition {
-            finish_transition(&mut player, &chapter, &entities, transition);
-            room = transition.to;
-            entities = chapter.rooms[room].initial.clone();
-
-            // buttons let go of during the transition count as presses afterwards
-            let end = (frame + TRANSITION_FRAMES - 1).min(rows.len() - 1);
-            for &row in &rows[frame..=end] {
-                track_buttons(&mut player, input_from_row(row));
-            }
-            frame += TRANSITION_FRAMES - 1;
-
-            if frame >= rows.len() {
-                break;
-            }
-            if observe(&player) != game_row(rows[frame]) {
-                desync(frame, &chapter.rooms[room].name, &player);
-                break;
-            }
-            matched = frame;
-            frame += 1;
-        }
     }
 
     eprintln!("chapter 1A: matched {matched} of {total} frames");

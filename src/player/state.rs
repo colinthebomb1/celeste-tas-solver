@@ -188,7 +188,7 @@ pub(crate) fn set_normal(player: &mut Player) {
     player.state = State::Normal;
 }
 
-pub fn track_buttons(player: &mut Player, input: Input) {
+pub(crate) fn track_buttons(player: &mut Player, input: Input) {
     player.held.jump = input.jump;
     player.held.jump2 = input.jump2;
     player.held.dash = input.dash;

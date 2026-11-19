@@ -1,9 +1,9 @@
 use super::collision::{blocked, collides, crouch_free_at, hitbox};
 use super::constants::*;
-use super::dash::dashing;
+use super::dash::{dashing, ultra};
 use super::state::Player;
 use crate::entities::Entities;
-use crate::geom::Vec2;
+use crate::geom::{Vec2, whole_pixels};
 use crate::level::room::Room;
 
 pub(crate) fn set_lift_speed(player: &mut Player, lift_speed: Vec2) {
@@ -117,13 +117,10 @@ pub(crate) fn move_h(
     amount: f32,
     ground: bool,
 ) {
-    let new_subpixel = player.subpixel.x + amount;
-    // C# Math.Round
-    let movement_x = new_subpixel.round_ties_even() as i32;
-    player.subpixel.x = new_subpixel - (movement_x as f32);
+    let pixels = whole_pixels(&mut player.subpixel.x, amount);
 
-    let step = movement_x.signum();
-    for _ in 0..movement_x.abs() {
+    let step = pixels.signum();
+    for _ in 0..pixels.abs() {
         if collides(player, room, entities, step, 0) {
             if dash_corner_correction_h(player, room, entities, ground) {
                 player.subpixel.x = 0.0;
@@ -145,13 +142,10 @@ pub(crate) fn move_h(
 }
 
 pub(crate) fn move_v(player: &mut Player, room: &Room, entities: &Entities, amount: f32) {
-    let new_subpixel = player.subpixel.y + amount;
-    // C# Math.Round
-    let movement_y = new_subpixel.round_ties_even() as i32;
-    player.subpixel.y = new_subpixel - (movement_y as f32);
+    let pixels = whole_pixels(&mut player.subpixel.y, amount);
 
-    let step = movement_y.signum();
-    for _ in 0..movement_y.abs() {
+    let step = pixels.signum();
+    for _ in 0..pixels.abs() {
         if blocked(player, room, entities, 0, step) {
             player.subpixel.y = 0.0;
 
@@ -168,14 +162,8 @@ pub(crate) fn move_v(player: &mut Player, room: &Room, entities: &Entities, amou
                     return;
                 }
 
-                // ultra
                 if player.dash.dir.x != 0.0 && player.dash.dir.y > 0.0 {
-                    player.dash.dir = Vec2 {
-                        x: sign(player.dash.dir.x),
-                        y: 0.0,
-                    };
-                    player.speed.x *= ULTRA_SPEED_MULT;
-                    player.crouching = true;
+                    ultra(player);
                 }
             }
 
@@ -187,19 +175,10 @@ pub(crate) fn move_v(player: &mut Player, room: &Room, entities: &Entities, amou
     }
 }
 
+// a small move up or down that just stops if something is in the way
 pub(crate) fn nudge_v(player: &mut Player, room: &Room, entities: &Entities, amount: f32) {
-    let new_subpixel = player.subpixel.y + amount;
-    let movement_y = new_subpixel.round_ties_even() as i32;
-    player.subpixel.y = new_subpixel - (movement_y as f32);
-
-    let step = movement_y.signum();
-    for _ in 0..movement_y.abs() {
-        if blocked(player, room, entities, 0, step) {
-            player.subpixel.y = 0.0;
-            return;
-        }
-        player.position.y += step;
-    }
+    let pixels = whole_pixels(&mut player.subpixel.y, amount);
+    move_exact_v(player, room, entities, pixels);
 }
 
 pub(crate) fn dash_jump_thru_nudge(player: &mut Player, room: &Room, entities: &Entities) {

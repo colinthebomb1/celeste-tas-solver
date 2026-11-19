@@ -44,17 +44,22 @@ pub(crate) fn update_wall_slide(
     max
 }
 
-pub(crate) fn jump(player: &mut Player, input: Input) {
+// what every kind of jump resets. hold_time is how long holding jump keeps her rising
+fn begin_jump(player: &mut Player, hold_time: f32) {
     player.coyote_timer = 0.0;
+    player.jump_timer = hold_time;
+    player.auto_jump = false;
+    player.dash.attack_timer = 0.0;
     player.wall.slide_timer = WALL_SLIDE_TIME;
-    player.jump_timer = JUMP_HOLD_TIME;
+    player.wall.boost_timer = 0.0;
+}
+
+pub(crate) fn jump(player: &mut Player, input: Input) {
+    begin_jump(player, JUMP_HOLD_TIME);
     player.speed.x += JUMP_X_BOOST * input.move_x as f32;
     player.speed.y = JUMP_SPEED;
     add_liftboost(player);
     player.jump_speed = player.speed.y;
-    player.auto_jump = false;
-    player.wall.boost_timer = 0.0;
-    player.dash.attack_timer = 0.0;
 }
 
 pub(crate) fn can_super(
@@ -70,12 +75,7 @@ pub(crate) fn can_super(
 }
 
 pub(crate) fn super_or_hyper(player: &mut Player) {
-    player.coyote_timer = 0.0;
-    player.jump_timer = JUMP_HOLD_TIME;
-    player.auto_jump = false;
-    player.wall.slide_timer = WALL_SLIDE_TIME;
-    player.wall.boost_timer = 0.0;
-    player.dash.attack_timer = 0.0;
+    begin_jump(player, JUMP_HOLD_TIME);
     player.speed.x = SUPER_SPEED * player.facing as f32;
     player.speed.y = JUMP_SPEED;
     add_liftboost(player);
@@ -126,12 +126,7 @@ fn can_wall_kick(player: &Player, room: &Room, entities: &Entities, dir: i8) -> 
 
 pub(crate) fn wall_kick(player: &mut Player, entities: &Entities, dir: i8, move_x: i8) {
     player.crouching = false;
-    player.coyote_timer = 0.0;
-    player.jump_timer = JUMP_HOLD_TIME;
-    player.auto_jump = false;
-    player.dash.attack_timer = 0.0;
-    player.wall.slide_timer = WALL_SLIDE_TIME;
-    player.wall.boost_timer = 0.0;
+    begin_jump(player, JUMP_HOLD_TIME);
 
     if move_x != 0 {
         player.forced_move = dir;
@@ -159,12 +154,7 @@ pub(crate) fn wall_kick(player: &mut Player, entities: &Entities, dir: i8, move_
 
 fn wallbounce(player: &mut Player, dir: i8) {
     player.crouching = false;
-    player.coyote_timer = 0.0;
-    player.jump_timer = WALLBOUNCE_JUMP_TIME;
-    player.auto_jump = false;
-    player.dash.attack_timer = 0.0;
-    player.wall.slide_timer = WALL_SLIDE_TIME;
-    player.wall.boost_timer = 0.0;
+    begin_jump(player, WALLBOUNCE_JUMP_TIME);
 
     player.speed.x = WALLBOUNCE_SPEED_X * dir as f32;
     player.speed.y = WALLBOUNCE_SPEED_Y;
@@ -244,12 +234,9 @@ fn spring_bounce(player: &mut Player, room: &Room, entities: &Entities, from_y: 
     player.stamina = CLIMB_MAX_STAMINA;
     set_normal(player);
 
-    player.coyote_timer = 0.0;
-    player.jump_timer = SPRING_JUMP_TIME;
+    begin_jump(player, SPRING_JUMP_TIME);
+    // she keeps rising as if jump were held
     player.auto_jump = true;
-    player.dash.attack_timer = 0.0;
-    player.wall.slide_timer = WALL_SLIDE_TIME;
-    player.wall.boost_timer = 0.0;
 
     player.speed.x = 0.0;
     player.speed.y = SPRING_SPEED;

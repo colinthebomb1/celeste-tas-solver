@@ -1,7 +1,7 @@
 use crate::entities::Entities;
 use crate::geom::IVec2;
 use crate::geom::Rect;
-use crate::geom::Vec2;
+use crate::geom::{Vec2, whole_pixels};
 use crate::level::room::Room;
 use crate::player::Player;
 use crate::player::collision::{hitbox, is_riding};
@@ -56,14 +56,6 @@ pub(crate) fn reset_lift_speeds(entities: &mut Entities) {
     for solid in &mut entities.solids {
         solid.lift_speed = Vec2 { x: 0.0, y: 0.0 };
     }
-}
-
-fn whole_pixels(subpixel: &mut f32, amount: f32) -> i32 {
-    *subpixel += amount;
-    // C# Math.Round
-    let pixels = subpixel.round_ties_even() as i32;
-    *subpixel -= pixels as f32;
-    pixels
 }
 
 // adds a fraction of a pixel of sideways movement. returns the whole pixels it should now move

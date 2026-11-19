@@ -70,3 +70,12 @@ pub enum Direction {
     Left,
     Right,
 }
+
+// adds a fraction of a pixel to a subpixel. returns the whole pixels to move now
+pub(crate) fn whole_pixels(subpixel: &mut f32, amount: f32) -> i32 {
+    *subpixel += amount;
+    // C# Math.Round
+    let pixels = subpixel.round_ties_even() as i32;
+    *subpixel -= pixels as f32;
+    pixels
+}

@@ -84,18 +84,22 @@ pub(crate) fn dash_launch(player: &mut Player, aim: Vec2, ground: bool) {
         player.facing = sign(aim.x) as i8;
     }
 
-    // ultra: a down diagonal dash on the ground becomes a crouched horizontal one, a bit faster
     if ground && player.dash.dir.x != 0.0 && player.dash.dir.y > 0.0 && player.speed.y > 0.0 {
-        player.dash.dir = Vec2 {
-            x: sign(player.dash.dir.x),
-            y: 0.0,
-        };
+        ultra(player);
         player.speed.y = 0.0;
-        player.speed.x *= ULTRA_SPEED_MULT;
-        player.crouching = true;
     }
 
     player.state = State::Dash { timer: DASH_TIME };
+}
+
+// a down-diagonal dash that meets the ground becomes a crouched sideways one, a bit faster
+pub(crate) fn ultra(player: &mut Player) {
+    player.dash.dir = Vec2 {
+        x: sign(player.dash.dir.x),
+        y: 0.0,
+    };
+    player.speed.x *= ULTRA_SPEED_MULT;
+    player.crouching = true;
 }
 
 pub(crate) fn dash_end(player: &mut Player) {

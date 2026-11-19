@@ -10,6 +10,7 @@ use crate::player::constants::{
 use crate::player::dash::refill_dash;
 use crate::player::state::set_normal;
 
+// frames a room change takes
 pub const TRANSITION_FRAMES: usize = 40;
 // how far the game looks past her center for the next room
 const SIDE_REACH: f32 = 8.0;

@@ -13,6 +13,7 @@ use crate::player::{Input, Player, step};
 
 // one frame of the room
 pub fn step_room(player: Player, input: Input, room: &Room, entities: &mut Entities) -> Player {
+    // entities skip a frame that began frozen, step counts the freeze down
     let frozen = player.freeze_timer > 0.0;
     let mut player = step(player, input, room, entities);
 

@@ -3,6 +3,9 @@ use crate::geom::{Direction, Rect};
 use crate::level::map::{Element, MapError, entities_named};
 use crate::level::room::Room;
 
+// how far the points stick out from their base, in pixels
+const SPIKE_DEPTH: i32 = 3;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Spikes {
     pub direction: Direction,
@@ -14,26 +17,26 @@ impl Spikes {
         let hitbox = match direction {
             Direction::Up => Rect {
                 left: x,
-                top: y - 3,
+                top: y - SPIKE_DEPTH,
                 width: size,
-                height: 3,
+                height: SPIKE_DEPTH,
             },
             Direction::Down => Rect {
                 left: x,
                 top: y,
                 width: size,
-                height: 3,
+                height: SPIKE_DEPTH,
             },
             Direction::Right => Rect {
                 left: x,
                 top: y,
-                width: 3,
+                width: SPIKE_DEPTH,
                 height: size,
             },
             Direction::Left => Rect {
-                left: x - 3,
+                left: x - SPIKE_DEPTH,
                 top: y,
-                width: 3,
+                width: SPIKE_DEPTH,
                 height: size,
             },
         };

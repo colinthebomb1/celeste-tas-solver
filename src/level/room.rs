@@ -7,7 +7,7 @@ const SCREEN_HEIGHT: i32 = 180;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Room {
     pub name: String,
-    // the room's area in world pixels. a 184 px tall room counts as 180, as in the game
+    // the room's area in world pixels
     pub bounds: Rect,
     // world position of the room's top-left corner, in pixels
     pub origin: IVec2,

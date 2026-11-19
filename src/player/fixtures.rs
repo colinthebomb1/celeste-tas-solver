@@ -338,7 +338,7 @@ pub(crate) fn climbing(y: i32) -> Player {
     s
 }
 
-// a wall on the right whose rows are solid only where the flag says. tiles are 8 px
+// a wall on the right, solid only in these rows. tiles are 8 px
 pub(crate) fn partial_wall(solid_rows: std::ops::Range<usize>) -> Room {
     let text: String = (0..23)
         .map(|row| {

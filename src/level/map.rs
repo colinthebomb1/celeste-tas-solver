@@ -59,12 +59,12 @@ pub struct Element {
 }
 
 impl Element {
-    // The first child with this name.
+    // the first child with this name
     pub fn child(&self, name: &str) -> Option<&Element> {
         self.children.iter().find(|child| child.name == name)
     }
 
-    // The attribute's value if it exists and is a Value::Int.
+    // the attribute's value if it exists and is a Value::Int
     pub fn int(&self, key: &str) -> Option<i32> {
         match self.attributes.get(key) {
             Some(Value::Int(value)) => Some(*value),
@@ -72,12 +72,12 @@ impl Element {
         }
     }
 
-    // The attribute's value, or an error naming it if it is missing or not a Value::Int.
+    // the attribute's value, or an error naming it if it is missing or not a Value::Int
     pub fn require(&self, key: &'static str) -> Result<i32, MapError> {
         self.int(key).ok_or(MapError::MissingField(key))
     }
 
-    // The attribute's value if it exists and is a Value::Bool.
+    // the attribute's value if it exists and is a Value::Bool
     pub fn bool(&self, key: &str) -> Option<bool> {
         match self.attributes.get(key) {
             Some(Value::Bool(value)) => Some(*value),
@@ -85,7 +85,7 @@ impl Element {
         }
     }
 
-    // The attribute's value if it exists and is a Value::Text.
+    // the attribute's value if it exists and is a Value::Text
     pub fn text(&self, key: &str) -> Option<&str> {
         match self.attributes.get(key) {
             Some(Value::Text(value)) => Some(value),
@@ -157,8 +157,8 @@ impl<'file> MapReader<'file> {
     }
 
     // C# BinaryWriter string: the length in bytes, then that many bytes of UTF-8.
-    // The length is a varint, 7 bits per byte, lowest bits first, and the top bit
-    // of each byte is a flag for if there is another length byte
+    // the length is a varint: 7 bits per byte, lowest bits first, and the top bit
+    // of each byte says whether another length byte follows
     pub fn read_string(&mut self) -> Result<String, MapError> {
         let mut len = 0;
         let mut shift = 0;
@@ -272,7 +272,7 @@ fn parse_map(bytes: &[u8]) -> Result<Element, MapError> {
     read_element(&mut reader, &lookup)
 }
 
-// find a room by name and build its tile grid
+// find a room by name and load its tiles and entities
 pub fn load_room(map: &Element, name: &str) -> Result<Room, MapError> {
     let levels = map
         .child("levels")

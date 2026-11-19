@@ -8,7 +8,8 @@ use crate::level::room::Room;
 // also when she leaves a room that still has one
 pub(crate) const DASH_BLOCK_FREEZE_TIME: f32 = 0.05;
 
-// a solid block that a dash breaks. broken means its solid is no longer collidable
+// a solid block that a dash breaks in the game
+// broken means its solid is no longer collidable
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DashBlock {
     pub solid_id: usize,

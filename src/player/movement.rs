@@ -157,6 +157,7 @@ pub(crate) fn move_v(player: &mut Player, room: &Room, entities: &Entities, amou
                     return;
                 }
 
+                // bumping her head ends the jump hold, except in its first few frames
                 if player.jump_timer < JUMP_HOLD_TIME - CEILING_JUMP_GRACE {
                     player.jump_timer = 0.0;
                 }

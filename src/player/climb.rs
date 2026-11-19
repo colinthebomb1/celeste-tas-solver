@@ -157,6 +157,7 @@ fn slipping(player: &Player, room: &Room, entities: &Entities, add_y: i32) -> bo
     };
     let y = her.top + 4 + add_y;
 
+    // add_y counts twice in the second check
     !room.is_solid_at(entities, x, y) && !room.is_solid_at(entities, x, y - 4 + add_y)
 }
 

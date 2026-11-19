@@ -70,7 +70,7 @@ pub(crate) const DASH_CORNER_CORRECTION: i32 = 4;
 
 // ---- grabbing and climbing
 pub(crate) const CLIMB_MAX_STAMINA: f32 = 110.0;
-// a crystal also works below this much stamina
+// below this she is tired and can't grab. a crystal also works then
 pub(crate) const CLIMB_TIRED_THRESHOLD: f32 = 20.0;
 pub(crate) const CLIMB_JUMP_COST: f32 = 110.0 / 4.0;
 pub(crate) const CLIMB_UP_COST: f32 = 45.454544;

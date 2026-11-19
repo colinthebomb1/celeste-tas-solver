@@ -83,6 +83,7 @@ pub struct Player {
     pub state: State,
     pub crouching: bool,
     pub dead: bool,
+    // a freeze stops the whole game, not only her. dashes, crystals and dash blocks start one
     pub freeze_timer: f32,
 
     pub dashes: u8,
@@ -93,9 +94,10 @@ pub struct Player {
     // while this runs, holding jump keeps her rising at jump_speed
     pub jump_timer: f32,
     pub jump_speed: f32,
+    // acts as if jump were held. set by a dash ending, a spring and an upward room change
     pub auto_jump: bool,
 
-    // last frame's horizontal input
+    // left or right input after any forced move. the wallboost check reads last frame's
     pub move_x: i8,
     pub was_on_ground: bool,
     // after a wall kick or climbhop, her left and right input is replaced by this for a while

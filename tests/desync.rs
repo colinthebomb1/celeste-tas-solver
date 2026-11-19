@@ -50,7 +50,7 @@ fn column(line: &str, index: usize) -> &str {
     line.split('\t').nth(index).expect("missing column")
 }
 
-// The game prints Math.Round(v, 12): scale by 1e12 as a double, round half to even.
+// the game prints Math.Round(v, 12): scale by 1e12 as a double, round half to even
 fn fmt(v: f64) -> String {
     let scaled = (v.abs() * 1e12).round_ties_even() as u64;
     let sign = if v < 0.0 { "-" } else { "" };
@@ -115,7 +115,7 @@ fn is_dead(row: &str) -> bool {
     column(row, 7).split(' ').any(|status| status == "Dead")
 }
 
-// A trace that ends in death stops at the frame she dies, so it can be shorter than its inputs.
+// a trace that ends in death stops at the frame she dies, so it can be shorter than its inputs
 fn assert_matches_trace(name: &str, text: &str, inputs: &[Input]) {
     assert_matches_trace_in("lvl_1", name, text, inputs);
 }

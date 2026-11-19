@@ -99,6 +99,7 @@ fn is_ridden(entities: &Entities, index: usize, player: &Player) -> bool {
     )
 }
 
+// the game takes the cosine as a double and rounds it to a float
 fn sine_in(t: f32) -> f32 {
     -(((std::f32::consts::FRAC_PI_2 * t) as f64).cos() as f32) + 1.0
 }

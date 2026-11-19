@@ -13,7 +13,7 @@ pub(crate) fn hitbox_height(player: &Player) -> i32 {
     }
 }
 
-// her feet are at her position, in the middle of the box
+// her position is the middle of the box's bottom edge
 fn box_at_feet(player: &Player, height: i32) -> Rect {
     Rect::new(
         player.position.x - HITBOX_WIDTH / 2,

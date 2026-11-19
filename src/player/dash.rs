@@ -54,7 +54,7 @@ pub(crate) fn dash_begin(player: &mut Player, room: &Room, entities: &Entities, 
     player.speed = Vec2 { x: 0.0, y: 0.0 };
     player.dash.dir = Vec2 { x: 0.0, y: 0.0 };
 
-    // holding down at the start of a dash crouchs
+    // an air dash stands her up if there is room. otherwise holding down or a demodash crouches her
     if !ground && player.crouching && can_stand(player, room, entities) {
         player.crouching = false;
     } else if !player.crouching && (demodash_pressed || input.move_y == 1) {

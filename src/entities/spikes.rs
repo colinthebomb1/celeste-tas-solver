@@ -1,6 +1,6 @@
 use crate::geom::IVec2;
 use crate::geom::{Direction, Rect};
-use crate::level::map::{Element, MapError, entities};
+use crate::level::map::{Element, MapError, entities_named};
 use crate::level::room::Room;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,7 +51,7 @@ const SPIKE_KINDS: [(&str, Direction, &str); 4] = [
 
 pub(crate) fn load_spikes(level: &Element, origin: IVec2, room: &mut Room) -> Result<(), MapError> {
     for (name, direction, length) in SPIKE_KINDS {
-        for entity in entities(level, name) {
+        for entity in entities_named(level, name) {
             room.spikes.push(Spikes::new(
                 direction,
                 origin.x + entity.require("x")?,

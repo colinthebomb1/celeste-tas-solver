@@ -13,10 +13,10 @@ fn first_room_matches_the_game() {
     };
     assert_eq!(room.origin, IVec2 { x: 0, y: 0 });
     assert_eq!((room.width, room.height), (40, 23));
-    assert!(room.tile_solid(4, 18));
-    assert!(!room.tile_solid(5, 18));
-    assert!(room.tile_solid(10, 16));
-    assert!(!room.tile_solid(10, 15));
+    assert!(room.has_tile(4, 18));
+    assert!(!room.has_tile(5, 18));
+    assert!(room.has_tile(10, 16));
+    assert!(!room.has_tile(10, 15));
     assert_eq!(room.name, "lvl_1");
     assert_eq!(
         room.bounds,
@@ -89,7 +89,7 @@ fn rooms_load_their_dash_blocks() {
     assert_eq!(with_dash_blocks, ["lvl_5", "lvl_6", "lvl_6c", "lvl_7z"]);
     let lvl_6 = &chapter.rooms[chapter.room_named("lvl_6").unwrap()];
     assert_eq!(
-        lvl_6.initial.solids[lvl_6.initial.dash_blocks[0].solid].rect,
+        lvl_6.initial.solids[lvl_6.initial.dash_blocks[0].solid_id].rect,
         Rect::new(1544, -1096, 16, 24)
     );
 }
@@ -128,7 +128,7 @@ fn rooms_load_their_zippers() {
         (IVec2 { x: 1128, y: -760 }, IVec2 { x: 1128, y: -840 })
     );
     assert_eq!(
-        lvl_5.initial.solids[zip.solid].rect,
+        lvl_5.initial.solids[zip.solid_id].rect,
         Rect::new(1128, -760, 32, 16)
     );
 }

@@ -1,8 +1,9 @@
+use crate::entities::Entities;
 use crate::entities::Solid;
 use crate::geom::IVec2;
 use crate::geom::Rect;
-use crate::level::map::{Element, MapError, entities};
-use crate::level::room::{Room, RoomState};
+use crate::level::map::{Element, MapError, entities_named};
+use crate::level::room::Room;
 use crate::player::collision::hitbox;
 use crate::player::constants::DELTA_TIME;
 use crate::player::{Player, State};
@@ -24,7 +25,7 @@ pub enum CrumbleStage {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CrumbleBlock {
-    pub solid: usize,
+    pub solid_id: usize,
 
     // everything below changes as it runs
     pub stage: CrumbleStage,
@@ -33,12 +34,12 @@ pub struct CrumbleBlock {
     pub on_top: bool,
 }
 
-impl RoomState {
+impl Entities {
     // (x, y) is its top-left corner
     pub fn add_crumble_block(&mut self, x: i32, y: i32, width: i32) {
-        let solid = self.add_solid(Rect::new(x, y, width, CRUMBLE_HEIGHT));
+        let solid_id = self.add_solid(Rect::new(x, y, width, CRUMBLE_HEIGHT));
         self.crumble_blocks.push(CrumbleBlock {
-            solid,
+            solid_id,
             stage: CrumbleStage::Idle,
             timer: 0.0,
             shakes_left: 0,
@@ -52,7 +53,7 @@ pub(crate) fn load_crumble_blocks(
     origin: IVec2,
     room: &mut Room,
 ) -> Result<(), MapError> {
-    for entity in entities(level, "crumbleBlock") {
+    for entity in entities_named(level, "crumbleBlock") {
         room.initial.add_crumble_block(
             origin.x + entity.require("x")?,
             origin.y + entity.require("y")?,
@@ -63,15 +64,15 @@ pub(crate) fn load_crumble_blocks(
     Ok(())
 }
 
-pub(crate) fn update_crumble_blocks(state: &mut RoomState, player: &Player) {
-    let RoomState {
+pub(crate) fn update_crumble_blocks(entities: &mut Entities, player: &Player) {
+    let Entities {
         crumble_blocks,
         solids,
         ..
-    } = state;
+    } = entities;
 
     for block in crumble_blocks {
-        update_crumble_block(block, &mut solids[block.solid], player);
+        update_crumble_block(block, &mut solids[block.solid_id], player);
     }
 }
 
@@ -152,14 +153,14 @@ mod tests {
     use crate::fixtures::at;
 
     // one block, 40 px wide with its top at y = 64
-    fn block() -> RoomState {
-        let mut state = RoomState::default();
-        state.add_crumble_block(304, 64, 40);
-        state
+    fn block() -> Entities {
+        let mut entities = Entities::default();
+        entities.add_crumble_block(304, 64, 40);
+        entities
     }
 
-    fn solid(state: &RoomState) -> bool {
-        state.solids[state.crumble_blocks[0].solid].collidable
+    fn collidable(entities: &Entities) -> bool {
+        entities.solids[entities.crumble_blocks[0].solid_id].collidable
     }
 
     fn on_top() -> Player {
@@ -179,10 +180,10 @@ mod tests {
     }
 
     // frames until it is no longer solid
-    fn frames_to_crumble(state: &mut RoomState, player: &Player) -> usize {
+    fn frames_to_crumble(entities: &mut Entities, player: &Player) -> usize {
         let mut frames = 0;
-        while solid(state) {
-            update_crumble_blocks(state, player);
+        while collidable(entities) {
+            update_crumble_blocks(entities, player);
             frames += 1;
             assert!(frames < 1000);
         }
@@ -198,10 +199,10 @@ mod tests {
     fn it_is_solid_until_it_crumbles() {
         let mut block = block();
         let corner = Rect::new(304, 64, 1, 1);
-        assert!(block.solid(&corner));
+        assert!(block.touches_solid(&corner));
 
         block.solids[0].collidable = false;
-        assert!(!block.solid(&corner));
+        assert!(!block.touches_solid(&corner));
     }
 
     #[test]
@@ -283,7 +284,7 @@ mod tests {
         frames_to_crumble(&mut block, &away());
 
         let mut frames = 0;
-        while !solid(&block) {
+        while !collidable(&block) {
             update_crumble_blocks(&mut block, &away());
             frames += 1;
         }
@@ -302,10 +303,10 @@ mod tests {
         for _ in 0..10 {
             update_crumble_blocks(&mut block, &inside);
         }
-        assert!(!solid(&block));
+        assert!(!collidable(&block));
 
         update_crumble_blocks(&mut block, &away());
-        assert!(solid(&block));
+        assert!(collidable(&block));
     }
 
     #[test]
@@ -315,7 +316,7 @@ mod tests {
         block.crumble_blocks[0].stage = CrumbleStage::Gone;
 
         update_crumble_blocks(&mut block, &on_top());
-        assert!(solid(&block));
+        assert!(collidable(&block));
         assert_eq!(block.crumble_blocks[0].stage, CrumbleStage::Shaking);
     }
 }

@@ -315,7 +315,7 @@ fn chapter_1a() {
 
     let mut player = start_state(&first_two_lines);
     let mut room = chapter.room_named("lvl_1").expect("no lvl_1");
-    let mut state = chapter.rooms[room].initial.clone();
+    let mut entities = chapter.rooms[room].initial.clone();
     let mut matched = 0;
     let mut frame = 1;
 
@@ -336,13 +336,13 @@ fn chapter_1a() {
             player,
             input_from_row(rows[frame]),
             &chapter.rooms[room],
-            &mut state,
+            &mut entities,
         );
 
         let transition = if player.dead {
             None
         } else {
-            find_transition(&player, &chapter, room, &state)
+            find_transition(&player, &chapter, room, &entities)
         };
         if let Some(transition) = transition {
             before_transition(&mut player, transition.direction);
@@ -357,9 +357,9 @@ fn chapter_1a() {
 
         // nothing is simulated during a transition. the next row compared is the one where it ends
         if let Some(transition) = transition {
-            finish_transition(&mut player, &chapter, &state, transition);
+            finish_transition(&mut player, &chapter, &entities, transition);
             room = transition.to;
-            state = chapter.rooms[room].initial.clone();
+            entities = chapter.rooms[room].initial.clone();
 
             // buttons let go of during the transition count as presses afterwards
             let end = (frame + TRANSITION_FRAMES - 1).min(rows.len() - 1);

@@ -95,7 +95,10 @@ impl Element {
 }
 
 // the entities with this name among a level's "entities" children
-pub(crate) fn entities<'a>(level: &'a Element, name: &'a str) -> impl Iterator<Item = &'a Element> {
+pub(crate) fn entities_named<'a>(
+    level: &'a Element,
+    name: &'a str,
+) -> impl Iterator<Item = &'a Element> {
     level
         .child("entities")
         .into_iter()
@@ -646,13 +649,13 @@ mod tests {
         let a = load_room(&map, "room_a").unwrap();
         assert_eq!(a.origin, IVec2 { x: 0, y: 0 });
         assert_eq!((a.width, a.height), (3, 2));
-        assert!(!a.tile_solid(0, 0));
-        assert!(a.tile_solid(2, 0));
-        assert!(a.tile_solid(0, 1));
+        assert!(!a.has_tile(0, 0));
+        assert!(a.has_tile(2, 0));
+        assert!(a.has_tile(0, 1));
 
         let b = load_room(&map, "room_b").unwrap();
         assert_eq!(b.origin, IVec2 { x: 320, y: -184 });
-        assert!(b.tile_solid(0, 0));
+        assert!(b.has_tile(0, 0));
     }
 
     #[test]
@@ -802,7 +805,7 @@ mod tests {
         let map = map_with_entities(&[element("dashBlock", &attributes, &[])]);
         let room = load_room(&map, "room_b").unwrap();
         assert_eq!(
-            room.initial.solids[room.initial.dash_blocks[0].solid].rect,
+            room.initial.solids[room.initial.dash_blocks[0].solid_id].rect,
             Rect::new(568, -72, 16, 24)
         );
     }
@@ -843,11 +846,11 @@ mod tests {
         ]);
         let room = load_room(&map, "room_b").unwrap();
         assert_eq!(
-            room.initial.solids[room.initial.falling_blocks[0].solid].rect,
+            room.initial.solids[room.initial.falling_blocks[0].solid_id].rect,
             Rect::new(472, -24, 32, 24)
         );
         assert_eq!(
-            room.initial.solids[room.initial.falling_blocks[1].solid].rect,
+            room.initial.solids[room.initial.falling_blocks[1].solid_id].rect,
             Rect::new(472, -24, 32, 24)
         );
         assert!(room.initial.falling_blocks[0].climb_fall);
@@ -859,7 +862,7 @@ mod tests {
         let map = map_with_entities(&[entity("crumbleBlock", 304, 64, Some(("width", 40)))]);
         let room = load_room(&map, "room_b").unwrap();
         assert_eq!(
-            room.initial.solids[room.initial.crumble_blocks[0].solid].rect,
+            room.initial.solids[room.initial.crumble_blocks[0].solid_id].rect,
             Rect::new(624, -120, 40, 8)
         );
     }
@@ -879,7 +882,7 @@ mod tests {
         let map = map_with_entities(&[zipper_entity(Some((104, 184)))]);
         let room = load_room(&map, "room_b").unwrap();
         assert_eq!(
-            room.initial.solids[room.initial.zippers[0].solid].rect,
+            room.initial.solids[room.initial.zippers[0].solid_id].rect,
             Rect::new(424, 80, 32, 16)
         );
         assert_eq!(room.initial.zippers[0].start, IVec2 { x: 424, y: 80 });

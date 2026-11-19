@@ -4,13 +4,14 @@ use super::constants::*;
 use super::dash::{dashing, refill_dash};
 use super::movement::{add_liftboost, lerp, nudge_v, set_lift_speed};
 use super::state::{Frame, Input, Player, set_normal};
+use crate::entities::Entities;
 use crate::geom::{Direction, Rect};
-use crate::level::room::{Room, RoomState};
+use crate::level::room::Room;
 
 pub(crate) fn wall_slide_max_fall(
     player: &mut Player,
     room: &Room,
-    state: &RoomState,
+    entities: &Entities,
     input: Input,
 ) -> f32 {
     let mut max = player.max_fall;
@@ -20,8 +21,8 @@ pub(crate) fn wall_slide_max_fall(
         if player.speed.y >= 0.0
             && player.wall.slide_timer > 0.0
             && climb_in_bounds(player, room, player.facing)
-            && collides(player, room, state, player.facing as i32, 0)
-            && can_stand(player, room, state)
+            && collides(player, room, entities, player.facing as i32, 0)
+            && can_stand(player, room, entities)
         {
             player.crouching = false;
             player.wall.slide_dir = player.facing;
@@ -58,13 +59,13 @@ pub(crate) fn jump(player: &mut Player, input: Input) {
 pub(crate) fn can_super_dash(
     player: &Player,
     room: &Room,
-    state: &RoomState,
+    entities: &Entities,
     jump_pressed: bool,
 ) -> bool {
     jump_pressed
         && player.coyote_timer > 0.0
         && player.dash.dir.y == 0.0
-        && can_stand(player, room, state)
+        && can_stand(player, room, entities)
 }
 
 pub(crate) fn super_dash(player: &mut Player) {
@@ -93,7 +94,7 @@ fn wallbounce_ready(player: &Player) -> bool {
     player.dash.attack_timer > 0.0 && player.dash.dir.x == 0.0 && player.dash.dir.y == -1.0
 }
 
-fn wall_kick_check(player: &Player, room: &Room, state: &RoomState, dir: i8) -> bool {
+fn wall_kick_check(player: &Player, room: &Room, entities: &Entities, dir: i8) -> bool {
     let dir = dir as i32;
     let mut dist = WALL_KICK_REACH;
 
@@ -119,10 +120,10 @@ fn wall_kick_check(player: &Player, room: &Room, state: &RoomState, dir: i8) -> 
         }
     }
 
-    collides(player, room, state, dir * dist, 0)
+    collides(player, room, entities, dir * dist, 0)
 }
 
-pub(crate) fn wall_kick(player: &mut Player, state: &RoomState, dir: i8, move_x: i8) {
+pub(crate) fn wall_kick(player: &mut Player, entities: &Entities, dir: i8, move_x: i8) {
     player.crouching = false;
     player.coyote_timer = 0.0;
     player.jump_timer = JUMP_HOLD_TIME;
@@ -139,7 +140,7 @@ pub(crate) fn wall_kick(player: &mut Player, state: &RoomState, dir: i8, move_x:
     if player.lift.speed == NO_LIFT && player.lift.last_speed == NO_LIFT {
         // dir is the way she kicks, so the wall is the other way
         let reach = hitbox(player, -(dir as i32) * WALL_KICK_REACH, 0);
-        if let Some(wall) = state
+        if let Some(wall) = entities
             .solids
             .iter()
             .find(|solid| solid.collidable && solid.rect.overlaps(&reach))
@@ -174,18 +175,18 @@ fn wallbounce(player: &mut Player, dir: i8) {
 pub(crate) fn jump_off_wall(
     player: &mut Player,
     room: &Room,
-    state: &RoomState,
+    entities: &Entities,
     frame: Frame,
 ) -> bool {
     let input = frame.input;
 
-    if !can_stand(player, room, state) {
+    if !can_stand(player, room, entities) {
         return false;
     }
 
-    let wall = if wall_kick_check(player, room, state, 1) {
+    let wall = if wall_kick_check(player, room, entities, 1) {
         1
-    } else if wall_kick_check(player, room, state, -1) {
+    } else if wall_kick_check(player, room, entities, -1) {
         -1
     } else {
         return false;
@@ -195,23 +196,23 @@ pub(crate) fn jump_off_wall(
 
     if dashing_up {
         wallbounce(player, -wall);
-    } else if can_climb_jump(player, room, state, input) {
+    } else if can_climb_jump(player, room, entities, input) {
         climb_jump(player, frame);
     } else if wallbounce_ready(player) {
         wallbounce(player, -wall);
     } else {
-        wall_kick(player, state, -wall, input.move_x);
+        wall_kick(player, entities, -wall, input.move_x);
     }
 
     true
 }
 
-fn can_climb_jump(player: &Player, room: &Room, state: &RoomState, input: Input) -> bool {
+fn can_climb_jump(player: &Player, room: &Room, entities: &Entities, input: Input) -> bool {
     let able = input.grab && player.stamina > 0.0;
 
-    if wall_kick_check(player, room, state, 1) {
+    if wall_kick_check(player, room, entities, 1) {
         player.facing == 1 && able
-    } else if wall_kick_check(player, room, state, -1) {
+    } else if wall_kick_check(player, room, entities, -1) {
         player.facing == -1 && able
     } else {
         false
@@ -235,8 +236,8 @@ pub(crate) fn climb_jump(player: &mut Player, frame: Frame) {
     set_normal(player);
 }
 
-fn spring_bounce(player: &mut Player, room: &Room, state: &RoomState, from_y: i32) {
-    nudge_v(player, room, state, (from_y - player.position.y) as f32);
+fn spring_bounce(player: &mut Player, room: &Room, entities: &Entities, from_y: i32) {
+    nudge_v(player, room, entities, (from_y - player.position.y) as f32);
 
     refill_dash(player);
     player.stamina = CLIMB_MAX_STAMINA;
@@ -254,10 +255,10 @@ fn spring_bounce(player: &mut Player, room: &Room, state: &RoomState, from_y: i3
     player.jump_speed = SPRING_SPEED;
 }
 
-pub(crate) fn bounce_on_springs(player: &mut Player, room: &Room, state: &RoomState) {
+pub(crate) fn bounce_on_springs(player: &mut Player, room: &Room, entities: &Entities) {
     for spring in &room.springs {
         if player.speed.y >= 0.0 && spring.hitbox.overlaps(&hurtbox(player)) {
-            spring_bounce(player, room, state, spring.hitbox.top);
+            spring_bounce(player, room, entities, spring.hitbox.top);
         }
     }
 }
@@ -1060,7 +1061,8 @@ mod tests {
     fn wall_kick_takes_lift_from_a_moving_wall_on_her_right() {
         let mut room = room();
         room.initial.add_zipper(60, 80, 16, 40, 60, 0);
-        room.initial.solids[room.initial.zippers[0].solid].lift_speed = Vec2 { x: 0.0, y: -90.0 };
+        room.initial.solids[room.initial.zippers[0].solid_id].lift_speed =
+            Vec2 { x: 0.0, y: -90.0 };
 
         let mut s = player_at(54, 100, 0.0, 0.0);
         wall_kick(&mut s, &room.initial, -1, 0);
@@ -1068,24 +1070,24 @@ mod tests {
     }
 
     // a rising block whose right edge is 2 px from her left side
-    fn rising_block_on_her_left() -> (RoomState, Player) {
-        let mut state = RoomState::default();
-        let id = state.add_solid(Rect::new(40, 80, 16, 40));
-        state.solids[id].lift_speed = Vec2 { x: 0.0, y: -90.0 };
-        (state, player_at(62, 100, 0.0, 0.0))
+    fn rising_block_on_her_left() -> (Entities, Player) {
+        let mut entities = Entities::default();
+        let id = entities.add_solid(Rect::new(40, 80, 16, 40));
+        entities.solids[id].lift_speed = Vec2 { x: 0.0, y: -90.0 };
+        (entities, player_at(62, 100, 0.0, 0.0))
     }
 
     #[test]
     fn wall_kick_takes_lift_from_a_moving_wall_on_her_left() {
-        let (state, mut s) = rising_block_on_her_left();
-        wall_kick(&mut s, &state, 1, 0);
+        let (entities, mut s) = rising_block_on_her_left();
+        wall_kick(&mut s, &entities, 1, 0);
         assert_eq!(s.speed.y, JUMP_SPEED - 90.0);
     }
 
     #[test]
     fn wall_kick_takes_no_lift_from_a_block_behind_her() {
-        let (state, mut s) = rising_block_on_her_left();
-        wall_kick(&mut s, &state, -1, 0);
+        let (entities, mut s) = rising_block_on_her_left();
+        wall_kick(&mut s, &entities, -1, 0);
         assert_eq!(s.speed.y, JUMP_SPEED);
     }
 

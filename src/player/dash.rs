@@ -2,8 +2,9 @@ use super::collision::can_stand;
 use super::constants::*;
 use super::movement::sign;
 use super::state::{Frame, Input, Player, State, set_normal};
+use crate::entities::Entities;
 use crate::geom::Vec2;
-use crate::level::room::{Room, RoomState};
+use crate::level::room::Room;
 
 pub(crate) fn dashing(player: &Player) -> bool {
     matches!(player.state, State::DashStart | State::Dash { .. })
@@ -34,7 +35,7 @@ pub(crate) fn can_dash(player: &Player, dash_pressed: bool) -> bool {
     dash_pressed && player.dash.cooldown <= 0.0 && player.dashes > 0
 }
 
-pub(crate) fn dash_begin(player: &mut Player, room: &Room, state: &RoomState, frame: Frame) {
+pub(crate) fn dash_begin(player: &mut Player, room: &Room, entities: &Entities, frame: Frame) {
     let Frame {
         input,
         ground,
@@ -54,7 +55,7 @@ pub(crate) fn dash_begin(player: &mut Player, room: &Room, state: &RoomState, fr
     player.dash.dir = Vec2 { x: 0.0, y: 0.0 };
 
     // holding down at the start of a dash crouchs
-    if !ground && player.crouching && can_stand(player, room, state) {
+    if !ground && player.crouching && can_stand(player, room, entities) {
         player.crouching = false;
     } else if !player.crouching && (demodash_pressed || input.move_y == 1) {
         player.crouching = true;

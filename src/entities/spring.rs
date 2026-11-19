@@ -1,6 +1,6 @@
 use crate::geom::IVec2;
 use crate::geom::Rect;
-use crate::level::map::{Element, MapError, entities};
+use crate::level::map::{Element, MapError, entities_named};
 use crate::level::room::Room;
 
 const SPRING_WIDTH: i32 = 16;
@@ -32,7 +32,7 @@ pub(crate) fn load_springs(
     origin: IVec2,
     room: &mut Room,
 ) -> Result<(), MapError> {
-    for entity in entities(level, "spring") {
+    for entity in entities_named(level, "spring") {
         room.springs.push(Spring::new(
             origin.x + entity.require("x")?,
             origin.y + entity.require("y")?,

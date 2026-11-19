@@ -1,6 +1,6 @@
 use crate::geom::IVec2;
 use crate::geom::Rect;
-use crate::level::map::{Element, MapError, entities};
+use crate::level::map::{Element, MapError, entities_named};
 use crate::level::room::Room;
 
 const JUMP_THRU_HEIGHT: i32 = 5;
@@ -29,7 +29,7 @@ pub(crate) fn load_jump_thrus(
     origin: IVec2,
     room: &mut Room,
 ) -> Result<(), MapError> {
-    for entity in entities(level, "jumpThru") {
+    for entity in entities_named(level, "jumpThru") {
         room.jump_thrus.push(JumpThru::new(
             origin.x + entity.require("x")?,
             origin.y + entity.require("y")?,

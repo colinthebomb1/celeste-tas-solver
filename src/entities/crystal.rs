@@ -1,7 +1,8 @@
+use crate::entities::Entities;
 use crate::geom::IVec2;
 use crate::geom::Rect;
-use crate::level::map::{Element, MapError, entities};
-use crate::level::room::{Room, RoomState};
+use crate::level::map::{Element, MapError, entities_named};
+use crate::level::room::Room;
 use crate::player::Player;
 use crate::player::collision::hurtbox;
 use crate::player::constants::DELTA_TIME;
@@ -48,7 +49,7 @@ pub(crate) fn load_crystals(
     origin: IVec2,
     room: &mut Room,
 ) -> Result<(), MapError> {
-    for entity in entities(level, "refill") {
+    for entity in entities_named(level, "refill") {
         let two_dashes = entity.bool("twoDash").unwrap_or(false);
         let one_use = entity.bool("oneUse").unwrap_or(false);
 
@@ -63,8 +64,8 @@ pub(crate) fn load_crystals(
     Ok(())
 }
 
-pub(crate) fn update_crystals(state: &mut RoomState, player: &mut Player) {
-    for crystal in &mut state.crystals {
+pub(crate) fn update_crystals(entities: &mut Entities, player: &mut Player) {
+    for crystal in &mut entities.crystals {
         let touching = crystal.active && !player.dead && crystal.hitbox.overlaps(&hurtbox(player));
 
         if touching && use_crystal(player, crystal.two_dashes) {
@@ -88,10 +89,10 @@ mod tests {
     use crate::fixtures::at;
     use crate::player::constants::{CLIMB_MAX_STAMINA, CLIMB_TIRED_THRESHOLD};
 
-    fn with_crystal(crystal: Crystal) -> RoomState {
-        RoomState {
+    fn with_crystal(crystal: Crystal) -> Entities {
+        Entities {
             crystals: vec![crystal],
-            ..RoomState::default()
+            ..Entities::default()
         }
     }
 
@@ -117,79 +118,79 @@ mod tests {
 
     #[test]
     fn touching_a_crystal_restores_her_dash_and_stamina_and_freezes() {
-        let mut state = with_crystal(Crystal::new(16, 16, false, false));
+        let mut entities = with_crystal(Crystal::new(16, 16, false, false));
         let mut s = Player {
             stamina: 50.0,
             ..spent(16, 20)
         };
 
-        update_crystals(&mut state, &mut s);
+        update_crystals(&mut entities, &mut s);
 
         assert_eq!(s.dashes, 1);
         assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
         assert_eq!(s.freeze_timer, CRYSTAL_FREEZE_TIME);
-        assert!(!state.crystals[0].active);
+        assert!(!entities.crystals[0].active);
     }
 
     #[test]
     fn a_crystal_is_left_alone_when_she_has_her_dash() {
-        let mut state = with_crystal(Crystal::new(16, 16, false, false));
+        let mut entities = with_crystal(Crystal::new(16, 16, false, false));
         let mut s = at(16, 20);
 
-        update_crystals(&mut state, &mut s);
+        update_crystals(&mut entities, &mut s);
 
         assert_eq!(s.freeze_timer, 0.0);
-        assert!(state.crystals[0].active);
+        assert!(entities.crystals[0].active);
     }
 
     #[test]
     fn low_stamina_alone_uses_a_crystal() {
-        let mut state = with_crystal(Crystal::new(16, 16, false, false));
+        let mut entities = with_crystal(Crystal::new(16, 16, false, false));
         let mut s = Player {
             stamina: CLIMB_TIRED_THRESHOLD - 1.0,
             ..at(16, 20)
         };
 
-        update_crystals(&mut state, &mut s);
+        update_crystals(&mut entities, &mut s);
 
         assert_eq!(s.stamina, CLIMB_MAX_STAMINA);
-        assert!(!state.crystals[0].active);
+        assert!(!entities.crystals[0].active);
 
-        let mut state = with_crystal(Crystal::new(16, 16, false, false));
+        let mut entities = with_crystal(Crystal::new(16, 16, false, false));
         let mut s = Player {
             stamina: CLIMB_TIRED_THRESHOLD,
             ..at(16, 20)
         };
 
-        update_crystals(&mut state, &mut s);
+        update_crystals(&mut entities, &mut s);
 
-        assert!(state.crystals[0].active);
+        assert!(entities.crystals[0].active);
     }
 
     #[test]
     fn a_crystal_touches_her_hurtbox_not_her_hitbox() {
         // crystal spans y 8..24. her hurtbox stops 2 px above her feet
-        let mut state = with_crystal(Crystal::new(16, 16, false, false));
+        let mut entities = with_crystal(Crystal::new(16, 16, false, false));
 
         let mut s = spent(16, 10);
-        update_crystals(&mut state, &mut s);
+        update_crystals(&mut entities, &mut s);
         assert_eq!(s.dashes, 0);
 
         let mut s = spent(16, 11);
-        update_crystals(&mut state, &mut s);
+        update_crystals(&mut entities, &mut s);
         assert_eq!(s.dashes, 1);
     }
 
     #[test]
     fn a_used_crystal_comes_back_after_its_respawn_time() {
-        let mut state = with_crystal(Crystal::new(16, 16, false, false));
+        let mut entities = with_crystal(Crystal::new(16, 16, false, false));
         let mut s = spent(16, 20);
-        update_crystals(&mut state, &mut s);
+        update_crystals(&mut entities, &mut s);
 
         let mut away = spent(100, 100);
         let mut frames = 1;
-        while !state.crystals[0].active {
-            update_crystals(&mut state, &mut away);
+        while !entities.crystals[0].active {
+            update_crystals(&mut entities, &mut away);
             frames += 1;
         }
 
@@ -198,50 +199,50 @@ mod tests {
 
     #[test]
     fn a_used_crystal_does_nothing_until_it_is_back() {
-        let mut state = with_crystal(Crystal::new(16, 16, false, false));
+        let mut entities = with_crystal(Crystal::new(16, 16, false, false));
         let mut s = spent(16, 20);
-        update_crystals(&mut state, &mut s);
+        update_crystals(&mut entities, &mut s);
 
         let mut s = spent(16, 20);
-        update_crystals(&mut state, &mut s);
+        update_crystals(&mut entities, &mut s);
 
         assert_eq!(s.dashes, 0);
     }
 
     #[test]
     fn a_one_use_crystal_never_comes_back() {
-        let mut state = with_crystal(Crystal::new(16, 16, false, true));
+        let mut entities = with_crystal(Crystal::new(16, 16, false, true));
         let mut s = spent(16, 20);
-        update_crystals(&mut state, &mut s);
+        update_crystals(&mut entities, &mut s);
 
         let mut away = spent(100, 100);
         for _ in 0..200 {
-            update_crystals(&mut state, &mut away);
+            update_crystals(&mut entities, &mut away);
         }
 
-        assert!(!state.crystals[0].active);
+        assert!(!entities.crystals[0].active);
     }
 
     #[test]
     fn a_two_dash_refill_gives_two_dashes() {
-        let mut state = with_crystal(Crystal::new(16, 16, true, false));
+        let mut entities = with_crystal(Crystal::new(16, 16, true, false));
         let mut s = at(16, 20);
 
-        update_crystals(&mut state, &mut s);
+        update_crystals(&mut entities, &mut s);
 
         assert_eq!(s.dashes, 2);
-        assert!(!state.crystals[0].active);
+        assert!(!entities.crystals[0].active);
     }
 
     #[test]
     fn the_dead_do_not_use_crystals() {
-        let mut state = with_crystal(Crystal::new(16, 16, false, false));
+        let mut entities = with_crystal(Crystal::new(16, 16, false, false));
         let mut s = Player {
             dead: true,
             ..spent(16, 20)
         };
 
-        update_crystals(&mut state, &mut s);
+        update_crystals(&mut entities, &mut s);
 
         assert_eq!(s.dashes, 0);
     }

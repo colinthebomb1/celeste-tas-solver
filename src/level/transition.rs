@@ -1,6 +1,7 @@
+use crate::entities::Entities;
 use crate::entities::dash_block::DASH_BLOCK_FREEZE_TIME;
 use crate::geom::Direction;
-use crate::level::room::{Chapter, RoomState};
+use crate::level::room::Chapter;
 use crate::player::Player;
 use crate::player::collision::{collides, hitbox_height};
 use crate::player::constants::{
@@ -25,12 +26,12 @@ pub struct Transition {
     pub direction: Direction,
 }
 
-// state is the state of the room she is in
+// entities are those of the room she is in
 pub fn find_transition(
     player: &Player,
     chapter: &Chapter,
     room: usize,
-    state: &RoomState,
+    entities: &Entities,
 ) -> Option<Transition> {
     let bounds = chapter.rooms[room].bounds;
     let height = hitbox_height(player);
@@ -66,7 +67,7 @@ pub fn find_transition(
         return to(center_x, center_y - VERTICAL_REACH, Direction::Up);
     }
 
-    if bottom > bounds.bottom() && !collides(player, &chapter.rooms[room], state, 0, 4) {
+    if bottom > bounds.bottom() && !collides(player, &chapter.rooms[room], entities, 0, 4) {
         return to(center_x, center_y + VERTICAL_REACH, Direction::Down);
     }
 
@@ -94,11 +95,11 @@ pub fn before_transition(player: &mut Player, direction: Direction) {
     }
 }
 
-// state is the state of the room she is leaving
+// entities are those of the room she is leaving
 pub fn finish_transition(
     player: &mut Player,
     chapter: &Chapter,
-    state: &RoomState,
+    entities: &Entities,
     transition: Transition,
 ) {
     let bounds = chapter.rooms[transition.to].bounds;
@@ -127,10 +128,10 @@ pub fn finish_transition(
     player.stamina = CLIMB_MAX_STAMINA;
 
     // the room she left is unloaded now, and every dash block still in it freezes the game
-    let left_a_dash_block = state
+    let left_a_dash_block = entities
         .dash_blocks
         .iter()
-        .any(|block| state.solids[block.solid].collidable);
+        .any(|block| entities.solids[block.solid_id].collidable);
     if left_a_dash_block {
         player.freeze_timer = player.freeze_timer.max(DASH_BLOCK_FREEZE_TIME);
     }
@@ -174,8 +175,8 @@ mod tests {
     }
 
     fn finish(player: &mut Player, chapter: &Chapter, transition: Transition) {
-        let state = &chapter.rooms[transition.from].initial;
-        finish_transition(player, chapter, state, transition);
+        let entities = &chapter.rooms[transition.from].initial;
+        finish_transition(player, chapter, entities, transition);
     }
 
     const CENTRE: usize = 0;

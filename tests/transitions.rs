@@ -86,16 +86,16 @@ fn transitions_match_the_trace() {
         let room = chapter
             .room_named(&row.room)
             .expect("unknown room in the trace");
-        let state = &chapter.rooms[room].initial;
+        let entities = &chapter.rooms[room].initial;
         let mut player = player(row);
-        let found = find_transition(&player, &chapter, room, state);
+        let found = find_transition(&player, &chapter, room, entities);
 
         if !row.no_control {
             // the trace doesn't say whether she is crouching, and a crouching player leaves later
             let mut crouching = player;
             crouching.crouching = true;
             assert!(
-                found.is_none() || find_transition(&crouching, &chapter, room, state).is_none(),
+                found.is_none() || find_transition(&crouching, &chapter, room, entities).is_none(),
                 "row {i}: a transition out of {} that the game didn't make",
                 row.room
             );
@@ -111,7 +111,7 @@ fn transitions_match_the_trace() {
         );
 
         before_transition(&mut player, transition.direction);
-        finish_transition(&mut player, &chapter, state, transition);
+        finish_transition(&mut player, &chapter, entities, transition);
 
         assert_eq!(
             (player.position.x as f64, player.position.y as f64),

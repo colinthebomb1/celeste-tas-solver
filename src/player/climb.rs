@@ -4,8 +4,9 @@ use super::dash::{can_dash, dash_begin};
 use super::jump::{climb_jump, wall_kick};
 use super::movement::{add_liftboost, approach, move_exact_h, move_exact_v, sign};
 use super::state::{Frame, HopSolid, Input, Player, State, set_normal};
+use crate::entities::Entities;
 use crate::geom::Rect;
-use crate::level::room::{Room, RoomState};
+use crate::level::room::Room;
 
 fn is_tired(player: &Player) -> bool {
     let stamina = if player.wall.boost_timer > 0.0 {
@@ -24,13 +25,18 @@ pub(crate) fn climb_in_bounds(player: &Player, room: &Room, dir: i8) -> bool {
     her.left >= room.bounds.left && her.right() < room.bounds.right()
 }
 
-fn climb_check(player: &Player, room: &Room, state: &RoomState, dir: i8, dy: i32) -> bool {
+fn climb_check(player: &Player, room: &Room, entities: &Entities, dir: i8, dy: i32) -> bool {
     let reach = dir as i32 * CLIMB_CHECK_DIST;
 
-    climb_in_bounds(player, room, dir) && collides(player, room, state, reach, dy)
+    climb_in_bounds(player, room, dir) && collides(player, room, entities, reach, dy)
 }
 
-pub(crate) fn try_grab(player: &mut Player, room: &Room, state: &RoomState, input: Input) -> bool {
+pub(crate) fn try_grab(
+    player: &mut Player,
+    room: &Room,
+    entities: &Entities,
+    input: Input,
+) -> bool {
     if !input.grab || is_tired(player) || player.crouching {
         return false;
     }
@@ -38,18 +44,18 @@ pub(crate) fn try_grab(player: &mut Player, room: &Room, state: &RoomState, inpu
         return false;
     }
 
-    if climb_check(player, room, state, player.facing, 0) {
-        climb_begin(player, room, state);
+    if climb_check(player, room, entities, player.facing, 0) {
+        climb_begin(player, room, entities);
         return true;
     }
 
     if input.move_y < 1 {
         for up in 1..=CLIMB_UP_CHECK_DIST {
-            if !collides(player, room, state, 0, -up)
-                && climb_check(player, room, state, player.facing, -up)
+            if !collides(player, room, entities, 0, -up)
+                && climb_check(player, room, entities, player.facing, -up)
             {
-                move_exact_v(player, room, state, -up);
-                climb_begin(player, room, state);
+                move_exact_v(player, room, entities, -up);
+                climb_begin(player, room, entities);
                 return true;
             }
         }
@@ -58,7 +64,7 @@ pub(crate) fn try_grab(player: &mut Player, room: &Room, state: &RoomState, inpu
     false
 }
 
-fn climb_begin(player: &mut Player, room: &Room, state: &RoomState) {
+fn climb_begin(player: &mut Player, room: &Room, entities: &Entities) {
     player.crouching = false;
     player.auto_jump = false;
     player.speed.x = 0.0;
@@ -70,7 +76,7 @@ fn climb_begin(player: &mut Player, room: &Room, state: &RoomState) {
 
     // pull her against the wall
     for _ in 0..CLIMB_CHECK_DIST {
-        if collides(player, room, state, player.facing as i32, 0) {
+        if collides(player, room, entities, player.facing as i32, 0) {
             break;
         }
         player.position.x += player.facing as i32;
@@ -79,22 +85,22 @@ fn climb_begin(player: &mut Player, room: &Room, state: &RoomState) {
     player.state = State::Climb;
 }
 
-fn solid_in(state: &RoomState, rect: &Rect) -> Option<HopSolid> {
-    let id = state
+fn solid_in(entities: &Entities, rect: &Rect) -> Option<HopSolid> {
+    let id = entities
         .solids
         .iter()
         .position(|solid| solid.collidable && solid.rect.overlaps(rect))?;
 
     Some(HopSolid {
         id,
-        position: state.solids[id].position(),
+        position: entities.solids[id].position(),
     })
 }
 
 // she pops up over the ledge. the sideways push waits until the wall is out of her way
-fn climbhop(player: &mut Player, room: &Room, state: &RoomState) {
-    if collides(player, room, state, player.facing as i32, 0) {
-        player.climb.hop_solid = solid_in(state, &hitbox(player, player.facing as i32, 0));
+fn climbhop(player: &mut Player, room: &Room, entities: &Entities) {
+    if collides(player, room, entities, player.facing as i32, 0) {
+        player.climb.hop_solid = solid_in(entities, &hitbox(player, player.facing as i32, 0));
         player.climb.hop_wait = player.facing;
         player.climb.hop_speed = player.facing as f32 * CLIMBHOP_X;
     } else {
@@ -110,39 +116,39 @@ fn climbhop(player: &mut Player, room: &Room, state: &RoomState) {
 }
 
 // keeps her beside a moving block while she hops onto it
-pub(crate) fn follow_hop_solid(player: &mut Player, room: &Room, state: &RoomState) {
+pub(crate) fn follow_hop_solid(player: &mut Player, room: &Room, entities: &Entities) {
     let Some(solid) = player.climb.hop_solid else {
         return;
     };
 
-    let now = state.solids[solid.id];
+    let now = entities.solids[solid.id];
 
     match now.collidable.then_some(now.position()) {
         None => player.climb.hop_solid = None,
         Some(position) if position != solid.position => {
             player.climb.hop_solid = Some(HopSolid { position, ..solid });
-            move_exact_h(player, room, state, position.x - solid.position.x);
-            move_exact_v(player, room, state, position.y - solid.position.y);
+            move_exact_h(player, room, entities, position.x - solid.position.x);
+            move_exact_v(player, room, entities, position.y - solid.position.y);
         }
         Some(_) => {}
     }
 }
 
-pub(crate) fn update_hop_wait(player: &mut Player, room: &Room, state: &RoomState) {
+pub(crate) fn update_hop_wait(player: &mut Player, room: &Room, entities: &Entities) {
     if player.climb.hop_wait == 0 {
         return;
     }
 
     if sign(player.speed.x) == -(player.climb.hop_wait as f32) || player.speed.y > 0.0 {
         player.climb.hop_wait = 0;
-    } else if !collides(player, room, state, player.climb.hop_wait as i32, 0) {
+    } else if !collides(player, room, entities, player.climb.hop_wait as i32, 0) {
         player.speed.x = player.climb.hop_speed;
         player.climb.hop_wait = 0;
     }
 }
 
 // her hands are above the top of the wall
-fn slip_check(player: &Player, room: &Room, state: &RoomState, add_y: i32) -> bool {
+fn slip_check(player: &Player, room: &Room, entities: &Entities, add_y: i32) -> bool {
     let her = hitbox(player, 0, 0);
     let x = if player.facing == 1 {
         her.right()
@@ -151,10 +157,10 @@ fn slip_check(player: &Player, room: &Room, state: &RoomState, add_y: i32) -> bo
     };
     let y = her.top + 4 + add_y;
 
-    !room.solid_at(state, x, y) && !room.solid_at(state, x, y - 4 + add_y)
+    !room.is_solid_at(entities, x, y) && !room.is_solid_at(entities, x, y - 4 + add_y)
 }
 
-pub(crate) fn climb_update(player: &mut Player, room: &Room, state: &RoomState, frame: Frame) {
+pub(crate) fn climb_update(player: &mut Player, room: &Room, entities: &Entities, frame: Frame) {
     let Frame {
         input,
         ground,
@@ -169,9 +175,9 @@ pub(crate) fn climb_update(player: &mut Player, room: &Room, state: &RoomState, 
         player.stamina = CLIMB_MAX_STAMINA;
     }
 
-    if jump_pressed && can_stand(player, room, state) {
+    if jump_pressed && can_stand(player, room, entities) {
         if input.move_x == -player.facing {
-            wall_kick(player, state, -player.facing, input.move_x);
+            wall_kick(player, entities, -player.facing, input.move_x);
         } else {
             climb_jump(player, frame);
         }
@@ -180,7 +186,7 @@ pub(crate) fn climb_update(player: &mut Player, room: &Room, state: &RoomState, 
 
     if can_dash(player, dash_pressed) {
         add_liftboost(player);
-        dash_begin(player, room, state, frame);
+        dash_begin(player, room, entities, frame);
         return;
     }
 
@@ -190,9 +196,9 @@ pub(crate) fn climb_update(player: &mut Player, room: &Room, state: &RoomState, 
         return;
     }
 
-    if !collides(player, room, state, player.facing as i32, 0) {
+    if !collides(player, room, entities, player.facing as i32, 0) {
         if player.speed.y < 0.0 {
-            climbhop(player, room, state);
+            climbhop(player, room, entities);
         } else {
             set_normal(player);
         }
@@ -204,15 +210,15 @@ pub(crate) fn climb_update(player: &mut Player, room: &Room, state: &RoomState, 
     let mut may_slip = !can_move || input.move_y == 0;
 
     if can_move && input.move_y == -1 {
-        let hop_blocked = collides(player, room, state, 0, -CLIMBHOP_BLOCK_DIST);
+        let hop_blocked = collides(player, room, entities, 0, -CLIMBHOP_BLOCK_DIST);
 
-        if collides(player, room, state, 0, -1)
-            || (hop_blocked && slip_check(player, room, state, -1))
+        if collides(player, room, entities, 0, -1)
+            || (hop_blocked && slip_check(player, room, entities, -1))
         {
             player.speed.y = player.speed.y.max(0.0);
             may_slip = true;
-        } else if slip_check(player, room, state, 0) {
-            climbhop(player, room, state);
+        } else if slip_check(player, room, entities, 0) {
+            climbhop(player, room, entities);
             return;
         } else {
             target = CLIMB_UP_SPEED;
@@ -227,7 +233,7 @@ pub(crate) fn climb_update(player: &mut Player, room: &Room, state: &RoomState, 
 
     player.climb.last_move = sign(target) as i8;
 
-    if may_slip && slip_check(player, room, state, 0) {
+    if may_slip && slip_check(player, room, entities, 0) {
         target = CLIMB_SLIP_SPEED;
     }
     player.speed.y = approach(player.speed.y, target, CLIMB_ACCEL * DELTA_TIME);
@@ -235,7 +241,7 @@ pub(crate) fn climb_update(player: &mut Player, room: &Room, state: &RoomState, 
     // nothing to slide down
     if input.move_y != 1
         && player.speed.y > 0.0
-        && !collides(player, room, state, player.facing as i32, 1)
+        && !collides(player, room, entities, player.facing as i32, 1)
     {
         player.speed.y = 0.0;
     }

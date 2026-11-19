@@ -1,8 +1,9 @@
 use super::constants::*;
 use super::state::{Player, State};
+use crate::entities::Entities;
 use crate::entities::Spikes;
 use crate::geom::{Direction, Rect};
-use crate::level::room::{Room, RoomState};
+use crate::level::room::Room;
 
 pub(crate) fn hitbox_height(player: &Player) -> i32 {
     if player.crouching {
@@ -40,27 +41,33 @@ pub(crate) fn hurtbox(player: &Player) -> Rect {
 }
 
 // whether her hitbox would be inside something solid if she moved this far
-pub(crate) fn collides(player: &Player, room: &Room, state: &RoomState, dx: i32, dy: i32) -> bool {
-    room.solid(state, &hitbox(player, dx, dy))
+pub(crate) fn collides(
+    player: &Player,
+    room: &Room,
+    entities: &Entities,
+    dx: i32,
+    dy: i32,
+) -> bool {
+    room.is_solid(entities, &hitbox(player, dx, dy))
 }
 
 // like collides, but a jump-through under her also counts when she is moving down onto it
-pub(crate) fn blocked(player: &Player, room: &Room, state: &RoomState, dx: i32, dy: i32) -> bool {
-    collides(player, room, state, dx, dy) || (dy > 0 && enters_jump_thru(player, room, dx, dy))
+pub(crate) fn blocked(player: &Player, room: &Room, entities: &Entities, dx: i32, dy: i32) -> bool {
+    collides(player, room, entities, dx, dy) || (dy > 0 && enters_jump_thru(player, room, dx, dy))
 }
 
-pub(crate) fn on_ground(player: &Player, room: &Room, state: &RoomState) -> bool {
-    player.speed.y >= 0.0 && blocked(player, room, state, 0, 1)
+pub(crate) fn on_ground(player: &Player, room: &Room, entities: &Entities) -> bool {
+    player.speed.y >= 0.0 && blocked(player, room, entities, 0, 1)
 }
 
-pub(crate) fn can_stand(player: &Player, room: &Room, state: &RoomState) -> bool {
-    !player.crouching || !room.solid(state, &box_at_feet(player, HITBOX_HEIGHT))
+pub(crate) fn can_stand(player: &Player, room: &Room, entities: &Entities) -> bool {
+    !player.crouching || !room.is_solid(entities, &box_at_feet(player, HITBOX_HEIGHT))
 }
 
 // room to be crouched this far to the side
-pub(crate) fn crouch_free_at(player: &Player, room: &Room, state: &RoomState, dx: i32) -> bool {
-    !room.solid(
-        state,
+pub(crate) fn crouch_free_at(player: &Player, room: &Room, entities: &Entities, dx: i32) -> bool {
+    !room.is_solid(
+        entities,
         &box_at_feet(player, CROUCH_HITBOX_HEIGHT).shifted(dx, 0),
     )
 }

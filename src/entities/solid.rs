@@ -1,7 +1,8 @@
+use crate::entities::Entities;
 use crate::geom::IVec2;
 use crate::geom::Rect;
 use crate::geom::Vec2;
-use crate::level::room::{Room, RoomState};
+use crate::level::room::Room;
 use crate::player::Player;
 use crate::player::collision::{hitbox, is_riding};
 use crate::player::constants::DELTA_TIME;
@@ -35,9 +36,24 @@ impl Solid {
     }
 }
 
+impl Entities {
+    // returns its place in the list
+    pub fn add_solid(&mut self, rect: Rect) -> usize {
+        self.solids.push(Solid::new(rect));
+        self.solids.len() - 1
+    }
+
+    // whether any block that is solid right now overlaps this
+    pub fn touches_solid(&self, rect: &Rect) -> bool {
+        self.solids
+            .iter()
+            .any(|solid| solid.collidable && solid.rect.overlaps(rect))
+    }
+}
+
 // a solid only has lift speed on a frame where it moved
-pub(crate) fn reset_lift_speeds(state: &mut RoomState) {
-    for solid in &mut state.solids {
+pub(crate) fn reset_lift_speeds(entities: &mut Entities) {
+    for solid in &mut entities.solids {
         solid.lift_speed = Vec2 { x: 0.0, y: 0.0 };
     }
 }
@@ -64,40 +80,40 @@ pub(crate) fn advance_v(solid: &mut Solid, amount: f32) -> i32 {
 // moves it so its top-left corner is at (x, y), sideways first
 pub(crate) fn move_solid_to(
     room: &Room,
-    state: &mut RoomState,
+    entities: &mut Entities,
     id: usize,
     player: &mut Player,
     x: f32,
     y: f32,
 ) {
-    let solid = &mut state.solids[id];
+    let solid = &mut entities.solids[id];
     let amount_x = x - (solid.rect.left as f32 + solid.subpixel.x);
     let pixels_x = advance_h(solid, amount_x);
     if pixels_x != 0 {
-        move_solid(room, state, id, player, pixels_x, 0);
+        move_solid(room, entities, id, player, pixels_x, 0);
     }
 
-    let solid = &mut state.solids[id];
+    let solid = &mut entities.solids[id];
     let amount_y = y - (solid.rect.top as f32 + solid.subpixel.y);
     let pixels_y = advance_v(solid, amount_y);
     if pixels_y != 0 {
-        move_solid(room, state, id, player, 0, pixels_y);
+        move_solid(room, entities, id, player, 0, pixels_y);
     }
 }
 
 // moves it by whole pixels along one axis. it carries her if she is riding it and pushes her if it runs into her
 pub(crate) fn move_solid(
     room: &Room,
-    state: &mut RoomState,
+    entities: &mut Entities,
     id: usize,
     player: &mut Player,
     dx: i32,
     dy: i32,
 ) {
-    let before = state.solids[id].rect;
+    let before = entities.solids[id].rect;
     let riding = is_riding(player, &before);
 
-    let solid = &mut state.solids[id];
+    let solid = &mut entities.solids[id];
     solid.rect = before.shifted(dx, dy);
     let (after, lift_speed) = (solid.rect, solid.lift_speed);
 
@@ -125,14 +141,14 @@ pub(crate) fn move_solid(
     };
 
     // the block moving her doesn't block her
-    state.solids[id].collidable = false;
+    entities.solids[id].collidable = false;
     if her_dx != 0 {
-        move_exact_h(player, room, state, her_dx);
+        move_exact_h(player, room, entities, her_dx);
     }
     if her_dy != 0 {
-        move_exact_v(player, room, state, her_dy);
+        move_exact_v(player, room, entities, her_dy);
     }
-    state.solids[id].collidable = true;
+    entities.solids[id].collidable = true;
 
     set_lift_speed(player, lift_speed);
 }
@@ -146,11 +162,11 @@ mod tests {
     fn a_solid_blocks_her_until_it_is_not_collidable() {
         let mut room = open_room();
         let id = room.initial.add_solid(Rect::new(8, 8, 16, 8));
-        assert!(room.solid_at(&room.initial, 10, 10));
-        assert!(!room.solid_at(&room.initial, 10, 2));
+        assert!(room.is_solid_at(&room.initial, 10, 10));
+        assert!(!room.is_solid_at(&room.initial, 10, 2));
 
         room.initial.solids[id].collidable = false;
-        assert!(!room.solid_at(&room.initial, 10, 10));
+        assert!(!room.is_solid_at(&room.initial, 10, 10));
     }
 
     #[test]
@@ -164,50 +180,50 @@ mod tests {
     #[test]
     fn it_carries_her_when_she_stands_on_it() {
         let room = open_room();
-        let mut state = room.initial.clone();
-        let id = state.add_solid(Rect::new(40, 120, 32, 16));
+        let mut entities = room.initial.clone();
+        let id = entities.add_solid(Rect::new(40, 120, 32, 16));
         let mut s = at(56, 120);
 
-        move_solid(&room, &mut state, id, &mut s, 3, 0);
+        move_solid(&room, &mut entities, id, &mut s, 3, 0);
         assert_eq!(s.position, IVec2 { x: 59, y: 120 });
 
-        move_solid(&room, &mut state, id, &mut s, 0, -2);
+        move_solid(&room, &mut entities, id, &mut s, 0, -2);
         assert_eq!(s.position, IVec2 { x: 59, y: 118 });
     }
 
     #[test]
     fn it_pushes_her_out_of_its_way() {
         let room = open_room();
-        let mut state = room.initial.clone();
-        let id = state.add_solid(Rect::new(40, 120, 32, 16));
+        let mut entities = room.initial.clone();
+        let id = entities.add_solid(Rect::new(40, 120, 32, 16));
 
         // 2 px to its right, level with it
         let mut s = at(78, 130);
-        move_solid(&room, &mut state, id, &mut s, 5, 0);
+        move_solid(&room, &mut entities, id, &mut s, 5, 0);
         assert_eq!(s.position.x, 81);
     }
 
     #[test]
     fn it_leaves_her_alone_otherwise() {
         let room = open_room();
-        let mut state = room.initial.clone();
-        let id = state.add_solid(Rect::new(40, 120, 32, 16));
+        let mut entities = room.initial.clone();
+        let id = entities.add_solid(Rect::new(40, 120, 32, 16));
         let mut s = at(10, 50);
 
-        move_solid(&room, &mut state, id, &mut s, 0, -4);
+        move_solid(&room, &mut entities, id, &mut s, 0, -4);
         assert_eq!(s.position, IVec2 { x: 10, y: 50 });
-        assert_eq!(state.solids[id].position(), IVec2 { x: 40, y: 116 });
+        assert_eq!(entities.solids[id].position(), IVec2 { x: 40, y: 116 });
     }
 
     #[test]
     fn she_takes_its_lift_speed_when_it_moves_her() {
         let room = open_room();
-        let mut state = room.initial.clone();
-        let id = state.add_solid(Rect::new(40, 120, 32, 16));
-        state.solids[id].lift_speed = Vec2 { x: 0.0, y: -90.0 };
+        let mut entities = room.initial.clone();
+        let id = entities.add_solid(Rect::new(40, 120, 32, 16));
+        entities.solids[id].lift_speed = Vec2 { x: 0.0, y: -90.0 };
         let mut s = at(56, 120);
 
-        move_solid(&room, &mut state, id, &mut s, 0, -1);
+        move_solid(&room, &mut entities, id, &mut s, 0, -1);
         assert_eq!(s.lift.speed, Vec2 { x: 0.0, y: -90.0 });
     }
 }

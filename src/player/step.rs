@@ -13,11 +13,12 @@ use super::movement::{
     nudge_v, update_retention,
 };
 use super::state::{Frame, Input, Player, State, jump_pressed, track_buttons};
+use crate::entities::Entities;
 use crate::geom::Vec2;
-use crate::level::room::{Room, RoomState};
+use crate::level::room::Room;
 
 // one frame of her update
-pub fn step(mut player: Player, input: Input, room: &Room, state: &RoomState) -> Player {
+pub fn step(mut player: Player, input: Input, room: &Room, entities: &Entities) -> Player {
     if player.dead {
         return player;
     }
@@ -30,18 +31,24 @@ pub fn step(mut player: Player, input: Input, room: &Room, state: &RoomState) ->
         return player;
     }
 
-    frame.ground = on_ground(&player, room, state);
+    frame.ground = on_ground(&player, room, entities);
 
     run_timers(&mut player, room, frame.ground);
-    apply_input(&mut player, room, state, &mut frame);
-    update_state(&mut player, room, state, frame);
-    settle_before_moving(&mut player, room, state, frame.ground);
+    apply_input(&mut player, room, entities, &mut frame);
+    update_state(&mut player, room, entities, frame);
+    settle_before_moving(&mut player, room, entities, frame.ground);
 
     let (speed_x, speed_y) = (player.speed.x, player.speed.y);
-    move_h(&mut player, room, state, speed_x * DELTA_TIME, frame.ground);
-    move_v(&mut player, room, state, speed_y * DELTA_TIME);
+    move_h(
+        &mut player,
+        room,
+        entities,
+        speed_x * DELTA_TIME,
+        frame.ground,
+    );
+    move_v(&mut player, room, entities, speed_y * DELTA_TIME);
 
-    touch_hazards(&mut player, room, state);
+    touch_hazards(&mut player, room, entities);
 
     player.was_on_ground = frame.ground;
     player
@@ -110,7 +117,7 @@ fn run_timers(player: &mut Player, room: &Room, ground: bool) {
 }
 
 // works out the direction she is really moving and facing this frame
-fn apply_input(player: &mut Player, room: &Room, state: &RoomState, frame: &mut Frame) {
+fn apply_input(player: &mut Player, room: &Room, entities: &Entities, frame: &mut Frame) {
     let real = frame.input;
 
     if player.forced_move_timer > 0.0 {
@@ -120,7 +127,7 @@ fn apply_input(player: &mut Player, room: &Room, state: &RoomState, frame: &mut 
         player.climb.hop_solid = None;
     }
 
-    follow_hop_solid(player, room, state);
+    follow_hop_solid(player, room, entities);
 
     player.move_x = frame.input.move_x;
 
@@ -130,35 +137,35 @@ fn apply_input(player: &mut Player, room: &Room, state: &RoomState, frame: &mut 
 
     frame.aim = aim_vector(real, player.facing);
 
-    update_retention(player, room, state);
-    update_hop_wait(player, room, state);
+    update_retention(player, room, entities);
+    update_hop_wait(player, room, entities);
     tick(&mut player.jump_timer);
 
     if dashing(player) && player.dash.dir.y == 0.0 {
-        dash_jump_thru_nudge(player, room, state);
+        dash_jump_thru_nudge(player, room, entities);
     }
 }
 
 // runs whichever state she is in, which may put her in another
-fn update_state(player: &mut Player, room: &Room, state: &RoomState, frame: Frame) {
+fn update_state(player: &mut Player, room: &Room, entities: &Entities, frame: Frame) {
     let was_normal = player.state == State::Normal;
 
     match player.state {
         State::Normal => {
             walk_off_liftboost(player, frame.ground);
 
-            if try_grab(player, room, state, frame.input) {
+            if try_grab(player, room, entities, frame.input) {
                 // grabbed a wall
             } else if can_dash(player, frame.dash_pressed) {
                 add_liftboost(player);
-                dash_begin(player, room, state, frame);
+                dash_begin(player, room, entities, frame);
             } else {
-                normal_update(player, room, state, frame);
+                normal_update(player, room, entities, frame);
             }
         }
 
         State::Climb => {
-            climb_update(player, room, state, frame);
+            climb_update(player, room, entities, frame);
 
             if player.state != State::Climb {
                 player.wall.retention_timer = 0.0;
@@ -166,13 +173,13 @@ fn update_state(player: &mut Player, room: &Room, state: &RoomState, frame: Fram
         }
 
         State::DashStart => {
-            if !jump_out_of_dash(player, room, state, frame) {
+            if !jump_out_of_dash(player, room, entities, frame) {
                 dash_launch(player, frame.aim, frame.ground);
             }
         }
 
         State::Dash { timer } => {
-            if jump_out_of_dash(player, room, state, frame) {
+            if jump_out_of_dash(player, room, entities, frame) {
                 // the jump ended the dash
             } else if timer > 0.0 {
                 player.state = State::Dash {
@@ -199,17 +206,17 @@ fn walk_off_liftboost(player: &mut Player, ground: bool) {
     }
 }
 
-fn jump_out_of_dash(player: &mut Player, room: &Room, state: &RoomState, frame: Frame) -> bool {
-    if can_super_dash(player, room, state, frame.jump_pressed) {
+fn jump_out_of_dash(player: &mut Player, room: &Room, entities: &Entities, frame: Frame) -> bool {
+    if can_super_dash(player, room, entities, frame.jump_pressed) {
         super_dash(player);
         true
     } else {
-        frame.jump_pressed && jump_off_wall(player, room, state, frame)
+        frame.jump_pressed && jump_off_wall(player, room, entities, frame)
     }
 }
 
 // small adjustments the game makes after her state runs and before she moves
-fn settle_before_moving(player: &mut Player, room: &Room, state: &RoomState, ground: bool) {
+fn settle_before_moving(player: &mut Player, room: &Room, entities: &Entities, ground: bool) {
     // lift speed lasts a bit after the block stops moving
     player.lift.speed = NO_LIFT;
     if player.lift.timer > 0.0 {
@@ -223,14 +230,14 @@ fn settle_before_moving(player: &mut Player, room: &Room, state: &RoomState, gro
     let climbing_still = player.state == State::Climb && player.climb.last_move != -1;
     if !ground && player.speed.y <= 0.0 && !climbing_still && touches_jump_thru(player, room, 0, 0)
     {
-        nudge_v(player, room, state, JUMP_THRU_ASSIST_SPEED * DELTA_TIME);
+        nudge_v(player, room, entities, JUMP_THRU_ASSIST_SPEED * DELTA_TIME);
     }
 
     // a sideways dash just above the floor snaps down onto it
     if !ground && player.dash.attack_timer > 0.0 && player.dash.dir.y == 0.0 {
         let near = DASH_V_FLOOR_SNAP_DIST;
-        if collides(player, room, state, 0, near) || enters_jump_thru(player, room, 0, near) {
-            move_exact_v(player, room, state, near);
+        if collides(player, room, entities, 0, near) || enters_jump_thru(player, room, 0, near) {
+            move_exact_v(player, room, entities, near);
         }
     }
 
@@ -238,16 +245,16 @@ fn settle_before_moving(player: &mut Player, room: &Room, state: &RoomState, gro
     if player.speed.y > 0.0
         && !ground
         && player.coyote_timer <= 0.0
-        && can_stand(player, room, state)
+        && can_stand(player, room, entities)
     {
         player.crouching = false;
     }
 }
 
-fn touch_hazards(player: &mut Player, room: &Room, state: &RoomState) {
+fn touch_hazards(player: &mut Player, room: &Room, entities: &Entities) {
     let spiked = room.spikes.iter().any(|spikes| spikes_kill(player, spikes));
     if !spiked {
-        bounce_on_springs(player, room, state);
+        bounce_on_springs(player, room, entities);
     }
 
     if spiked || fell_out(player, room) {
@@ -256,7 +263,7 @@ fn touch_hazards(player: &mut Player, room: &Room, state: &RoomState) {
     }
 }
 
-fn normal_update(player: &mut Player, room: &Room, state: &RoomState, frame: Frame) {
+fn normal_update(player: &mut Player, room: &Room, entities: &Entities, frame: Frame) {
     let Frame {
         input,
         ground,
@@ -265,7 +272,7 @@ fn normal_update(player: &mut Player, room: &Room, state: &RoomState, frame: Fra
     } = frame;
 
     if player.crouching {
-        if ground && input.move_y != 1 && can_stand(player, room, state) {
+        if ground && input.move_y != 1 && can_stand(player, room, entities) {
             player.crouching = false;
         }
     } else if ground && input.move_y == 1 && player.speed.y >= 0.0 {
@@ -293,7 +300,7 @@ fn normal_update(player: &mut Player, room: &Room, state: &RoomState, frame: Fra
     player.max_fall = approach(player.max_fall, fall_limit, FASTFALL_ACCEL * DELTA_TIME);
 
     if !ground {
-        let max_fall = wall_slide_max_fall(player, room, state, input);
+        let max_fall = wall_slide_max_fall(player, room, entities, input);
         let grav_mult = if player.speed.y.abs() < HALF_GRAV_THRESHOLD
             && (input.jump_down() || player.auto_jump)
         {
@@ -316,7 +323,7 @@ fn normal_update(player: &mut Player, room: &Room, state: &RoomState, frame: Fra
         if player.coyote_timer > 0.0 {
             jump(player, input);
         } else {
-            jump_off_wall(player, room, state, frame);
+            jump_off_wall(player, room, entities, frame);
         }
     }
 }

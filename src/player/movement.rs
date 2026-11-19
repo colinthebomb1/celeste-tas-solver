@@ -2,8 +2,9 @@ use super::collision::{blocked, collides, crouch_free_at, hitbox};
 use super::constants::*;
 use super::dash::dashing;
 use super::state::Player;
+use crate::entities::Entities;
 use crate::geom::Vec2;
-use crate::level::room::{Room, RoomState};
+use crate::level::room::Room;
 
 pub(crate) fn set_lift_speed(player: &mut Player, lift_speed: Vec2) {
     player.lift.speed = lift_speed;
@@ -30,12 +31,12 @@ pub(crate) fn liftboost(player: &Player) -> Vec2 {
 pub(crate) fn move_exact_h(
     player: &mut Player,
     room: &Room,
-    state: &RoomState,
+    entities: &Entities,
     amount: i32,
 ) -> bool {
     let step = amount.signum();
     for _ in 0..amount.abs() {
-        if collides(player, room, state, step, 0) {
+        if collides(player, room, entities, step, 0) {
             player.subpixel.x = 0.0;
             return true;
         }
@@ -47,12 +48,12 @@ pub(crate) fn move_exact_h(
 pub(crate) fn move_exact_v(
     player: &mut Player,
     room: &Room,
-    state: &RoomState,
+    entities: &Entities,
     amount: i32,
 ) -> bool {
     let step = amount.signum();
     for _ in 0..amount.abs() {
-        if blocked(player, room, state, 0, step) {
+        if blocked(player, room, entities, 0, step) {
             player.subpixel.y = 0.0;
             return true;
         }
@@ -72,7 +73,7 @@ pub(crate) fn approach(value: f32, target: f32, max_move: f32) -> f32 {
 fn dash_corner_correction_h(
     player: &mut Player,
     room: &Room,
-    state: &RoomState,
+    entities: &Entities,
     ground: bool,
 ) -> bool {
     if !dashing(player) {
@@ -81,7 +82,7 @@ fn dash_corner_correction_h(
 
     let dir = sign(player.speed.x) as i32;
 
-    if ground && crouch_free_at(player, room, state, dir) {
+    if ground && crouch_free_at(player, room, entities, dir) {
         player.crouching = true;
         return true;
     }
@@ -89,14 +90,14 @@ fn dash_corner_correction_h(
     if player.speed.y == 0.0 && player.speed.x != 0.0 {
         for i in 1..=DASH_CORNER_CORRECTION {
             for dy in [i, -i] {
-                if !collides(player, room, state, dir, dy) {
+                if !collides(player, room, entities, dir, dy) {
                     for _ in 0..i {
-                        if collides(player, room, state, 0, dy.signum()) {
+                        if collides(player, room, entities, 0, dy.signum()) {
                             break;
                         }
                         player.position.y += dy.signum();
                     }
-                    if !collides(player, room, state, dir, 0) {
+                    if !collides(player, room, entities, dir, 0) {
                         player.position.x += dir;
                     }
                     return true;
@@ -112,7 +113,7 @@ fn dash_corner_correction_h(
 pub(crate) fn move_h(
     player: &mut Player,
     room: &Room,
-    state: &RoomState,
+    entities: &Entities,
     amount: f32,
     ground: bool,
 ) {
@@ -123,8 +124,8 @@ pub(crate) fn move_h(
 
     let step = movement_x.signum();
     for _ in 0..movement_x.abs() {
-        if collides(player, room, state, step, 0) {
-            if dash_corner_correction_h(player, room, state, ground) {
+        if collides(player, room, entities, step, 0) {
+            if dash_corner_correction_h(player, room, entities, ground) {
                 player.subpixel.x = 0.0;
                 return;
             }
@@ -143,7 +144,7 @@ pub(crate) fn move_h(
     }
 }
 
-pub(crate) fn move_v(player: &mut Player, room: &Room, state: &RoomState, amount: f32) {
+pub(crate) fn move_v(player: &mut Player, room: &Room, entities: &Entities, amount: f32) {
     let new_subpixel = player.subpixel.y + amount;
     // C# Math.Round
     let movement_y = new_subpixel.round_ties_even() as i32;
@@ -151,11 +152,11 @@ pub(crate) fn move_v(player: &mut Player, room: &Room, state: &RoomState, amount
 
     let step = movement_y.signum();
     for _ in 0..movement_y.abs() {
-        if blocked(player, room, state, 0, step) {
+        if blocked(player, room, entities, 0, step) {
             player.subpixel.y = 0.0;
 
             if player.speed.y < 0.0 {
-                if upward_corner_correction(player, room, state) {
+                if upward_corner_correction(player, room, entities) {
                     return;
                 }
 
@@ -163,7 +164,7 @@ pub(crate) fn move_v(player: &mut Player, room: &Room, state: &RoomState, amount
                     player.jump_timer = 0.0;
                 }
             } else if player.speed.y > 0.0 {
-                if dash_corner_correction_down(player, room, state) {
+                if dash_corner_correction_down(player, room, entities) {
                     return;
                 }
 
@@ -186,14 +187,14 @@ pub(crate) fn move_v(player: &mut Player, room: &Room, state: &RoomState, amount
     }
 }
 
-pub(crate) fn nudge_v(player: &mut Player, room: &Room, state: &RoomState, amount: f32) {
+pub(crate) fn nudge_v(player: &mut Player, room: &Room, entities: &Entities, amount: f32) {
     let new_subpixel = player.subpixel.y + amount;
     let movement_y = new_subpixel.round_ties_even() as i32;
     player.subpixel.y = new_subpixel - (movement_y as f32);
 
     let step = movement_y.signum();
     for _ in 0..movement_y.abs() {
-        if blocked(player, room, state, 0, step) {
+        if blocked(player, room, entities, 0, step) {
             player.subpixel.y = 0.0;
             return;
         }
@@ -201,13 +202,13 @@ pub(crate) fn nudge_v(player: &mut Player, room: &Room, state: &RoomState, amoun
     }
 }
 
-pub(crate) fn dash_jump_thru_nudge(player: &mut Player, room: &Room, state: &RoomState) {
+pub(crate) fn dash_jump_thru_nudge(player: &mut Player, room: &Room, entities: &Entities) {
     for jump_thru in &room.jump_thrus {
         let depth = player.position.y - jump_thru.hitbox.top;
 
         if jump_thru.hitbox.overlaps(&hitbox(player, 0, 0)) && depth <= DASH_H_JUMP_THRU_NUDGE {
             for _ in 0..depth {
-                if collides(player, room, state, 0, -1) {
+                if collides(player, room, entities, 0, -1) {
                     break;
                 }
                 player.position.y -= 1;
@@ -216,7 +217,7 @@ pub(crate) fn dash_jump_thru_nudge(player: &mut Player, room: &Room, state: &Roo
     }
 }
 
-fn dash_corner_correction_down(player: &mut Player, room: &Room, state: &RoomState) -> bool {
+fn dash_corner_correction_down(player: &mut Player, room: &Room, entities: &Entities) -> bool {
     if !dashing(player) || player.dash.started_on_ground {
         return false;
     }
@@ -232,14 +233,14 @@ fn dash_corner_correction_down(player: &mut Player, room: &Room, state: &RoomSta
 
     for dir in dirs {
         for i in 1..=DASH_CORNER_CORRECTION {
-            if !blocked(player, room, state, dir * i, 1) {
+            if !blocked(player, room, entities, dir * i, 1) {
                 for _ in 0..i {
-                    if collides(player, room, state, dir, 0) {
+                    if collides(player, room, entities, dir, 0) {
                         break;
                     }
                     player.position.x += dir;
                 }
-                if !blocked(player, room, state, 0, 1) {
+                if !blocked(player, room, entities, 0, 1) {
                     player.position.y += 1;
                 }
                 return true;
@@ -250,7 +251,7 @@ fn dash_corner_correction_down(player: &mut Player, room: &Room, state: &RoomSta
     false
 }
 
-fn upward_corner_correction(player: &mut Player, room: &Room, state: &RoomState) -> bool {
+fn upward_corner_correction(player: &mut Player, room: &Room, entities: &Entities) -> bool {
     let slack = CORNER_CORRECTION_SPEED_SLACK;
     let reach = if player.dash.attack_timer > 0.0 && player.speed.x.abs() < slack {
         DASH_UPWARD_CORNER_CORRECTION
@@ -260,7 +261,7 @@ fn upward_corner_correction(player: &mut Player, room: &Room, state: &RoomState)
 
     if player.speed.x <= slack {
         for i in 1..=reach {
-            if !collides(player, room, state, -i, -1) {
+            if !collides(player, room, entities, -i, -1) {
                 player.position.x -= i;
                 player.position.y -= 1;
                 return true;
@@ -270,7 +271,7 @@ fn upward_corner_correction(player: &mut Player, room: &Room, state: &RoomState)
 
     if player.speed.x >= -slack {
         for i in 1..=reach {
-            if !collides(player, room, state, i, -1) {
+            if !collides(player, room, entities, i, -1) {
                 player.position.x += i;
                 player.position.y -= 1;
                 return true;
@@ -291,7 +292,7 @@ pub(crate) fn add_liftboost(player: &mut Player) {
     player.speed.y += boost.y;
 }
 
-pub(crate) fn update_retention(player: &mut Player, room: &Room, state: &RoomState) {
+pub(crate) fn update_retention(player: &mut Player, room: &Room, entities: &Entities) {
     if player.wall.retention_timer <= 0.0 {
         return;
     }
@@ -300,7 +301,7 @@ pub(crate) fn update_retention(player: &mut Player, room: &Room, state: &RoomSta
 
     if sign(player.speed.x) == -dir {
         player.wall.retention_timer = 0.0;
-    } else if !collides(player, room, state, dir as i32, 0) {
+    } else if !collides(player, room, entities, dir as i32, 0) {
         player.speed.x = player.wall.retained_speed;
         player.wall.retention_timer = 0.0;
     } else {

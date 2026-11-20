@@ -342,7 +342,8 @@ fn the_capped_search_on_room_1() {
         max_frames: 200,
         max_states: usize::MAX,
         cut: None,
-        max_late: Some(4),
+        // MAX_LATE=8 to change how late a state may be, MAX_LATE=off for no limit
+        max_late: std::env::var("MAX_LATE").map_or(Some(4), |most| most.parse().ok()),
         nearest: Some(nearest),
         per_place,
         // ALL_INPUTS=1 to try every input, to compare against
@@ -356,7 +357,7 @@ fn the_capped_search_on_room_1() {
         None => format!("no route after {} frames", report.states_per_frame.len()),
     };
     eprintln!(
-        "keeping {nearest}, {per_place:?} per place: {result}, {:.0} s",
+        "keeping {nearest}, {per_place:?} per place: {result}, {:.1} s",
         began.elapsed().as_secs_f64()
     );
 

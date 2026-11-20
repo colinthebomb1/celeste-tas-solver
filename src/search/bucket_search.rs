@@ -1,5 +1,8 @@
-use std::collections::hash_map::Entry;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
+use std::collections::hash_map::{DefaultHasher, Entry};
+use std::hash::{BuildHasherDefault, Hash, Hasher};
+
+use rayon::prelude::*;
 
 use crate::level::room::Chapter;
 use crate::player::collision::on_ground;
@@ -15,6 +18,8 @@ const POSITION_STEPS_PER_PIXEL: f32 = 8.0;
 const SPEED_BUCKET: f32 = 5.0;
 // she has 0, 1 or 2 dashes
 const DASH_COUNTS: usize = 3;
+// fewest states handed to a thread at once
+const MIN_RUN: usize = 16;
 
 // where a search is trying to get to
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -167,15 +172,47 @@ fn route_to(links: &[Link], last: Link) -> Vec<Input> {
     inputs
 }
 
+// a quick hash for maps whose keys are one number
+#[derive(Default)]
+struct OneNumber(u64);
+
+impl Hasher for OneNumber {
+    fn write(&mut self, _: &[u8]) {
+        unreachable!("only for keys that are one u64");
+    }
+
+    fn write_u64(&mut self, key: u64) {
+        let mixed = key.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        self.0 = mixed ^ (mixed >> 32);
+    }
+
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+type NumberMap<V> = HashMap<u64, V, BuildHasherDefault<OneNumber>>;
+
+// a bucket boiled down to one number. two sharing a number is possible but very unlikely
+fn fingerprint(bucket: &Bucket) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    bucket.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn pixel_key(sim: &Sim) -> u64 {
+    let position = sim.player.position;
+    ((position.x as u32 as u64) << 32) | position.y as u32 as u64
+}
+
 // the frame each pixel was first reached on, for each number of dashes left
-type FirstArrivals = HashMap<(i32, i32), [Option<usize>; DASH_COUNTS]>;
+type FirstArrivals = NumberMap<[Option<usize>; DASH_COUNTS]>;
 
 // notes that a state is here on this frame. returns how many frames ago the first state
 // with at least as many dashes was
 fn frames_behind(first_at: &mut FirstArrivals, sim: &Sim, frame: usize) -> usize {
-    let place = (sim.player.position.x, sim.player.position.y);
     let dashes = (sim.player.dashes as usize).min(DASH_COUNTS - 1);
-    let first = first_at.entry(place).or_default();
+    let first = first_at.entry(pixel_key(sim)).or_default();
 
     first[dashes].get_or_insert(frame);
     let earliest = first[dashes..].iter().flatten().min();
@@ -206,34 +243,37 @@ fn place(sim: &Sim) -> Place {
     }
 }
 
+// a state the search has not dropped yet, kept small so that thousands sort quickly
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Pick {
+    place: Place,
+    speed_x: f32,
+    // where its full state is: which run of the frame's stepping, and where in that run
+    run: usize,
+    index: usize,
+}
+
 // keeps at most this many states for each place, spread from the slowest to the fastest
-fn keep_variety(states: Vec<(Sim, Link)>, most: usize) -> Vec<(Sim, Link)> {
-    // in order of place, so the result does not change from run to run
-    let mut by_place: BTreeMap<Place, Vec<(Sim, Link)>> = BTreeMap::new();
-    for state in states {
-        by_place.entry(place(&state.0)).or_default().push(state);
-    }
+fn keep_variety(mut picks: Vec<Pick>, most: usize) -> Vec<Pick> {
+    // both sorts leave ties in the order they were found, so the result is always the same
+    picks.sort_by_key(|pick| pick.place);
 
     let mut kept = Vec::new();
-    for mut group in by_place.into_values() {
+    for group in picks.chunk_by(|a, b| a.place == b.place) {
         if group.len() <= most {
-            kept.append(&mut group);
+            kept.extend_from_slice(group);
             continue;
         }
 
-        group.sort_by(|a, b| a.0.player.speed.x.total_cmp(&b.0.player.speed.x));
-        let last = group.len() - 1;
-        let picks: Vec<usize> = (0..most)
-            .map(|pick| match most {
+        let mut by_speed = group.to_vec();
+        by_speed.sort_by(|a, b| a.speed_x.total_cmp(&b.speed_x));
+        let last = by_speed.len() - 1;
+        for pick in 0..most {
+            let index = match most {
                 1 => last / 2,
                 _ => pick * last / (most - 1),
-            })
-            .collect();
-
-        for (index, state) in group.into_iter().enumerate() {
-            if picks.contains(&index) {
-                kept.push(state);
-            }
+            };
+            kept.push(by_speed[index]);
         }
     }
 
@@ -253,14 +293,108 @@ fn keep_nearest(states: &mut Vec<(Sim, Link)>, most: usize, distances: &Option<D
     states.truncate(most);
 }
 
+// a state one input on from a living one, before the search has decided whether to keep it
+struct Candidate {
+    sim: Sim,
+    link: Link,
+    // of its bucket
+    fingerprint: u64,
+    // held in place by the freeze at the start of a dash, which is not the same as being behind
+    held_still: bool,
+}
+
+// what stepping a run of states leads to
+#[derive(Default)]
+struct Expanded {
+    candidates: Vec<Candidate>,
+    // the first step that reached the goal
+    reached_goal: Option<Link>,
+}
+
+// what every thread reads while stepping states. none of it changes during a frame
+#[derive(Clone, Copy)]
+struct Step<'a> {
+    chapter: &'a Chapter,
+    limits: Limits,
+    distances: &'a Option<DistanceMap>,
+    stop_at: Option<Goal>,
+    frame: usize,
+}
+
+impl Step<'_> {
+    // steps each state by each input worth trying, in order, stopping if one reaches the goal
+    fn expand(self, lists: &mut InputLists, states: &[(Sim, Option<usize>)]) -> Expanded {
+        let mut expanded = Expanded::default();
+
+        for (sim, parent) in states {
+            let inputs = if self.limits.all_inputs {
+                lists.all()
+            } else {
+                lists.worth_trying(self.chapter, sim)
+            };
+            let siblings = expanded.candidates.len();
+
+            for &input in inputs {
+                let mut after = sim.clone();
+                step_chapter(&mut after, self.chapter, input);
+                let link = Link {
+                    parent: *parent,
+                    input,
+                };
+
+                let reached = if after.player.finished {
+                    Some(Goal::Finish)
+                } else {
+                    after.entering().map(Goal::Room)
+                };
+                if reached.is_some() && reached == self.stop_at {
+                    expanded.reached_goal = Some(link);
+                    return expanded;
+                }
+
+                // dead, or out by a way that is not the goal
+                if reached.is_some() || after.player.dead {
+                    continue;
+                }
+
+                let too_late = self.limits.cut.is_some_and(|cut| {
+                    cut.too_late(self.frame, pixels_to_goal(self.distances, &after))
+                });
+                if too_late {
+                    continue;
+                }
+
+                // only the first input from a state to reach a bucket can be kept
+                let fingerprint = fingerprint(&bucket(self.chapter, &after));
+                let repeat = expanded.candidates[siblings..]
+                    .iter()
+                    .any(|sibling| sibling.fingerprint == fingerprint);
+                if repeat {
+                    continue;
+                }
+
+                let held_still =
+                    after.player.freeze_timer > 0.0 || after.player.state == State::DashStart;
+                expanded.candidates.push(Candidate {
+                    sim: after,
+                    link,
+                    fingerprint,
+                    held_still,
+                });
+            }
+        }
+
+        expanded
+    }
+}
+
 // the states a search is carrying, and every bucket it has been in
 struct Frontier {
-    inputs: InputLists,
     limits: Limits,
     // pixels to the goal from each place. only made when a limit uses it
     distances: Option<DistanceMap>,
-    // the frame each bucket was first reached on
-    seen: HashMap<Bucket, usize>,
+    // the frame each bucket was first reached on, by the bucket's fingerprint
+    seen: NumberMap<usize>,
     links: Vec<Link>,
     // each state alive, with the link that reached it
     alive: Vec<(Sim, Option<usize>)>,
@@ -272,13 +406,12 @@ impl Frontier {
         let uses_distances = limits.cut.is_some() || limits.nearest.is_some();
 
         Frontier {
-            inputs: InputLists::new(),
             limits,
             distances: uses_distances.then(|| DistanceMap::new(chapter, start.room, goal)),
-            seen: HashMap::from([(bucket(chapter, start), 0)]),
+            seen: NumberMap::from_iter([(fingerprint(&bucket(chapter, start)), 0)]),
             links: Vec::new(),
             alive: vec![(start.clone(), None)],
-            first_at: FirstArrivals::new(),
+            first_at: FirstArrivals::default(),
         }
     }
 
@@ -289,64 +422,60 @@ impl Frontier {
         stop_at: Option<Goal>,
         frame: usize,
     ) -> Option<Vec<Input>> {
-        let mut next = Vec::new();
+        let step = Step {
+            chapter,
+            limits: self.limits,
+            distances: &self.distances,
+            stop_at,
+            frame,
+        };
 
-        for (sim, parent) in &self.alive {
-            let inputs = if self.limits.all_inputs {
-                self.inputs.all()
-            } else {
-                self.inputs.worth_trying(chapter, sim)
-            };
+        // each thread steps a run of states. the runs come back in order, so the result is the same
+        let run = (self.alive.len() / (rayon::current_num_threads() * 4)).max(MIN_RUN);
+        let runs: Vec<Expanded> = self
+            .alive
+            .par_chunks(run)
+            .map_init(InputLists::new, |lists, states| step.expand(lists, states))
+            .collect();
 
-            for &input in inputs {
-                let mut after = sim.clone();
-                step_chapter(&mut after, chapter, input);
-                let link = Link {
-                    parent: *parent,
-                    input,
-                };
+        if let Some(link) = runs.iter().find_map(|run| run.reached_goal) {
+            return Some(route_to(&self.links, link));
+        }
 
-                let reached = if after.player.finished {
-                    Some(Goal::Finish)
-                } else {
-                    after.entering().map(Goal::Room)
-                };
-                if reached.is_some() && reached == stop_at {
-                    return Some(route_to(&self.links, link));
-                }
-
-                // dead, or out by a way that is not the goal
-                if reached.is_some() || after.player.dead {
-                    continue;
-                }
-
-                let too_late = self.limits.cut.is_some_and(|cut| {
-                    cut.too_late(frame, pixels_to_goal(&self.distances, &after))
-                });
-                if too_late {
-                    continue;
-                }
-
-                // the freeze at the start of a dash holds her still without her being behind
-                let held_still =
-                    after.player.freeze_timer > 0.0 || after.player.state == State::DashStart;
-                if !held_still {
-                    let behind = frames_behind(&mut self.first_at, &after, frame);
+        // only a small record of each candidate is passed around until it is known which are kept
+        let mut picks = Vec::new();
+        for (run, expanded) in runs.iter().enumerate() {
+            for (index, candidate) in expanded.candidates.iter().enumerate() {
+                if !candidate.held_still {
+                    let behind = frames_behind(&mut self.first_at, &candidate.sim, frame);
                     if self.limits.max_late.is_some_and(|most| behind > most) {
                         continue;
                     }
                 }
 
-                if let Entry::Vacant(unseen) = self.seen.entry(bucket(chapter, &after)) {
+                if let Entry::Vacant(unseen) = self.seen.entry(candidate.fingerprint) {
                     unseen.insert(frame);
-                    next.push((after, link));
+                    picks.push(Pick {
+                        place: place(&candidate.sim),
+                        speed_x: candidate.sim.player.speed.x,
+                        run,
+                        index,
+                    });
                 }
             }
         }
 
         if let Some(most) = self.limits.per_place {
-            next = keep_variety(next, most);
+            picks = keep_variety(picks, most);
         }
+
+        let mut next: Vec<(Sim, Link)> = picks
+            .iter()
+            .map(|pick| {
+                let candidate = &runs[pick.run].candidates[pick.index];
+                (candidate.sim.clone(), candidate.link)
+            })
+            .collect();
         if let Some(most) = self.limits.nearest {
             keep_nearest(&mut next, most, &self.distances);
         }
@@ -420,7 +549,8 @@ pub fn follow_route(
             break;
         }
 
-        paces.push(match frontier.seen.get(&bucket(chapter, &on_route)) {
+        let route_bucket = fingerprint(&bucket(chapter, &on_route));
+        paces.push(match frontier.seen.get(&route_bucket) {
             Some(&reached) if reached < frame => Pace::Ahead,
             Some(_) => Pace::Level,
             None => Pace::Lost,
@@ -736,7 +866,7 @@ mod tests {
     fn a_state_is_behind_by_the_frames_since_the_first_one_there() {
         let chapter = row_of_rooms();
         let sim = Sim::new(&chapter, 0, at(40, 176));
-        let mut first_at = FirstArrivals::new();
+        let mut first_at = FirstArrivals::default();
 
         assert_eq!(frames_behind(&mut first_at, &sim, 3), 0);
         assert_eq!(frames_behind(&mut first_at, &sim, 3), 0);
@@ -749,7 +879,7 @@ mod tests {
         let with_dash = Sim::new(&chapter, 0, at(40, 176));
         let mut without = with_dash.clone();
         without.player.dashes = 0;
-        let mut first_at = FirstArrivals::new();
+        let mut first_at = FirstArrivals::default();
 
         // the first one here had used its dash, so a later one that still has it is not behind
         assert_eq!(frames_behind(&mut first_at, &without, 2), 0);
@@ -829,54 +959,77 @@ mod tests {
         assert!(!paces.contains(&Pace::Lost), "{paces:?}");
     }
 
-    fn state_at(chapter: &Chapter, x: i32, speed_x: f32) -> (Sim, Link) {
-        let mut sim = Sim::new(chapter, 0, at(x, 176));
-        sim.player.speed.x = speed_x;
-        let link = Link {
-            parent: None,
-            input: NONE,
-        };
-        (sim, link)
+    // a record of a state on the floor at this x, the nth one found
+    fn pick_at(chapter: &Chapter, x: i32, speed_x: f32, index: usize) -> Pick {
+        Pick {
+            place: place(&Sim::new(chapter, 0, at(x, 176))),
+            speed_x,
+            run: 0,
+            index,
+        }
     }
 
-    fn speeds(states: &[(Sim, Link)]) -> Vec<f32> {
-        let mut speeds: Vec<f32> = states.iter().map(|(sim, _)| sim.player.speed.x).collect();
-        speeds.sort_by(f32::total_cmp);
-        speeds
+    fn speeds(picks: &[Pick]) -> Vec<f32> {
+        picks.iter().map(|pick| pick.speed_x).collect()
     }
 
     #[test]
     fn one_place_keeps_a_spread_from_its_slowest_state_to_its_fastest() {
         let chapter = row_of_rooms();
-        let states: Vec<_> = [40.0, 10.0, 60.0, 20.0, 50.0, 30.0]
+        let picks: Vec<Pick> = [40.0, 10.0, 60.0, 20.0, 50.0, 30.0]
             .into_iter()
-            .map(|speed| state_at(&chapter, 40, speed))
+            .enumerate()
+            .map(|(index, speed)| pick_at(&chapter, 40, speed, index))
             .collect();
 
-        assert_eq!(speeds(&keep_variety(states, 3)), vec![10.0, 30.0, 60.0]);
+        assert_eq!(speeds(&keep_variety(picks, 3)), vec![10.0, 30.0, 60.0]);
     }
 
     #[test]
-    fn a_place_with_few_states_keeps_them_all() {
+    fn a_place_with_few_states_keeps_them_all_in_the_order_found() {
         let chapter = row_of_rooms();
-        let states = vec![state_at(&chapter, 40, 10.0), state_at(&chapter, 40, 20.0)];
+        let picks = vec![
+            pick_at(&chapter, 40, 20.0, 0),
+            pick_at(&chapter, 40, 10.0, 1),
+        ];
 
-        assert_eq!(keep_variety(states, 3).len(), 2);
+        assert_eq!(speeds(&keep_variety(picks, 3)), vec![20.0, 10.0]);
     }
 
     #[test]
     fn what_she_has_left_makes_it_a_different_place() {
         let chapter = row_of_rooms();
-        let fresh = state_at(&chapter, 40, 10.0);
-        let mut no_dash = state_at(&chapter, 40, 20.0);
-        no_dash.0.player.dashes = 0;
-        let mut tired = state_at(&chapter, 40, 30.0);
-        tired.0.player.stamina = 50.0;
-        let elsewhere = state_at(&chapter, 41, 40.0);
+        let fresh = Sim::new(&chapter, 0, at(40, 176));
+        let mut no_dash = fresh.clone();
+        no_dash.player.dashes = 0;
+        let mut tired = fresh.clone();
+        tired.player.stamina = 50.0;
+        let elsewhere = Sim::new(&chapter, 0, at(41, 176));
+
+        let picks: Vec<Pick> = [fresh, no_dash, tired, elsewhere]
+            .iter()
+            .enumerate()
+            .map(|(index, sim)| Pick {
+                place: place(sim),
+                speed_x: 0.0,
+                run: 0,
+                index,
+            })
+            .collect();
 
         // one each, though all but the last stand on the same pixel
-        let kept = keep_variety(vec![fresh, no_dash, tired, elsewhere], 1);
-        assert_eq!(kept.len(), 4);
+        assert_eq!(keep_variety(picks, 1).len(), 4);
+    }
+
+    #[test]
+    fn different_buckets_get_different_fingerprints() {
+        let chapter = row_of_rooms();
+        let here = Sim::new(&chapter, 0, at(40, 176));
+        let there = Sim::new(&chapter, 0, at(41, 176));
+
+        let print = |sim: &Sim| fingerprint(&bucket(&chapter, sim));
+        assert_eq!(print(&here), print(&here.clone()));
+        assert_ne!(print(&here), print(&there));
     }
 
     // the new states each input leads to, in the order the search would keep them
@@ -975,6 +1128,33 @@ mod tests {
         let trying_all = bucket_search(&chapter, &start, Goal::Room(1), every_input);
         assert_eq!(skipping.inputs, trying_all.inputs);
         assert_eq!(skipping.states_per_frame, trying_all.states_per_frame);
+    }
+
+    #[test]
+    fn the_number_of_threads_does_not_change_what_is_found() {
+        let chapter = playground();
+        let start = Sim::new(&chapter, 0, at(12, 64));
+        let limits = Limits {
+            max_frames: 25,
+            nearest: Some(300),
+            per_place: Some(2),
+            max_late: Some(4),
+            ..LIMITS
+        };
+        // the goal can't be reached, so every frame is searched
+        let search = || bucket_search(&chapter, &start, Goal::Finish, limits).states_per_frame;
+        let on_threads = |threads: usize| {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .expect("could not start the threads")
+                .install(search)
+        };
+
+        let alone = on_threads(1);
+        assert_eq!(alone.len(), 25);
+        assert_eq!(on_threads(2), alone);
+        assert_eq!(on_threads(7), alone);
     }
 
     // needs the game, and is slow without --release:

@@ -139,6 +139,7 @@ fn bucket_search_on_room_1() {
     let limits = Limits {
         max_frames: 120,
         max_states: 300_000,
+        cut: None,
     };
 
     let began = std::time::Instant::now();
@@ -172,6 +173,7 @@ fn the_search_keeps_the_tas_line_through_room_1() {
     let limits = Limits {
         max_frames: STRETCH,
         max_states: 2_000_000,
+        cut: None,
     };
 
     let mut sim = start;
@@ -204,4 +206,62 @@ fn the_search_keeps_the_tas_line_through_room_1() {
         lost.is_empty(),
         "the search lost the TAS on frames {lost:?}"
     );
+}
+
+// how fast the TAS would have to be allowed to go for the cut to keep it:
+// cargo test --release --test search the_cut_on_room_1 -- --ignored --nocapture
+#[test]
+#[ignore]
+fn the_cut_on_room_1() {
+    use celeste_tas_solver::search::bucket_search::{Cut, Goal, Limits, bucket_search};
+    use celeste_tas_solver::search::distance::DistanceMap;
+    use celeste_tas_solver::sim::step_chapter;
+
+    let (chapter, start, inputs) = or_skip!(room_1());
+    let room_2 = chapter.room_named("lvl_2").expect("no lvl_2");
+    let goal = Goal::Room(room_2);
+    let map = DistanceMap::new(&chapter, start.room, goal);
+
+    // the pace she must keep from each frame of the TAS to be out by frame 92
+    let mut sim = start.clone();
+    let mut needed: f64 = 0.0;
+    eprintln!(
+        "start: {:?} px from the exit",
+        map.to_goal(sim.player.position)
+    );
+    for (frame, &input) in (1..TAS_FRAMES_IN_ROOM_1).zip(&inputs) {
+        step_chapter(&mut sim, &chapter, input);
+        let pixels = map
+            .to_goal(sim.player.position)
+            .expect("the TAS is on the map");
+        let pace = pixels as f64 * 60.0 / (TAS_FRAMES_IN_ROOM_1 - frame) as f64;
+        if frame % 10 == 0 {
+            eprintln!("frame {frame:2}: {pixels:3} px to go, needs {pace:.0} px/s from here");
+        }
+        needed = needed.max(pace);
+    }
+    eprintln!("the TAS needs a top speed of at least {needed:.0} px/s to survive the cut");
+
+    for top_speed in [480.0, 360.0] {
+        let limits = Limits {
+            max_frames: 120,
+            max_states: 400_000,
+            cut: Some(Cut {
+                frames: TAS_FRAMES_IN_ROOM_1,
+                top_speed,
+            }),
+        };
+        let began = std::time::Instant::now();
+        let report = bucket_search(&chapter, &start, goal, limits);
+        let last = report.states_per_frame.len();
+        eprintln!(
+            "top speed {top_speed}: {} after {last} frames ({} states on the last), {:.0} s",
+            match &report.inputs {
+                Some(inputs) => format!("a route of {} frames", inputs.len()),
+                None => "no route".to_string(),
+            },
+            report.states_per_frame[last - 1],
+            began.elapsed().as_secs_f64()
+        );
+    }
 }

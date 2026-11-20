@@ -6,6 +6,7 @@ use celeste_tas_solver::level::transition::{
 use celeste_tas_solver::player::Player;
 
 mod common;
+use common::or_skip;
 
 struct Row {
     x: f64,
@@ -63,10 +64,7 @@ fn player(row: &Row) -> Player {
 // room the game goes to, and leaves her where the game does. no physics is simulated here
 #[test]
 fn transitions_match_the_trace() {
-    let Some(chapter) = common::chapter_1a() else {
-        eprintln!("skipped. Celeste install could not be found, try setting CELESTE_DIR");
-        return;
-    };
+    let chapter = or_skip!(common::chapter_1a());
     let text = include_str!("traces/community/1A_full.txt");
     // the last rows are the level exit and have no position
     let rows: Vec<Row> = text

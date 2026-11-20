@@ -9,6 +9,20 @@ use celeste_tas_solver::level::room::{Chapter, Room};
 use celeste_tas_solver::player::{Input, Player};
 use celeste_tas_solver::trace::parse_trace;
 
+// unwraps something loaded from the game's files. without a Celeste install it ends the test
+macro_rules! or_skip {
+    ($loaded:expr) => {
+        match $loaded {
+            Some(loaded) => loaded,
+            None => {
+                eprintln!("skipped. Celeste install could not be found, try setting CELESTE_DIR");
+                return;
+            }
+        }
+    };
+}
+pub(crate) use or_skip;
+
 pub fn map_1a() -> Option<Element> {
     let path = find_celeste_dir()?.join("Content/Maps/1-ForsakenCity.bin");
     Some(load_map(&path).expect("failed to read 1A map"))

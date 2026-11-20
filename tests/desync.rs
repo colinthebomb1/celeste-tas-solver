@@ -2,7 +2,7 @@ use celeste_tas_solver::player::{Input, Player, State, step};
 use celeste_tas_solver::sim::{Sim, step_chapter};
 
 mod common;
-use common::{NONE, column, input_from_row, start_state};
+use common::{NONE, column, input_from_row, or_skip, start_state};
 
 const RIGHT: Input = Input { move_x: 1, ..NONE };
 const JUMP: Input = Input { jump: true, ..NONE };
@@ -96,10 +96,7 @@ fn assert_matches_trace_in(room_name: &str, name: &str, text: &str, inputs: &[In
         "{name}: the input list must cover every frame after the first"
     );
 
-    let Some(room) = common::room(room_name) else {
-        eprintln!("{name}: skipped. Celeste install could not be found, try setting CELESTE_DIR");
-        return;
-    };
+    let room = or_skip!(common::room(room_name));
     let mut player = start_state(text);
     for (i, &input) in inputs.iter().enumerate() {
         let frame = i + 1;
@@ -236,12 +233,7 @@ fn community_lvl_1() {
 #[test]
 fn chapter_1a() {
     let text = include_str!("traces/community/1A_full.txt");
-    let Some(chapter) = common::chapter_1a() else {
-        eprintln!(
-            "chapter 1A: skipped. Celeste install could not be found, try setting CELESTE_DIR"
-        );
-        return;
-    };
+    let chapter = or_skip!(common::chapter_1a());
 
     // the run ends when the ending cutscene takes over
     let in_cutscene = |row: &str| column(row, 7).split(' ').any(|status| status == "Cutscene");

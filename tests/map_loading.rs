@@ -4,13 +4,11 @@ use celeste_tas_solver::geom::{Direction, Rect};
 use celeste_tas_solver::level::map::load_room;
 
 mod common;
+use common::or_skip;
 
 #[test]
 fn first_room_matches_the_game() {
-    let Some(room) = common::room("lvl_1") else {
-        eprintln!("skipped. Celeste install could not be found, try setting CELESTE_DIR");
-        return;
-    };
+    let room = or_skip!(common::room("lvl_1"));
     assert_eq!(room.origin, IVec2 { x: 0, y: 0 });
     assert_eq!((room.width, room.height), (40, 23));
     assert!(room.has_tile(4, 18));
@@ -41,10 +39,7 @@ fn first_room_matches_the_game() {
 
 #[test]
 fn every_room_in_1a_loads() {
-    let Some(map) = common::map_1a() else {
-        eprintln!("skipped. Celeste install could not be found, try setting CELESTE_DIR");
-        return;
-    };
+    let map = or_skip!(common::map_1a());
     let levels = &map.child("levels").unwrap().children;
     assert_eq!(levels.len(), 38);
     for level in levels {
@@ -55,10 +50,7 @@ fn every_room_in_1a_loads() {
 
 #[test]
 fn rooms_load_their_jump_thrus() {
-    let Some(chapter) = common::chapter_1a() else {
-        eprintln!("skipped. Celeste install could not be found, try setting CELESTE_DIR");
-        return;
-    };
+    let chapter = or_skip!(common::chapter_1a());
     let room = |name: &str| &chapter.rooms[chapter.room_named(name).unwrap()];
 
     assert!(room("lvl_1").jump_thrus.is_empty());
@@ -75,10 +67,7 @@ fn rooms_load_their_jump_thrus() {
 
 #[test]
 fn only_the_last_room_has_a_finish_trigger() {
-    let Some(chapter) = common::chapter_1a() else {
-        eprintln!("skipped. Celeste install could not be found, try setting CELESTE_DIR");
-        return;
-    };
+    let chapter = or_skip!(common::chapter_1a());
 
     for room in &chapter.rooms {
         let expected = (room.name == "lvl_end")
@@ -89,10 +78,7 @@ fn only_the_last_room_has_a_finish_trigger() {
 
 #[test]
 fn rooms_load_their_dash_blocks() {
-    let Some(chapter) = common::chapter_1a() else {
-        eprintln!("skipped. Celeste install could not be found, try setting CELESTE_DIR");
-        return;
-    };
+    let chapter = or_skip!(common::chapter_1a());
     let with_dash_blocks: Vec<&str> = chapter
         .rooms
         .iter()
@@ -110,10 +96,7 @@ fn rooms_load_their_dash_blocks() {
 
 #[test]
 fn rooms_load_their_springs() {
-    let Some(chapter) = common::chapter_1a() else {
-        eprintln!("skipped. Celeste install could not be found, try setting CELESTE_DIR");
-        return;
-    };
+    let chapter = or_skip!(common::chapter_1a());
     let lvl_5 = &chapter.rooms[chapter.room_named("lvl_5").unwrap()];
 
     assert_eq!(lvl_5.springs, vec![Spring::new(1320, -896)]);
@@ -129,10 +112,7 @@ fn rooms_load_their_springs() {
 
 #[test]
 fn rooms_load_their_zippers() {
-    let Some(chapter) = common::chapter_1a() else {
-        eprintln!("skipped. Celeste install could not be found, try setting CELESTE_DIR");
-        return;
-    };
+    let chapter = or_skip!(common::chapter_1a());
     let lvl_5 = &chapter.rooms[chapter.room_named("lvl_5").unwrap()];
 
     assert_eq!(lvl_5.initial.zippers.len(), 1);
@@ -149,10 +129,7 @@ fn rooms_load_their_zippers() {
 
 #[test]
 fn chapter_1a_rooms_tile_the_route() {
-    let Some(chapter) = common::chapter_1a() else {
-        eprintln!("skipped. Celeste install could not be found, try setting CELESTE_DIR");
-        return;
-    };
+    let chapter = or_skip!(common::chapter_1a());
     assert_eq!(chapter.rooms.len(), 38);
 
     let lvl_6a = &chapter.rooms[chapter.room_named("lvl_6a").unwrap()];

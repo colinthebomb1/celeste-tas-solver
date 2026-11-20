@@ -1,9 +1,9 @@
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::level::room::Chapter;
 use crate::player::collision::on_ground;
-use crate::player::constants::DELTA_TIME;
+use crate::player::constants::{CLIMB_JUMP_COST, DELTA_TIME};
 use crate::player::{Input, State};
 use crate::search::candidate_inputs;
 use crate::search::distance::DistanceMap;
@@ -36,6 +36,8 @@ pub struct Limits {
     pub max_late: Option<usize>,
     // keeps only this many states each frame, the ones nearest the goal
     pub nearest: Option<usize>,
+    // keeps at most this many states for each pixel, dash count and stamina level
+    pub per_place: Option<usize>,
 }
 
 // drops any state that could not reach the goal in time, even on the shortest path at top speed
@@ -182,6 +184,60 @@ fn pixels_to_goal(distances: &Option<DistanceMap>, sim: &Sim) -> Option<u32> {
     distances.as_ref()?.to_goal(sim.player.position)
 }
 
+// where she is and what she has left. states that match on these share a limit
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct Place {
+    x: i32,
+    y: i32,
+    dashes: u8,
+    // how many climb jumps her stamina still pays for
+    climb_jumps_left: i32,
+}
+
+fn place(sim: &Sim) -> Place {
+    let player = &sim.player;
+    Place {
+        x: player.position.x,
+        y: player.position.y,
+        dashes: player.dashes,
+        climb_jumps_left: (player.stamina / CLIMB_JUMP_COST).floor() as i32,
+    }
+}
+
+// keeps at most this many states for each place, spread from the slowest to the fastest
+fn keep_variety(states: Vec<(Sim, Link)>, most: usize) -> Vec<(Sim, Link)> {
+    // in order of place, so the result does not change from run to run
+    let mut by_place: BTreeMap<Place, Vec<(Sim, Link)>> = BTreeMap::new();
+    for state in states {
+        by_place.entry(place(&state.0)).or_default().push(state);
+    }
+
+    let mut kept = Vec::new();
+    for mut group in by_place.into_values() {
+        if group.len() <= most {
+            kept.append(&mut group);
+            continue;
+        }
+
+        group.sort_by(|a, b| a.0.player.speed.x.total_cmp(&b.0.player.speed.x));
+        let last = group.len() - 1;
+        let picks: Vec<usize> = (0..most)
+            .map(|pick| match most {
+                1 => last / 2,
+                _ => pick * last / (most - 1),
+            })
+            .collect();
+
+        for (index, state) in group.into_iter().enumerate() {
+            if picks.contains(&index) {
+                kept.push(state);
+            }
+        }
+    }
+
+    kept
+}
+
 // keeps the states nearest the goal, up to this many
 fn keep_nearest(states: &mut Vec<(Sim, Link)>, most: usize, distances: &Option<DistanceMap>) {
     if states.len() <= most {
@@ -280,6 +336,9 @@ impl Frontier {
             }
         }
 
+        if let Some(most) = self.limits.per_place {
+            next = keep_variety(next, most);
+        }
         if let Some(most) = self.limits.nearest {
             keep_nearest(&mut next, most, &self.distances);
         }
@@ -391,6 +450,7 @@ mod tests {
         cut: None,
         max_late: None,
         nearest: None,
+        per_place: None,
     };
 
     // 88 px wide, with a floor whose top is y = 176
@@ -758,5 +818,55 @@ mod tests {
 
         let paces = follow_route(&chapter, &start, &[dash; 7], Goal::Room(1), strict);
         assert!(!paces.contains(&Pace::Lost), "{paces:?}");
+    }
+
+    fn state_at(chapter: &Chapter, x: i32, speed_x: f32) -> (Sim, Link) {
+        let mut sim = Sim::new(chapter, 0, at(x, 176));
+        sim.player.speed.x = speed_x;
+        let link = Link {
+            parent: None,
+            input: NONE,
+        };
+        (sim, link)
+    }
+
+    fn speeds(states: &[(Sim, Link)]) -> Vec<f32> {
+        let mut speeds: Vec<f32> = states.iter().map(|(sim, _)| sim.player.speed.x).collect();
+        speeds.sort_by(f32::total_cmp);
+        speeds
+    }
+
+    #[test]
+    fn one_place_keeps_a_spread_from_its_slowest_state_to_its_fastest() {
+        let chapter = row_of_rooms();
+        let states: Vec<_> = [40.0, 10.0, 60.0, 20.0, 50.0, 30.0]
+            .into_iter()
+            .map(|speed| state_at(&chapter, 40, speed))
+            .collect();
+
+        assert_eq!(speeds(&keep_variety(states, 3)), vec![10.0, 30.0, 60.0]);
+    }
+
+    #[test]
+    fn a_place_with_few_states_keeps_them_all() {
+        let chapter = row_of_rooms();
+        let states = vec![state_at(&chapter, 40, 10.0), state_at(&chapter, 40, 20.0)];
+
+        assert_eq!(keep_variety(states, 3).len(), 2);
+    }
+
+    #[test]
+    fn what_she_has_left_makes_it_a_different_place() {
+        let chapter = row_of_rooms();
+        let fresh = state_at(&chapter, 40, 10.0);
+        let mut no_dash = state_at(&chapter, 40, 20.0);
+        no_dash.0.player.dashes = 0;
+        let mut tired = state_at(&chapter, 40, 30.0);
+        tired.0.player.stamina = 50.0;
+        let elsewhere = state_at(&chapter, 41, 40.0);
+
+        // one each, though all but the last stand on the same pixel
+        let kept = keep_variety(vec![fresh, no_dash, tired, elsewhere], 1);
+        assert_eq!(kept.len(), 4);
     }
 }

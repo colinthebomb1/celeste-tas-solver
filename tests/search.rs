@@ -142,6 +142,7 @@ fn bucket_search_on_room_1() {
         cut: None,
         max_late: None,
         nearest: None,
+        per_place: None,
     };
 
     let began = std::time::Instant::now();
@@ -179,6 +180,7 @@ fn the_search_keeps_the_tas_line_through_room_1() {
         cut: None,
         max_late: None,
         nearest: None,
+        per_place: None,
     };
 
     let mut sim = start;
@@ -257,6 +259,7 @@ fn the_cut_on_room_1() {
             }),
             max_late: None,
             nearest: None,
+            per_place: None,
         };
         let began = std::time::Instant::now();
         let report = bucket_search(&chapter, &start, goal, limits);
@@ -290,6 +293,7 @@ fn late_arrivals_on_room_1() {
             cut: None,
             max_late: Some(max_late),
             nearest: None,
+            per_place: None,
         };
         let began = std::time::Instant::now();
         let report = bucket_search(&chapter, &start, Goal::Room(room_2), limits);
@@ -324,13 +328,19 @@ fn the_capped_search_on_room_1() {
     let tas = &inputs[..TAS_FRAMES_IN_ROOM_1];
     let goal = Goal::Room(chapter.room_named("lvl_2").expect("no lvl_2"));
 
-    let nearest = 5_000;
+    // PER_PLACE=4 to limit each place, unset for no limit
+    let per_place = std::env::var("PER_PLACE")
+        .ok()
+        .map(|most| most.parse().expect("a number"));
+    // NEAREST=20000 to keep more states each frame
+    let nearest = std::env::var("NEAREST").map_or(5_000, |most| most.parse().expect("a number"));
     let limits = Limits {
         max_frames: 200,
         max_states: usize::MAX,
         cut: None,
         max_late: Some(4),
         nearest: Some(nearest),
+        per_place,
     };
 
     let began = std::time::Instant::now();
@@ -340,7 +350,7 @@ fn the_capped_search_on_room_1() {
         None => format!("no route after {} frames", report.states_per_frame.len()),
     };
     eprintln!(
-        "keeping {nearest}: {result}, {:.0} s",
+        "keeping {nearest}, {per_place:?} per place: {result}, {:.0} s",
         began.elapsed().as_secs_f64()
     );
 

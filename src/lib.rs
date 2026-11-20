@@ -6,4 +6,5 @@ pub mod level;
 pub mod player;
 pub mod search;
 pub mod sim;
+pub mod tas;
 pub mod trace;

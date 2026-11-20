@@ -141,6 +141,7 @@ fn bucket_search_on_room_1() {
         max_states: 300_000,
         cut: None,
         max_late: None,
+        nearest: None,
     };
 
     let began = std::time::Instant::now();
@@ -164,24 +165,26 @@ fn bucket_search_on_room_1() {
 #[test]
 #[ignore]
 fn the_search_keeps_the_tas_line_through_room_1() {
-    use celeste_tas_solver::search::bucket_search::{Limits, Pace, follow_route};
+    use celeste_tas_solver::search::bucket_search::{Goal, Limits, Pace, follow_route};
     use celeste_tas_solver::sim::step_chapter;
 
     const STRETCH: usize = 10;
 
     let (chapter, start, inputs) = or_skip!(room_1());
     let tas = &inputs[..TAS_FRAMES_IN_ROOM_1];
+    let goal = Goal::Room(chapter.room_named("lvl_2").expect("no lvl_2"));
     let limits = Limits {
         max_frames: STRETCH,
         max_states: 2_000_000,
         cut: None,
         max_late: None,
+        nearest: None,
     };
 
     let mut sim = start;
     let mut lost = Vec::new();
     for from in (0..TAS_FRAMES_IN_ROOM_1).step_by(STRETCH) {
-        let paces = follow_route(&chapter, &sim, &tas[from..], limits);
+        let paces = follow_route(&chapter, &sim, &tas[from..], goal, limits);
 
         // one letter per frame: = level, + the search was there sooner, X lost
         let line: String = paces
@@ -253,6 +256,7 @@ fn the_cut_on_room_1() {
                 top_speed,
             }),
             max_late: None,
+            nearest: None,
         };
         let began = std::time::Instant::now();
         let report = bucket_search(&chapter, &start, goal, limits);
@@ -285,6 +289,7 @@ fn late_arrivals_on_room_1() {
             max_states: 150_000,
             cut: None,
             max_late: Some(max_late),
+            nearest: None,
         };
         let began = std::time::Instant::now();
         let report = bucket_search(&chapter, &start, Goal::Room(room_2), limits);
@@ -304,4 +309,69 @@ fn late_arrivals_on_room_1() {
             began.elapsed().as_secs_f64()
         );
     }
+}
+
+// the whole of room 1, keeping only the states nearest the exit:
+// cargo test --release --test search the_capped_search_on_room_1 -- --ignored --nocapture
+#[test]
+#[ignore]
+fn the_capped_search_on_room_1() {
+    use celeste_tas_solver::search::bucket_search::{
+        Goal, Limits, Pace, bucket_search, follow_route,
+    };
+
+    let (chapter, start, inputs) = or_skip!(room_1());
+    let tas = &inputs[..TAS_FRAMES_IN_ROOM_1];
+    let goal = Goal::Room(chapter.room_named("lvl_2").expect("no lvl_2"));
+
+    let nearest = 5_000;
+    let limits = Limits {
+        max_frames: 200,
+        max_states: usize::MAX,
+        cut: None,
+        max_late: Some(4),
+        nearest: Some(nearest),
+    };
+
+    let began = std::time::Instant::now();
+    let report = bucket_search(&chapter, &start, goal, limits);
+    let result = match &report.inputs {
+        Some(inputs) => format!("a route of {} frames", inputs.len()),
+        None => format!("no route after {} frames", report.states_per_frame.len()),
+    };
+    eprintln!(
+        "keeping {nearest}: {result}, {:.0} s",
+        began.elapsed().as_secs_f64()
+    );
+
+    // the route has to be real, and single-frame tweaks may shorten it
+    if let Some(found) = &report.inputs {
+        assert_eq!(frames_into_room_2(&chapter, &start, found), found.len());
+        let polished = improve(&chapter, &start, found);
+        eprintln!("  after improve: {} frames", polished.len());
+
+        // chapter 1 opens with 1 frame and then 88 before she can move
+        let file = format!(
+            "# room 1 in {} frames, found by the search\nconsole load 1\n   1\n\n#Start\n  88\n\n#lvl_1\n{}  60\n",
+            polished.len(),
+            celeste_tas_solver::tas::tas_lines(&polished)
+        );
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/routes/1A_lvl_1.tas");
+        std::fs::create_dir_all(path.parent().expect("the path has a folder"))
+            .expect("could not make the routes folder");
+        std::fs::write(&path, file).expect("could not write the route");
+        eprintln!("  written to {}", path.display());
+    }
+
+    // one letter per frame of the TAS: = level, + the search was there sooner, X lost
+    let line: String = follow_route(&chapter, &start, tas, goal, limits)
+        .iter()
+        .map(|pace| match pace {
+            Pace::Level => '=',
+            Pace::Ahead => '+',
+            Pace::Lost => 'X',
+        })
+        .collect();
+    eprintln!("  the TAS: {line}");
 }

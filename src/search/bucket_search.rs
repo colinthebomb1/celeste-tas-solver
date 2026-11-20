@@ -34,6 +34,8 @@ pub struct Limits {
     // drops a state that reaches a pixel more than this many frames after the first state
     // to get there with at least as many dashes
     pub max_late: Option<usize>,
+    // keeps only this many states each frame, the ones nearest the goal
+    pub nearest: Option<usize>,
 }
 
 // drops any state that could not reach the goal in time, even on the shortest path at top speed
@@ -176,9 +178,29 @@ fn frames_behind(first_at: &mut FirstArrivals, sim: &Sim, frame: usize) -> usize
     frame - earliest.copied().unwrap_or(frame)
 }
 
+fn pixels_to_goal(distances: &Option<DistanceMap>, sim: &Sim) -> Option<u32> {
+    distances.as_ref()?.to_goal(sim.player.position)
+}
+
+// keeps the states nearest the goal, up to this many
+fn keep_nearest(states: &mut Vec<(Sim, Link)>, most: usize, distances: &Option<DistanceMap>) {
+    if states.len() <= most {
+        return;
+    }
+
+    // a place with no way to the goal sorts last
+    states.select_nth_unstable_by_key(most, |(sim, _)| {
+        pixels_to_goal(distances, sim).unwrap_or(u32::MAX)
+    });
+    states.truncate(most);
+}
+
 // the states a search is carrying, and every bucket it has been in
 struct Frontier {
     candidates: Vec<Input>,
+    limits: Limits,
+    // pixels to the goal from each place. only made when a limit uses it
+    distances: Option<DistanceMap>,
     // the frame each bucket was first reached on
     seen: HashMap<Bucket, usize>,
     links: Vec<Link>,
@@ -188,23 +210,25 @@ struct Frontier {
 }
 
 impl Frontier {
-    fn new(chapter: &Chapter, start: &Sim) -> Frontier {
+    fn new(chapter: &Chapter, start: &Sim, goal: Goal, limits: Limits) -> Frontier {
+        let uses_distances = limits.cut.is_some() || limits.nearest.is_some();
+
         Frontier {
             candidates: candidate_inputs(),
+            limits,
+            distances: uses_distances.then(|| DistanceMap::new(chapter, start.room, goal)),
             seen: HashMap::from([(bucket(chapter, start), 0)]),
             links: Vec::new(),
             alive: vec![(start.clone(), None)],
-            first_at: HashMap::new(),
+            first_at: FirstArrivals::new(),
         }
     }
 
-    // steps every state alive by every input. returns the route of the first to reach the goal
+    // steps every state alive by every input. returns the route of the first to reach stop_at
     fn advance(
         &mut self,
         chapter: &Chapter,
-        goal: Option<Goal>,
-        cut: Option<(Cut, &DistanceMap)>,
-        max_late: Option<usize>,
+        stop_at: Option<Goal>,
         frame: usize,
     ) -> Option<Vec<Input>> {
         let mut next = Vec::new();
@@ -223,7 +247,7 @@ impl Frontier {
                 } else {
                     after.entering().map(Goal::Room)
                 };
-                if reached.is_some() && reached == goal {
+                if reached.is_some() && reached == stop_at {
                     return Some(route_to(&self.links, link));
                 }
 
@@ -232,49 +256,58 @@ impl Frontier {
                     continue;
                 }
 
-                let too_late = cut.is_some_and(|(cut, distances)| {
-                    cut.too_late(frame, distances.to_goal(after.player.position))
+                let too_late = self.limits.cut.is_some_and(|cut| {
+                    cut.too_late(frame, pixels_to_goal(&self.distances, &after))
                 });
                 if too_late {
                     continue;
                 }
 
-                let behind = frames_behind(&mut self.first_at, &after, frame);
-                if max_late.is_some_and(|most| behind > most) {
-                    continue;
+                // the freeze at the start of a dash holds her still without her being behind
+                let held_still =
+                    after.player.freeze_timer > 0.0 || after.player.state == State::DashStart;
+                if !held_still {
+                    let behind = frames_behind(&mut self.first_at, &after, frame);
+                    if self.limits.max_late.is_some_and(|most| behind > most) {
+                        continue;
+                    }
                 }
 
                 if let Entry::Vacant(unseen) = self.seen.entry(bucket(chapter, &after)) {
                     unseen.insert(frame);
-                    self.links.push(link);
-                    next.push((after, Some(self.links.len() - 1)));
+                    next.push((after, link));
                 }
             }
         }
 
-        self.alive = next;
+        if let Some(most) = self.limits.nearest {
+            keep_nearest(&mut next, most, &self.distances);
+        }
+
+        // only the states kept get a link
+        self.alive.clear();
+        for (sim, link) in next {
+            self.links.push(link);
+            self.alive.push((sim, Some(self.links.len() - 1)));
+        }
         None
     }
 
-    fn can_go_on(&self, limits: Limits) -> bool {
-        !self.alive.is_empty() && self.alive.len() <= limits.max_states
+    fn can_go_on(&self) -> bool {
+        !self.alive.is_empty() && self.alive.len() <= self.limits.max_states
     }
 }
 
 // tries every input one frame at a time. a state is dropped if its bucket was reached before
 pub fn bucket_search(chapter: &Chapter, start: &Sim, goal: Goal, limits: Limits) -> Report {
-    let mut frontier = Frontier::new(chapter, start);
+    let mut frontier = Frontier::new(chapter, start, goal, limits);
     let mut states_per_frame = Vec::new();
-    let distances = limits
-        .cut
-        .map(|cut| (cut, DistanceMap::new(chapter, start.room, goal)));
 
     for frame in 1..=limits.max_frames {
-        let cut = distances.as_ref().map(|(cut, map)| (*cut, map));
-        let found = frontier.advance(chapter, Some(goal), cut, limits.max_late, frame);
+        let found = frontier.advance(chapter, Some(goal), frame);
         states_per_frame.push(frontier.alive.len());
 
-        if found.is_some() || !frontier.can_go_on(limits) {
+        if found.is_some() || !frontier.can_go_on() {
             return Report {
                 inputs: found,
                 states_per_frame,
@@ -300,13 +333,19 @@ pub enum Pace {
 }
 
 // plays a known route beside the search to see whether the pruning loses it
-pub fn follow_route(chapter: &Chapter, start: &Sim, route: &[Input], limits: Limits) -> Vec<Pace> {
-    let mut frontier = Frontier::new(chapter, start);
+pub fn follow_route(
+    chapter: &Chapter,
+    start: &Sim,
+    route: &[Input],
+    goal: Goal,
+    limits: Limits,
+) -> Vec<Pace> {
+    let mut frontier = Frontier::new(chapter, start, goal, limits);
     let mut on_route = start.clone();
     let mut paces = Vec::new();
 
     for (frame, &input) in (1..=limits.max_frames).zip(route) {
-        frontier.advance(chapter, None, None, limits.max_late, frame);
+        frontier.advance(chapter, None, frame);
         step_chapter(&mut on_route, chapter, input);
 
         let over = on_route.player.dead || on_route.player.finished || on_route.in_transition();
@@ -320,7 +359,7 @@ pub fn follow_route(chapter: &Chapter, start: &Sim, route: &[Input], limits: Lim
             None => Pace::Lost,
         });
 
-        if !frontier.can_go_on(limits) {
+        if !frontier.can_go_on() {
             break;
         }
     }
@@ -351,6 +390,7 @@ mod tests {
         max_states: 1_000_000,
         cut: None,
         max_late: None,
+        nearest: None,
     };
 
     // 88 px wide, with a floor whose top is y = 176
@@ -512,7 +552,7 @@ mod tests {
     fn the_search_keeps_up_with_a_route_it_could_have_found() {
         let chapter = row_of_rooms();
         let start = Sim::new(&chapter, 0, at(40, 176));
-        let paces = follow_route(&chapter, &start, &[RIGHT; 5], LIMITS);
+        let paces = follow_route(&chapter, &start, &[RIGHT; 5], Goal::Room(1), LIMITS);
 
         assert_eq!(paces, vec![Pace::Level; 5]);
     }
@@ -522,7 +562,7 @@ mod tests {
         let chapter = row_of_rooms();
         let start = Sim::new(&chapter, 0, at(40, 176));
         let dawdling = [vec![NONE; 2], vec![RIGHT; 3]].concat();
-        let paces = follow_route(&chapter, &start, &dawdling, LIMITS);
+        let paces = follow_route(&chapter, &start, &dawdling, Goal::Room(1), LIMITS);
 
         // the search made the same moves two frames sooner
         assert_eq!(paces, vec![Pace::Ahead; 5]);
@@ -536,7 +576,7 @@ mod tests {
             panic!("running should get her out");
         };
 
-        let paces = follow_route(&chapter, &start, &[RIGHT; 60], LIMITS);
+        let paces = follow_route(&chapter, &start, &[RIGHT; 60], Goal::Room(1), LIMITS);
         assert_eq!(paces.len(), frames - 1);
     }
 
@@ -548,7 +588,10 @@ mod tests {
             max_frames: 3,
             ..LIMITS
         };
-        assert_eq!(follow_route(&chapter, &start, &[RIGHT; 5], limits).len(), 3);
+        assert_eq!(
+            follow_route(&chapter, &start, &[RIGHT; 5], Goal::Room(1), limits).len(),
+            3
+        );
     }
 
     fn cut(frames: usize) -> Limits {
@@ -661,5 +704,59 @@ mod tests {
         let total = |report: &Report| report.states_per_frame.iter().sum::<usize>();
         assert_eq!(frames(&pruned), frames(&free));
         assert!(total(&pruned) < total(&free));
+    }
+
+    #[test]
+    fn keeping_the_nearest_drops_the_ones_furthest_from_the_goal() {
+        let chapter = row_of_rooms();
+        let distances = Some(DistanceMap::new(&chapter, 0, Goal::Room(1)));
+        let link = Link {
+            parent: None,
+            input: NONE,
+        };
+        let mut states: Vec<(Sim, Link)> = [20, 70, 40, 60]
+            .into_iter()
+            .map(|x| (Sim::new(&chapter, 0, at(x, 176)), link))
+            .collect();
+
+        keep_nearest(&mut states, 2, &distances);
+        let mut kept: Vec<i32> = states
+            .iter()
+            .map(|(sim, _)| sim.player.position.x)
+            .collect();
+        kept.sort();
+        assert_eq!(kept, vec![60, 70]);
+    }
+
+    #[test]
+    fn the_search_never_carries_more_than_it_is_told_to_keep() {
+        let chapter = row_of_rooms();
+        let start = Sim::new(&chapter, 0, at(80, 176));
+        let narrow = Limits {
+            nearest: Some(50),
+            ..LIMITS
+        };
+        let report = bucket_search(&chapter, &start, Goal::Room(1), narrow);
+
+        assert!(report.inputs.is_some());
+        assert!(report.states_per_frame.iter().all(|&states| states <= 50));
+    }
+
+    #[test]
+    fn a_dash_is_not_dropped_as_late_while_its_freeze_holds_her_still() {
+        let chapter = row_of_rooms();
+        let start = Sim::new(&chapter, 0, at(20, 176));
+        let dash = Input {
+            dash: true,
+            ..RIGHT
+        };
+        let strict = Limits {
+            max_frames: 7,
+            max_late: Some(0),
+            ..LIMITS
+        };
+
+        let paces = follow_route(&chapter, &start, &[dash; 7], Goal::Room(1), strict);
+        assert!(!paces.contains(&Pace::Lost), "{paces:?}");
     }
 }

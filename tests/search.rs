@@ -143,6 +143,7 @@ fn bucket_search_on_room_1() {
         max_late: None,
         nearest: None,
         per_place: None,
+        all_inputs: false,
     };
 
     let began = std::time::Instant::now();
@@ -181,6 +182,7 @@ fn the_search_keeps_the_tas_line_through_room_1() {
         max_late: None,
         nearest: None,
         per_place: None,
+        all_inputs: false,
     };
 
     let mut sim = start;
@@ -260,6 +262,7 @@ fn the_cut_on_room_1() {
             max_late: None,
             nearest: None,
             per_place: None,
+            all_inputs: false,
         };
         let began = std::time::Instant::now();
         let report = bucket_search(&chapter, &start, goal, limits);
@@ -294,6 +297,7 @@ fn late_arrivals_on_room_1() {
             max_late: Some(max_late),
             nearest: None,
             per_place: None,
+            all_inputs: false,
         };
         let began = std::time::Instant::now();
         let report = bucket_search(&chapter, &start, Goal::Room(room_2), limits);
@@ -341,6 +345,8 @@ fn the_capped_search_on_room_1() {
         max_late: Some(4),
         nearest: Some(nearest),
         per_place,
+        // ALL_INPUTS=1 to try every input, to compare against
+        all_inputs: std::env::var("ALL_INPUTS").is_ok(),
     };
 
     let began = std::time::Instant::now();

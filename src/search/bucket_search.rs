@@ -5,8 +5,8 @@ use crate::level::room::Chapter;
 use crate::player::collision::on_ground;
 use crate::player::constants::{CLIMB_JUMP_COST, DELTA_TIME};
 use crate::player::{Input, State};
-use crate::search::candidate_inputs;
 use crate::search::distance::DistanceMap;
+use crate::search::inputs::InputLists;
 use crate::sim::{Sim, step_chapter};
 
 // position buckets per pixel. any coarser and a slow climb looks like standing still
@@ -38,6 +38,8 @@ pub struct Limits {
     pub nearest: Option<usize>,
     // keeps at most this many states for each pixel, dash count and stamina level
     pub per_place: Option<usize>,
+    // tries every input from every state, to check the rules that skip some
+    pub all_inputs: bool,
 }
 
 // drops any state that could not reach the goal in time, even on the shortest path at top speed
@@ -253,7 +255,7 @@ fn keep_nearest(states: &mut Vec<(Sim, Link)>, most: usize, distances: &Option<D
 
 // the states a search is carrying, and every bucket it has been in
 struct Frontier {
-    candidates: Vec<Input>,
+    inputs: InputLists,
     limits: Limits,
     // pixels to the goal from each place. only made when a limit uses it
     distances: Option<DistanceMap>,
@@ -270,7 +272,7 @@ impl Frontier {
         let uses_distances = limits.cut.is_some() || limits.nearest.is_some();
 
         Frontier {
-            candidates: candidate_inputs(),
+            inputs: InputLists::new(),
             limits,
             distances: uses_distances.then(|| DistanceMap::new(chapter, start.room, goal)),
             seen: HashMap::from([(bucket(chapter, start), 0)]),
@@ -290,7 +292,13 @@ impl Frontier {
         let mut next = Vec::new();
 
         for (sim, parent) in &self.alive {
-            for &input in &self.candidates {
+            let inputs = if self.limits.all_inputs {
+                self.inputs.all()
+            } else {
+                self.inputs.worth_trying(chapter, sim)
+            };
+
+            for &input in inputs {
                 let mut after = sim.clone();
                 step_chapter(&mut after, chapter, input);
                 let link = Link {
@@ -451,6 +459,7 @@ mod tests {
         max_late: None,
         nearest: None,
         per_place: None,
+        all_inputs: false,
     };
 
     // 88 px wide, with a floor whose top is y = 176
@@ -868,5 +877,141 @@ mod tests {
         // one each, though all but the last stand on the same pixel
         let kept = keep_variety(vec![fresh, no_dash, tired, elsewhere], 1);
         assert_eq!(kept.len(), 4);
+    }
+
+    // the new states each input leads to, in the order the search would keep them
+    fn new_states(chapter: &Chapter, sim: &Sim, inputs: &[Input]) -> Vec<(Bucket, Sim)> {
+        let mut found: Vec<(Bucket, Sim)> = Vec::new();
+        for &input in inputs {
+            let mut after = sim.clone();
+            step_chapter(&mut after, chapter, input);
+            let bucket = bucket(chapter, &after);
+            if !found.iter().any(|(seen, _)| *seen == bucket) {
+                found.push((bucket, after));
+            }
+        }
+        found
+    }
+
+    // runs a search and checks, for every state it carries, that the inputs the rules
+    // skip never lead anywhere the kept ones don't
+    pub(crate) fn assert_skipped_inputs_lead_nowhere_new(
+        chapter: &Chapter,
+        start: &Sim,
+        goal: Goal,
+        limits: Limits,
+    ) -> usize {
+        let mut frontier = Frontier::new(chapter, start, goal, limits);
+        let mut lists = InputLists::new();
+        let mut checked = 0;
+
+        for frame in 1..=limits.max_frames {
+            for (sim, _) in &frontier.alive {
+                let every = new_states(chapter, sim, lists.all());
+                let chosen = lists.worth_trying(chapter, sim).to_vec();
+                assert_eq!(
+                    new_states(chapter, sim, &chosen),
+                    every,
+                    "frame {frame}: the rules lose a state from {:?}",
+                    sim.player
+                );
+                checked += 1;
+            }
+
+            frontier.advance(chapter, None, frame);
+            if !frontier.can_go_on() {
+                break;
+            }
+        }
+        checked
+    }
+
+    // a floor with a pit in it, a wall to climb on the right and a low ceiling on the left
+    fn playground() -> Chapter {
+        let rows = [
+            "11110000001",
+            "00000000001",
+            "00000000001",
+            "00000000001",
+            "00000000001",
+            "00000000001",
+            "00000000001",
+            "00000000001",
+            "11100011111",
+            "11100011111",
+        ];
+        Chapter {
+            rooms: vec![Room::from_tiles(IVec2 { x: 0, y: 0 }, &rows.join("\n"))],
+        }
+    }
+
+    #[test]
+    fn the_inputs_the_rules_skip_never_lead_anywhere_new() {
+        let chapter = playground();
+        let start = Sim::new(&chapter, 0, at(12, 64));
+        let limits = Limits {
+            max_frames: 40,
+            nearest: Some(120),
+            per_place: Some(2),
+            ..LIMITS
+        };
+
+        // the goal can't be reached, so the search just spreads out
+        let checked =
+            assert_skipped_inputs_lead_nowhere_new(&chapter, &start, Goal::Finish, limits);
+        assert!(checked > 2_000, "only {checked} states checked");
+    }
+
+    #[test]
+    fn skipping_inputs_finds_the_same_route_with_the_same_states() {
+        let chapter = row_of_rooms();
+        let start = Sim::new(&chapter, 0, at(80, 176));
+        let every_input = Limits {
+            all_inputs: true,
+            ..LIMITS
+        };
+
+        let skipping = bucket_search(&chapter, &start, Goal::Room(1), LIMITS);
+        let trying_all = bucket_search(&chapter, &start, Goal::Room(1), every_input);
+        assert_eq!(skipping.inputs, trying_all.inputs);
+        assert_eq!(skipping.states_per_frame, trying_all.states_per_frame);
+    }
+
+    // needs the game, and is slow without --release:
+    // cargo test --release --lib the_input_rules_hold_on_room_1 -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn the_input_rules_hold_on_room_1() {
+        use crate::level::map::{find_celeste_dir, load_chapter, load_map};
+
+        let Some(folder) = find_celeste_dir() else {
+            eprintln!("skipped. Celeste install could not be found, try setting CELESTE_DIR");
+            return;
+        };
+        let map = load_map(&folder.join("Content/Maps/1-ForsakenCity.bin")).expect("no 1A map");
+        let chapter = load_chapter(&map).expect("1A did not load");
+        let room = chapter.room_named("lvl_1").expect("no lvl_1");
+        let goal = Goal::Room(chapter.room_named("lvl_2").expect("no lvl_2"));
+        // where chapter 1 starts
+        let start = Sim::new(&chapter, room, at(19, 144));
+        let limits = Limits {
+            max_frames: 200,
+            max_late: Some(4),
+            nearest: Some(5_000),
+            per_place: Some(8),
+            ..LIMITS
+        };
+        let every_input = Limits {
+            all_inputs: true,
+            ..limits
+        };
+
+        let skipping = bucket_search(&chapter, &start, goal, limits);
+        let trying_all = bucket_search(&chapter, &start, goal, every_input);
+        assert_eq!(skipping.inputs, trying_all.inputs);
+        assert_eq!(skipping.states_per_frame, trying_all.states_per_frame);
+
+        let checked = assert_skipped_inputs_lead_nowhere_new(&chapter, &start, goal, limits);
+        eprintln!("{checked} states checked, none lost by the rules");
     }
 }

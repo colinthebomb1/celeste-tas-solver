@@ -1,5 +1,6 @@
 pub mod bucket_search;
 pub mod distance;
+mod inputs;
 
 use crate::level::room::Chapter;
 use crate::player::Input;

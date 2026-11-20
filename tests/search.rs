@@ -140,6 +140,7 @@ fn bucket_search_on_room_1() {
         max_frames: 120,
         max_states: 300_000,
         cut: None,
+        max_late: None,
     };
 
     let began = std::time::Instant::now();
@@ -174,6 +175,7 @@ fn the_search_keeps_the_tas_line_through_room_1() {
         max_frames: STRETCH,
         max_states: 2_000_000,
         cut: None,
+        max_late: None,
     };
 
     let mut sim = start;
@@ -250,6 +252,7 @@ fn the_cut_on_room_1() {
                 frames: TAS_FRAMES_IN_ROOM_1,
                 top_speed,
             }),
+            max_late: None,
         };
         let began = std::time::Instant::now();
         let report = bucket_search(&chapter, &start, goal, limits);
@@ -261,6 +264,43 @@ fn the_cut_on_room_1() {
                 None => "no route".to_string(),
             },
             report.states_per_frame[last - 1],
+            began.elapsed().as_secs_f64()
+        );
+    }
+}
+
+// the whole of room 1, dropping states that arrive late:
+// cargo test --release --test search late_arrivals_on_room_1 -- --ignored --nocapture
+#[test]
+#[ignore]
+fn late_arrivals_on_room_1() {
+    use celeste_tas_solver::search::bucket_search::{Goal, Limits, bucket_search};
+
+    let (chapter, start, _) = or_skip!(room_1());
+    let room_2 = chapter.room_named("lvl_2").expect("no lvl_2");
+
+    for max_late in [0, 1, 2, 4] {
+        let limits = Limits {
+            max_frames: 130,
+            max_states: 150_000,
+            cut: None,
+            max_late: Some(max_late),
+        };
+        let began = std::time::Instant::now();
+        let report = bucket_search(&chapter, &start, Goal::Room(room_2), limits);
+
+        let result = match &report.inputs {
+            Some(inputs) => format!("a route of {} frames", inputs.len()),
+            None => format!("no route after {} frames", report.states_per_frame.len()),
+        };
+        let every_tenth: Vec<usize> = report
+            .states_per_frame
+            .iter()
+            .copied()
+            .step_by(10)
+            .collect();
+        eprintln!(
+            "at most {max_late} late: {result}, {:.0} s. states every 10 frames: {every_tenth:?}",
             began.elapsed().as_secs_f64()
         );
     }

@@ -126,3 +126,82 @@ fn improve_repairs_the_tas_after_one_of_its_frames_is_blanked() {
         TAS_FRAMES_IN_ROOM_1
     );
 }
+
+// prints how many states each frame keeps. slow without --release:
+// cargo test --release --test search bucket_search_on_room_1 -- --ignored --nocapture
+#[test]
+#[ignore]
+fn bucket_search_on_room_1() {
+    use celeste_tas_solver::search::bucket_search::{Goal, Limits, bucket_search};
+
+    let (chapter, start, _) = or_skip!(room_1());
+    let room_2 = chapter.room_named("lvl_2").expect("no lvl_2");
+    let limits = Limits {
+        max_frames: 120,
+        max_states: 300_000,
+    };
+
+    let began = std::time::Instant::now();
+    let report = bucket_search(&chapter, &start, Goal::Room(room_2), limits);
+    let seconds = began.elapsed().as_secs_f64();
+
+    for (frame, states) in report.states_per_frame.iter().enumerate() {
+        eprintln!("frame {:3}: {states} states", frame + 1);
+    }
+    match &report.inputs {
+        Some(inputs) => eprintln!(
+            "room 1: the TAS takes {TAS_FRAMES_IN_ROOM_1} frames, the search got {} in {seconds:.1} s",
+            inputs.len()
+        ),
+        None => eprintln!("room 1: no route found in {seconds:.1} s"),
+    }
+}
+
+// follows the TAS ten frames at a time, since the search can't run all 92 yet. slow without --release:
+// cargo test --release --test search the_search_keeps_the_tas_line -- --ignored --nocapture
+#[test]
+#[ignore]
+fn the_search_keeps_the_tas_line_through_room_1() {
+    use celeste_tas_solver::search::bucket_search::{Limits, Pace, follow_route};
+    use celeste_tas_solver::sim::step_chapter;
+
+    const STRETCH: usize = 10;
+
+    let (chapter, start, inputs) = or_skip!(room_1());
+    let tas = &inputs[..TAS_FRAMES_IN_ROOM_1];
+    let limits = Limits {
+        max_frames: STRETCH,
+        max_states: 2_000_000,
+    };
+
+    let mut sim = start;
+    let mut lost = Vec::new();
+    for from in (0..TAS_FRAMES_IN_ROOM_1).step_by(STRETCH) {
+        let paces = follow_route(&chapter, &sim, &tas[from..], limits);
+
+        // one letter per frame: = level, + the search was there sooner, X lost
+        let line: String = paces
+            .iter()
+            .map(|pace| match pace {
+                Pace::Level => '=',
+                Pace::Ahead => '+',
+                Pace::Lost => 'X',
+            })
+            .collect();
+        eprintln!("frames {:2} to {:2}: {line}", from + 1, from + paces.len());
+
+        for (offset, pace) in paces.iter().enumerate() {
+            if *pace == Pace::Lost {
+                lost.push(from + offset + 1);
+            }
+        }
+        for &input in tas.iter().skip(from).take(STRETCH) {
+            step_chapter(&mut sim, &chapter, input);
+        }
+    }
+
+    assert!(
+        lost.is_empty(),
+        "the search lost the TAS on frames {lost:?}"
+    );
+}

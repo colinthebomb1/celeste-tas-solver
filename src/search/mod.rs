@@ -1,3 +1,5 @@
+pub mod bucket_search;
+
 use crate::level::room::Chapter;
 use crate::player::Input;
 use crate::sim::{Sim, step_chapter};

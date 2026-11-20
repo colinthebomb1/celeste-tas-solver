@@ -11,7 +11,7 @@ use crate::sim::{Sim, step_chapter};
 // position buckets per pixel. any coarser and a slow climb looks like standing still
 const POSITION_STEPS_PER_PIXEL: f32 = 8.0;
 // speed bucket size in px/s
-const SPEED_BUCKET: f32 = 10.0;
+const SPEED_BUCKET: f32 = 5.0;
 
 // where a search is trying to get to
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,6 +52,13 @@ struct Bucket {
     freeze_frames_left: i32,
     on_ground: bool,
     crouching: bool,
+    facing: i8,
+    // both zero unless speed is being held against a wall
+    retained_speed: i32,
+    retention_frames_left: i32,
+    // both zero unless a wallboost can still happen
+    wallboost_dir: i8,
+    wallboost_frames_left: i32,
 }
 
 fn frames(seconds: f32) -> i32 {
@@ -66,6 +73,9 @@ fn bucket(chapter: &Chapter, sim: &Sim) -> Bucket {
         State::DashStart => (2, 0),
         State::Dash { timer } => (3, frames(timer)),
     };
+    let wall = player.wall;
+    let retaining = wall.retention_timer > 0.0;
+    let can_wallboost = wall.boost_timer > 0.0;
     let exact_x = player.position.x as f32 + player.subpixel.x;
     let exact_y = player.position.y as f32 + player.subpixel.y;
 
@@ -82,6 +92,23 @@ fn bucket(chapter: &Chapter, sim: &Sim) -> Bucket {
         freeze_frames_left: frames(player.freeze_timer),
         on_ground: on_ground(player, &chapter.rooms[sim.room], &sim.entities),
         crouching: player.crouching,
+        facing: player.facing,
+        retained_speed: if retaining {
+            (wall.retained_speed / SPEED_BUCKET).floor() as i32
+        } else {
+            0
+        },
+        retention_frames_left: if retaining {
+            frames(wall.retention_timer)
+        } else {
+            0
+        },
+        wallboost_dir: if can_wallboost { wall.boost_dir } else { 0 },
+        wallboost_frames_left: if can_wallboost {
+            frames(wall.boost_timer)
+        } else {
+            0
+        },
     }
 }
 
@@ -360,6 +387,47 @@ mod tests {
         let first = bucket(&chapter, &sim);
         step_chapter(&mut sim, &chapter, dash);
         assert_ne!(bucket(&chapter, &sim), first);
+    }
+
+    #[test]
+    fn retained_speed_only_counts_while_it_is_being_held() {
+        let chapter = row_of_rooms();
+        let mut sim = Sim::new(&chapter, 0, at(40, 176));
+        let plain = bucket(&chapter, &sim);
+
+        // left over from an old wall hit: the timer has run out, so it can't come back
+        sim.player.wall.retained_speed = 200.0;
+        assert_eq!(bucket(&chapter, &sim), plain);
+
+        sim.player.wall.retention_timer = 0.05;
+        let holding_200 = bucket(&chapter, &sim);
+        assert_ne!(holding_200, plain);
+
+        sim.player.wall.retained_speed = 250.0;
+        assert_ne!(bucket(&chapter, &sim), holding_200);
+    }
+
+    #[test]
+    fn a_wallboost_only_counts_while_it_can_still_happen() {
+        let chapter = row_of_rooms();
+        let mut sim = Sim::new(&chapter, 0, at(40, 176));
+        let plain = bucket(&chapter, &sim);
+
+        sim.player.wall.boost_dir = -1;
+        assert_eq!(bucket(&chapter, &sim), plain);
+
+        sim.player.wall.boost_timer = 0.2;
+        assert_ne!(bucket(&chapter, &sim), plain);
+    }
+
+    #[test]
+    fn facing_the_other_way_is_a_different_bucket() {
+        let chapter = row_of_rooms();
+        let mut sim = Sim::new(&chapter, 0, at(40, 176));
+        let facing_right = bucket(&chapter, &sim);
+
+        sim.player.facing = -1;
+        assert_ne!(bucket(&chapter, &sim), facing_right);
     }
 
     #[test]
